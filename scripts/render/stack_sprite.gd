@@ -21,9 +21,7 @@ var force_hidden := false
 const VISIBLE_RECT := Rect2(-48, -48, 320 + 96, 180 + 120)
 
 func set_model(m: VoxelModel) -> void:
-	_layers.clear()
-	for img in m.slices():
-		_layers.append(ImageTexture.create_from_image(img))
+	_layers = m.textures()
 	queue_redraw()
 
 func _process(_delta: float) -> void:

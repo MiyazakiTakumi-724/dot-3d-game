@@ -76,15 +76,20 @@ func test_no_enemy_can_shoot_into_safe_zone():
 	for dy in [-1, 0, 1]:
 		for dx in [-1, 0, 1]:
 			targets.append(area.checkpoint + Vector2i(dx, dy))
+	var problems: Array[String] = []
 	for e in area.ENEMIES:
 		var w := EnemyWalker.new(area.map, e[0], e[1])
 		for i in 2000:
 			w.step(0.05)
 			for t in targets:
 				var to := HeightMap.cell_center(t)
-				if w.pos.distance_to(to) > Enemy.SHOOT_RANGE:
-					continue
-				assert_true(Bullet._first_wall_on_path(w.pos, to, area.map) >= 0.0,
-					"%s の敵が %s から %s を撃てる" % [e[0], w.cell(), t])
-				if Bullet._first_wall_on_path(w.pos, to, area.map) < 0.0:
-					return
+				if w.pos.distance_to(to) <= Enemy.SHOOT_RANGE and Bullet._first_wall_on_path(w.pos, to, area.map) < 0.0:
+					problems.append("%s の敵が %s から %s を撃てる" % [e[0], w.cell(), t])
+					break
+			if not problems.is_empty():
+				break
+	assert_eq(problems, [] as Array[String])
+
+func test_goal_is_on_high_ground():
+	assert_eq(area.map.get_height(area.goal), area.GOAL_HEIGHT)
+	assert_gt(area.GOAL_HEIGHT, 0)

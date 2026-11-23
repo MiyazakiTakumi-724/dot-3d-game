@@ -7,10 +7,19 @@ var size: Vector3i:
 		size = v
 		_voxels.clear()
 var _voxels: Dictionary = {}  # Vector3i -> Color
+var _textures: Array[ImageTexture] = []
 
 func set_voxel(p: Vector3i, c: Color) -> void:
 	if p.x >= 0 and p.y >= 0 and p.z >= 0 and p.x < size.x and p.y < size.y and p.z < size.z:
 		_voxels[p] = c
+		_textures.clear()
+
+## 輪切りの画像をテクスチャにしたもの。同じモデルを使うスプライト同士で共有する（作り直しは形が変わったときだけ）。
+func textures() -> Array[ImageTexture]:
+	if _textures.is_empty():
+		for img in slices():
+			_textures.append(ImageTexture.create_from_image(img))
+	return _textures
 
 func slices() -> Array[Image]:
 	var out: Array[Image] = []

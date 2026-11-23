@@ -47,8 +47,11 @@ static func parse(layout: Array, map: HeightMap) -> Dictionary:
 
 ## 地形を並べる。deco は parse が返す info["deco"]（岩・木・橋の場所）。
 ## 墓石や扉のマスには、その下の地面を置く（墓石・扉の絵はステージ側で上に置く）。
+## 作ったモデルはステージをまたいで使い回す（輪切りの画像を作るのが重いため）
+static var _models := {}
+
 static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dictionary = {}) -> void:
-	var models := {}
+	var models := _models
 	for y in map.size.y:
 		for x in map.size.x:
 			var cell := Vector2i(x, y)
@@ -89,7 +92,10 @@ static func _cached(models: Dictionary, key: String) -> VoxelModel:
 
 static func _make(key: String) -> VoxelModel:
 	if key == "pit":
-		return VoxelModel.box(Vector3i(16, 16, 1), Color("1b1a22"))
+		var pit := VoxelModel.box(Vector3i(16, 16, 1), Color("1d1a26"))
+		for i in 6:
+			pit.set_voxel(Vector3i((i * 7 + 3) % 16, (i * 5 + 1) % 16, 0), Color("2a2535"))
+		return pit
 	if key == "wall":
 		return wall_model()
 	if key == "bridge":
@@ -167,10 +173,12 @@ static func rock_model(v: int) -> VoxelModel:
 			var hh: int = top_h + bump
 			for z in hh:
 				var c := Color("8d8f94")
-				if z >= hh - 2:
-					c = Color("e4e7ea")
+				if z == hh - 1:
+					c = Color("e4e7ea") if bump == 3 else Color("b3b7bd")
 				elif (z + xx * 3 + yy) % 9 == 0:
 					c = Color("6f7177")
+				elif (xx / 4 + yy / 4) % 2 == 0:
+					c = Color("84868b")
 				m.set_voxel(Vector3i(xx, yy, z), c)
 	return m
 
@@ -191,11 +199,20 @@ static func tree_model(v: int) -> VoxelModel:
 				for xx in range(7 - r, 7 + r):
 					m.set_voxel(Vector3i(xx, yy, z), leaf.lightened(0.12) if z % 3 == 0 else leaf)
 	else:
-		for z in range(5, 16):
+		var center := Vector3(6.5, 6.5, 10.0)
+		for z in range(4, 17):
 			for yy in 14:
 				for xx in 14:
-					var top := z >= 14
-					m.set_voxel(Vector3i(xx, yy, z), leaf.lightened(0.15) if top else leaf)
+					var d := Vector3(xx, yy, z) - center
+					d.z *= 1.2
+					if d.length() > 7.2:
+						continue
+					var c := leaf
+					if z >= 13:
+						c = leaf.lightened(0.18)
+					elif (xx + yy + z) % 5 == 0:
+						c = leaf.darkened(0.12)
+					m.set_voxel(Vector3i(xx, yy, z), c)
 	return m
 
 static func wall_model() -> VoxelModel:
