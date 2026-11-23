@@ -43,7 +43,7 @@ func cell() -> Vector2i:
 func _try(new_pos: Vector2) -> bool:
 	var to := HeightMap.world_to_cell(new_pos)
 	if to != cell():
-		if map.is_wall(to):
+		if map.is_wall(to) or map.is_water(to):
 			return false
 		if map.is_pit(to):
 			# 奈落は高さに関係なく踏み込めて、そのまま落ちる

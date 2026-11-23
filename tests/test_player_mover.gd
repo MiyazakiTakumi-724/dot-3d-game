@@ -92,3 +92,11 @@ func test_place_resets_fall():
 	assert_eq(p.height, 2)
 	assert_eq(p.last_safe_cell, Vector2i(5, 5))
 	assert_eq(p.pos, HeightMap.cell_center(Vector2i(5, 5)))
+
+func test_cannot_walk_into_water():
+	map.set_water(Vector2i(2, 1), true)
+	var p := PlayerMover.new(map, MovementRules.new())
+	p.place(Vector2i(1, 1))
+	for i in 20:
+		p.move(Vector2(2, 0))
+	assert_eq(p.cell(), Vector2i(1, 1))

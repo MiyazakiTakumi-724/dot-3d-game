@@ -1,5 +1,5 @@
 extends RefCounted
-## テスト用の経路探索。4近傍、壁と奈落は通れず、段差は MovementRules で判定する幅優先探索。
+## テスト用の経路探索。4近傍、壁・奈落・水は通れず、段差は MovementRules で判定する幅優先探索。
 
 static func distance(map: HeightMap, rules: MovementRules, from: Vector2i, to: Vector2i) -> int:
 	var dist := {from: 0}
@@ -10,7 +10,7 @@ static func distance(map: HeightMap, rules: MovementRules, from: Vector2i, to: V
 			return dist[c]
 		for d in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]:
 			var n: Vector2i = c + d
-			if dist.has(n) or map.is_wall(n) or map.is_pit(n):
+			if dist.has(n) or map.is_wall(n) or map.is_pit(n) or map.is_water(n):
 				continue
 			if not rules.can_step(map.get_height(c), map.get_height(n)):
 				continue

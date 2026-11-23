@@ -49,3 +49,11 @@ func test_door_is_wall_but_not_grave():
 	m.set_blocker(Vector2i(0, 0), HeightMap.Blocker.DOOR)
 	assert_true(m.is_wall(Vector2i(0, 0)))
 	assert_false(m.is_grave(Vector2i(0, 0)))
+
+func test_water_flag():
+	var m := HeightMap.new(Vector2i(4, 4))
+	m.set_water(Vector2i(1, 2), true)
+	assert_true(m.is_water(Vector2i(1, 2)))
+	assert_false(m.is_water(Vector2i(2, 2)))
+	assert_false(m.is_water(Vector2i(-1, 0)))
+	assert_false(m.is_wall(Vector2i(1, 2)))

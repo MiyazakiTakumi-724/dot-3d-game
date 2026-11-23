@@ -48,3 +48,14 @@ func test_bullet_does_not_graze_through_wall_corner():
 	b.vel = Vector2(-320, 320)
 	b.step(0.05, map)
 	assert_false(b.alive)
+
+func test_bullet_flies_over_water():
+	var map := HeightMap.new(Vector2i(8, 8))
+	map.set_water(Vector2i(2, 0), true)
+	var b := Bullet.new()
+	b.pos = Vector2(8, 8)
+	b.vel = Vector2(80, 0)
+	for i in 10:
+		b.step(0.1, map)
+	assert_true(b.alive)
+	assert_gt(b.pos.x, 48.0)

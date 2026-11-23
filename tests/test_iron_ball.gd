@@ -137,3 +137,8 @@ func test_return_to_hand():
 	b.drop(p, map)
 	b.return_to_hand()
 	assert_eq(b.state, IronBall.State.HELD)
+
+func test_cannot_drop_into_water():
+	map.set_water(Vector2i(2, 1), true)
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	assert_false(IronBall.new().drop(p, map))

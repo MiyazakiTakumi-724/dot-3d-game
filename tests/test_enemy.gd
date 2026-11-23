@@ -43,3 +43,11 @@ func test_enemy_turns_at_pit():
 	for i in 200:
 		w.step(0.05)
 		assert_ne(w.cell(), Vector2i(3, 1))
+
+func test_enemy_turns_at_water():
+	var m := HeightMap.new(Vector2i(6, 3))
+	m.set_water(Vector2i(3, 1), true)
+	var w := EnemyWalker.new(m, Vector2i(1, 1), Vector2.RIGHT)
+	for i in 200:
+		w.step(0.05)
+		assert_ne(w.cell(), Vector2i(3, 1))

@@ -40,7 +40,7 @@ func drop(player: PlayerMover, map: HeightMap) -> bool:
 	if state != State.HELD:
 		return false
 	var target := player.front_cell()
-	if not map.in_bounds(target) or map.is_pit(target):
+	if not map.in_bounds(target) or map.is_pit(target) or map.is_water(target):
 		return false
 	# 墓石は壁と同じく通れないが、鉄球を落として壊せる
 	if map.is_wall(target) and not map.is_grave(target):
