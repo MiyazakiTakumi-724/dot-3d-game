@@ -11,6 +11,8 @@ const MIN_FALL_TIME := 0.05
 const RETURN_AFTER := 1.0  ## 登れない所に落ちた鉄球が足元へ戻るまでの秒数
 
 var state: State = State.HELD
+## 強い鉄球か。ダメージが「落ちた段数＋2」になる。切り替えは手に持っているときだけ。
+var strong := false
 var cell: Vector2i
 var height: int = 0
 var fall_levels: int = 0
@@ -18,14 +20,30 @@ var _timer: float = 0.0
 var _fall_time: float = 0.0
 var _unreachable_for: float = 0.0
 
-static func damage_for(levels: int) -> int:
+static func damage_for(levels: int, is_strong: bool = false) -> int:
+	if is_strong:
+		return maxi(2, levels + 2)
 	return maxi(1, levels + 1)
+
+func set_strong(v: bool) -> bool:
+	if state != State.HELD:
+		return false
+	strong = v
+	return true
+
+## 死んだときなどに、どこにあっても手元へ戻す。
+func return_to_hand() -> void:
+	state = State.HELD
+	_unreachable_for = 0.0
 
 func drop(player: PlayerMover, map: HeightMap) -> bool:
 	if state != State.HELD:
 		return false
 	var target := player.front_cell()
-	if not map.in_bounds(target) or map.is_wall(target):
+	if not map.in_bounds(target) or map.is_pit(target):
+		return false
+	# 墓石は壁と同じく通れないが、鉄球を落として壊せる
+	if map.is_wall(target) and not map.is_grave(target):
 		return false
 	cell = target
 	height = map.get_height(target)
@@ -42,7 +60,7 @@ func update(delta: float, player: PlayerMover, _map: HeightMap, rules: MovementR
 			if _timer <= 0.0:
 				state = State.ON_GROUND
 				_unreachable_for = 0.0
-				landed.emit(cell, damage_for(fall_levels))
+				landed.emit(cell, damage_for(fall_levels, strong))
 		State.ON_GROUND:
 			if rules.can_step(player.height, height):
 				_unreachable_for = 0.0

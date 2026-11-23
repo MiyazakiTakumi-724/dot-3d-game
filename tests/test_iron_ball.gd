@@ -90,3 +90,50 @@ func test_reachable_ball_stays():
 	b.update(1.0, p, map, rules)
 	b.update(1.5, p, map, rules)
 	assert_eq(b.cell, Vector2i(2, 1))
+
+func test_strong_damage_table():
+	assert_eq(IronBall.damage_for(0, true), 2)
+	assert_eq(IronBall.damage_for(1, true), 3)
+	assert_eq(IronBall.damage_for(-1, true), 2)
+
+func test_switch_only_when_held():
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	assert_true(b.set_strong(true))
+	b.drop(p, map)
+	assert_false(b.set_strong(false))
+	assert_true(b.strong)
+
+func test_strong_ball_lands_with_strong_damage():
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	b.set_strong(true)
+	watch_signals(b)
+	b.drop(p, map)
+	b.update(1.0, p, map, rules)
+	assert_signal_emitted_with_parameters(b, "landed", [Vector2i(2, 1), 2])
+
+func test_cannot_drop_into_pit():
+	map.set_pit(Vector2i(2, 1), true)
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	assert_false(b.drop(p, map))
+	assert_eq(b.state, IronBall.State.HELD)
+
+func test_can_drop_onto_grave():
+	map.set_blocker(Vector2i(2, 1), HeightMap.Blocker.GRAVE)
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	assert_true(b.drop(p, map))
+
+func test_cannot_drop_onto_door():
+	map.set_blocker(Vector2i(2, 1), HeightMap.Blocker.DOOR)
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	assert_false(IronBall.new().drop(p, map))
+
+func test_return_to_hand():
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	b.drop(p, map)
+	b.return_to_hand()
+	assert_eq(b.state, IronBall.State.HELD)
