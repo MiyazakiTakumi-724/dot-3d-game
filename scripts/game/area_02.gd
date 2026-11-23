@@ -69,14 +69,27 @@ const PICKUPS := [
 ## 扉を開けるときに立つ奥側のマス。Terrain.parse が返す doors と同じ順。
 const DOOR_OPEN_FROM := [Vector2i(4, 14)]
 
+const BULLET_HIT_RADIUS := 6.0
+const FALL_SINK_PX := 40.0  ## 奈落に落ちる演出で沈む量（0.5秒で）
+
 var map: HeightMap
 var rules := MovementRules.new()
+var run: RunState
+var area_state := AreaState.new()
 var camera: StackCamera
 var player: Player
+var ball: Ball
+var enemies: Array[Enemy] = []
 var checkpoint: Vector2i
 var goal: Vector2i
 var doors: Array = []
+var _bullets: Array = []  # [Bullet, StackSprite]
+var _pickup_nodes := {}   # 拾えるものの id → StackSprite
+var _door_nodes: Array = []
+var _grave_node: StackSprite
 var _world: Node2D
+var _label: Label
+var _keys_was_down := {}
 
 func _ready() -> void:
 	map = HeightMap.new(Vector2i(LAYOUT[0].length(), LAYOUT.size()))
@@ -84,19 +97,270 @@ func _ready() -> void:
 	checkpoint = info["checkpoint"]
 	goal = info["goal"]
 	doors = info["doors"]
+	run = RunState.new(checkpoint)
 	camera = StackCamera.new()
 	add_child(camera)
 	_world = Node2D.new()
 	add_child(_world)
 	Terrain.build(map, camera, _world)
+	_build_markers()
 
 	player = Player.new()
 	player.setup(map, rules, PLAYER_START, camera)
 	_world.add_child(player)
+
+	ball = Ball.new()
+	ball.setup(player, map, rules, camera)
+	ball.rules_ball.landed.connect(_on_ball_landed)
+	_world.add_child(ball)
+
+	_spawn_enemies()
+	_build_ui()
 	_maybe_screenshot()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if area_state.update(delta):
+		respawn()
+	_step_bullets(delta)
+	if area_state.result == AreaState.Result.PLAYING:
+		if player.hp <= 0 or player.mover.fell:
+			kill_player(player.mover.fell)
+		else:
+			_play_step()
+	if area_state.is_falling():
+		player.lift_px = maxf(-FALL_SINK_PX, player.lift_px - FALL_SINK_PX / AreaState.FALL_SECONDS * delta)
+	elif area_state.result == AreaState.Result.DYING and player.mover.fell:
+		player.modulate.a = 0.0
 	camera.focus = player.mover.pos
+	_update_ui()
+
+## 遊んでいる間の毎フレームの処理：拾う、チェックポイントで回復、ゴール、キー操作。
+func _play_step() -> void:
+	var c := player.mover.cell()
+	for i in PICKUPS.size():
+		var p = PICKUPS[i]
+		if p[0] == c and run.collect(i, p[1], p[2]):
+			_pickup_nodes[i].queue_free()
+			_pickup_nodes.erase(i)
+	if run.is_near_checkpoint(c) and player.hp < Player.MAX_HP:
+		player.set_hp(Player.MAX_HP)
+	if c == goal:
+		area_state.on_goal()
+	if _just_pressed(KEY_Z) and try_open_door():
+		ball.skip_pick_up = true
+	if _just_pressed(KEY_C):
+		use_heal()
+	if _just_pressed(KEY_1):
+		select_ball(false)
+	if _just_pressed(KEY_2):
+		select_ball(true)
+
+func _just_pressed(key: Key) -> bool:
+	var down := Input.is_physical_key_pressed(key)
+	var was: bool = _keys_was_down.get(key, false)
+	_keys_was_down[key] = down
+	return down and not was
+
+## 死亡処理を始める。墓石を置き（古い墓石は消える）、操作を止める。
+func kill_player(fell: bool) -> void:
+	if not area_state.on_player_died(fell):
+		return
+	var c := player.mover.last_safe_cell if fell else player.mover.cell()
+	_remove_grave_marker()
+	run.on_death(c)
+	map.set_blocker(c, HeightMap.Blocker.GRAVE)
+	_grave_node = _marker(c, _grave_model(), 2)
+	player.controllable = false
+
+## チェックポイントから再開する。敵は全員復活し、飛んでいる弾は消える。
+## 拾い済みのもの・開けた扉・墓石はそのまま。
+func respawn() -> void:
+	for e in enemies:
+		if is_instance_valid(e):
+			e.queue_free()
+	enemies.clear()
+	_spawn_enemies()
+	for b in _bullets:
+		b[1].queue_free()
+	_bullets.clear()
+	ball.rules_ball.return_to_hand()
+	ball.rules_ball.set_strong(false)  # 強い鉄球は墓石に入っている
+	player.mover.place(PLAYER_START)
+	player.set_hp(Player.MAX_HP)
+	player.lift_px = 0.0
+	player.modulate.a = 1.0
+	player.controllable = true
+
+## 目の前の閉じた扉を、奥側から開ける。開けたら true。
+func try_open_door() -> bool:
+	for i in doors.size():
+		if run.is_door_open(i):
+			continue
+		if player.mover.cell() == DOOR_OPEN_FROM[i] and player.mover.front_cell() == doors[i]:
+			run.open_door(i)
+			map.set_blocker(doors[i], HeightMap.Blocker.NONE)
+			_door_nodes[i].queue_free()
+			return true
+	return false
+
+func use_heal() -> bool:
+	if not run.inventory.try_use_heal(player.hp, Player.MAX_HP):
+		return false
+	player.set_hp(player.hp + 1)
+	return true
+
+## 使う鉄球を切り替える。強い鉄球は持っているときだけ。手に持っていないと切り替えられない。
+func select_ball(strong: bool) -> bool:
+	if strong and not run.inventory.has_strong_ball:
+		return false
+	return ball.rules_ball.set_strong(strong)
+
+func _spawn_enemies() -> void:
+	for e in ENEMIES:
+		var enemy := Enemy.new()
+		enemy.setup(map, e[0], e[1], player, camera, e[2])
+		enemy.shot.connect(_on_enemy_shot)
+		enemy.walker.died.connect(run.on_enemy_killed)
+		_world.add_child(enemy)
+		enemies.append(enemy)
+
+func _step_bullets(delta: float) -> void:
+	for i in range(_bullets.size() - 1, -1, -1):
+		var b: Bullet = _bullets[i][0]
+		var s: StackSprite = _bullets[i][1]
+		b.step(delta, map)
+		var playing := area_state.result == AreaState.Result.PLAYING
+		if b.alive and playing and player.hp > 0 and b.pos.distance_to(player.mover.pos) < BULLET_HIT_RADIUS:
+			b.alive = false
+			player.take_hit()
+		if not b.alive or not map.in_bounds(HeightMap.world_to_cell(b.pos)):
+			s.queue_free()
+			_bullets.remove_at(i)
+			continue
+		s.world_pos = b.pos
+
+func _on_enemy_shot(b: Bullet) -> void:
+	if area_state.result != AreaState.Result.PLAYING:
+		return
+	var s := StackSprite.new()
+	s.camera = camera
+	s.world_pos = b.pos
+	s.base_height = b.height
+	s.lift_px = 3
+	s.draw_bias = 3
+	s.sort_by_cell = true
+	s.set_model(VoxelModel.sphere(2, Color("ffd23f")))
+	s.refresh()  # 最初のフレームから弾の位置に出す
+	_world.add_child(s)
+	_bullets.append([b, s])
+
+func _on_ball_landed(cell: Vector2i, damage: int) -> void:
+	if map.is_grave(cell):
+		_remove_grave_marker()  # 墓石のマスを空けてから中身を戻す（break_grave で grave が null になるため）
+		run.break_grave()
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and e.walker.cell() == cell and e.walker.height == ball.rules_ball.height:
+			e.walker.take_damage(damage)
+
+func _remove_grave_marker() -> void:
+	if run.grave != null:
+		map.set_blocker(run.grave.cell, HeightMap.Blocker.NONE)
+	if _grave_node != null:
+		_grave_node.queue_free()
+		_grave_node = null
+
+## チェックポイント（たき火）、ゴール（旗）、扉、拾えるものを置く。
+func _build_markers() -> void:
+	_marker(checkpoint, _bonfire_model(), 1)
+	_marker(goal, _flag_model(), 1)
+	for d in doors:
+		_door_nodes.append(_marker(d, _door_model(), 1))
+	for i in PICKUPS.size():
+		var p = PICKUPS[i]
+		_pickup_nodes[i] = _marker(p[0], _pickup_model(p[1]), 1)
+
+func _marker(cell: Vector2i, model: VoxelModel, bias: int) -> StackSprite:
+	var s := StackSprite.new()
+	s.camera = camera
+	s.world_pos = HeightMap.cell_center(cell)
+	s.base_height = map.get_height(cell)
+	s.sort_by_cell = true
+	s.draw_bias = bias
+	s.set_model(model)
+	s.refresh()
+	_world.add_child(s)
+	return s
+
+## 墓石：遠くからでも見つけやすい、背の高い白っぽい石。
+func _grave_model() -> VoxelModel:
+	var m := VoxelModel.box(Vector3i(10, 6, 22), Color("d8d4e8"))
+	for z in range(14, 18):  # 十字の横棒
+		for x in range(2, 8):
+			m.set_voxel(Vector3i(x, 0, z), Color("6c5c9a"))
+	for z in range(10, 21):
+		m.set_voxel(Vector3i(4, 0, z), Color("6c5c9a"))
+		m.set_voxel(Vector3i(5, 0, z), Color("6c5c9a"))
+	return m
+
+func _bonfire_model() -> VoxelModel:
+	var m := VoxelModel.box(Vector3i(10, 10, 2), Color("5b3a22"))
+	for z in range(2, 9):
+		var r := 4 - z / 2
+		for y in range(5 - r, 5 + r):
+			for x in range(5 - r, 5 + r):
+				m.set_voxel(Vector3i(x, y, z), Color("ff8c1a") if z < 6 else Color("ffd23f"))
+	return m
+
+func _flag_model() -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(8, 2, 24)
+	for z in 24:
+		m.set_voxel(Vector3i(0, 0, z), Color("e0e0e0"))
+	for z in range(16, 24):
+		for x in range(1, 8):
+			m.set_voxel(Vector3i(x, 0, z), Color("3fbf5f"))
+	return m
+
+func _door_model() -> VoxelModel:
+	var m := VoxelModel.box(Vector3i(14, 14, 20), Color("7a5230"))
+	for z in 20:
+		for y in 14:
+			m.set_voxel(Vector3i(6, y, z), Color("5b3a22"))
+	return m
+
+func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
+	match kind:
+		RunState.PickupKind.MONEY:
+			return VoxelModel.box(Vector3i(4, 4, 2), Color("ffd23f"))
+		RunState.PickupKind.MATERIAL:
+			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
+		RunState.PickupKind.HEAL:
+			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
+		_:
+			return VoxelModel.sphere(4, Color("7a2230"))
+
+func _build_ui() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	_label = Label.new()
+	_label.position = Vector2(4, 2)
+	_label.add_theme_font_size_override("font_size", 8)
+	_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	_label.add_theme_constant_override("outline_size", 2)
+	layer.add_child(_label)
+	_update_ui()
+
+func _update_ui() -> void:
+	var inv := run.inventory
+	var text := "HP %d   MONEY %d   MAT %d   HEAL %d   EXP %d\n" % [player.hp, inv.money, inv.materials, inv.heals, inv.exp]
+	text += "BALL: %s (1/2 to switch)\n" % ("STRONG" if ball.rules_ball.strong else "NORMAL")
+	text += "MOVE: arrows  CAMERA: drag/QE  DROP: X  PICK UP/OPEN: Z  HEAL: C"
+	match area_state.result:
+		AreaState.Result.DYING:
+			text += "\n\nYOU DIED"
+		AreaState.Result.CLEAR:
+			text += "\n\nCLEAR!"
+	_label.text = text
 
 ## `-- --screenshot=path.png` で数フレーム後に画面を保存して終了する（確認用）。
 ## `--angle=0.8` でカメラ角度、`--player=x,y` でプレイヤー位置を変えられる。`--fps` で平均FPSを出す。

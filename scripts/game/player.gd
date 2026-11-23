@@ -9,11 +9,12 @@ const MAX_HP := 3
 
 var mover: PlayerMover
 var hp: int = MAX_HP
+## false の間は動かせない（死亡処理中など）。
+var controllable := true
 
 func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: StackCamera) -> void:
 	mover = PlayerMover.new(map, rules)
-	mover.pos = HeightMap.cell_center(start_cell)
-	mover.height = map.get_height(start_cell)
+	mover.place(start_cell)
 	camera = cam
 	draw_bias = 2
 	sort_by_cell = true
@@ -30,8 +31,12 @@ func take_hit() -> void:
 	hp -= 1
 	hp_changed.emit(hp)
 
+func set_hp(v: int) -> void:
+	hp = v
+	hp_changed.emit(hp)
+
 func _process(delta: float) -> void:
-	if hp > 0:
+	if hp > 0 and controllable:
 		var dir := Vector2.ZERO
 		if Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A): dir.x -= 1
 		if Input.is_physical_key_pressed(KEY_RIGHT) or Input.is_physical_key_pressed(KEY_D): dir.x += 1
