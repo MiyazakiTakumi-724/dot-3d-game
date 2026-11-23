@@ -6,6 +6,9 @@ func before_each():
 	area = load("res://scenes/area_02.tscn").instantiate()
 	add_child_autofree(area)
 
+func after_each():
+	get_tree().paused = false  # インベントリのテストが途中で失敗しても、ほかのテストを止めない
+
 func _finish_death():
 	area.area_state.update(10.0)
 	area.respawn()
@@ -154,12 +157,6 @@ func test_killing_enemy_gives_money_and_exp():
 	assert_eq(area.run.inventory.money, RunState.ENEMY_MONEY)
 	assert_eq(area.run.inventory.exp, RunState.ENEMY_EXP)
 
-func test_select_strong_ball_needs_it():
-	assert_false(area.select_ball(true))
-	area.run.inventory.has_strong_ball = true
-	assert_true(area.select_ball(true))
-	assert_true(area.ball.rules_ball.strong)
-
 func test_no_control_while_dying():
 	area.kill_player(false)
 	assert_false(area.player.controllable)
@@ -188,3 +185,74 @@ func test_aim_at_own_position_keeps_facing():
 	p.mover.facing = Vector2.RIGHT
 	p.aim_at(p.mover.pos)
 	assert_eq(p.mover.facing, Vector2.RIGHT)
+
+func _drop_right_of_start() -> IronBall:
+	var p: PlayerMover = area.player.mover
+	p.place(_beside_start(1))
+	p.facing = Vector2.RIGHT
+	assert_true(area.use_item())
+	var b: IronBall = area.ball.rules_ball
+	b.update(1.0, p, area.map, area.rules)
+	return b
+
+func test_left_click_item_drops_ball():
+	var b := _drop_right_of_start()
+	assert_eq(b.state, IronBall.State.ON_GROUND)
+	assert_eq(b.cell, _beside_start(2))
+
+func test_heal_slot_uses_heal():
+	area.run.inventory.heals = 1
+	area.player.mover.place(area.goal)
+	area.player.set_hp(1)
+	area.hotbar.select_slot(2)
+	assert_true(area.use_item())
+	assert_eq(area.player.hp, 2)
+	assert_eq(area.ball.rules_ball.state, IronBall.State.HELD)
+
+func test_walk_over_ball_picks_it_up():
+	var b := _drop_right_of_start()
+	area.player.mover.place(_beside_start(2))
+	area._process(0.016)
+	assert_eq(b.state, IronBall.State.HELD)
+
+func test_equip_applies_when_ball_back_in_hand():
+	area.run.inventory.has_strong_ball = true
+	var b := _drop_right_of_start()
+	assert_true(area.menu.choose_ball(true))
+	area._process(0.016)
+	assert_false(b.strong)
+	area.player.mover.place(_beside_start(2))
+	area._process(0.016)
+	assert_eq(b.state, IronBall.State.HELD)
+	assert_true(b.strong)
+
+func test_inventory_pauses_and_closes():
+	assert_true(area.open_inventory())
+	assert_true(get_tree().paused)
+	assert_true(area.menu.is_open())
+	area.close_inventory()
+	assert_false(get_tree().paused)
+	assert_false(area.menu.is_open())
+
+func test_inventory_not_opened_while_dying():
+	area.kill_player(false)
+	assert_false(area.open_inventory())
+	assert_false(get_tree().paused)
+
+func test_menu_cannot_choose_strong_without_it():
+	assert_false(area.menu.choose_ball(true))
+	assert_false(area.run.inventory.equipped_strong)
+	area.run.inventory.has_strong_ball = true
+	assert_true(area.menu.choose_ball(true))
+	assert_true(area.run.inventory.equipped_strong)
+
+func test_aim_marker_on_drop_cell():
+	var p: PlayerMover = area.player.mover
+	p.place(_beside_start(1))
+	p.facing = Vector2.RIGHT
+	area._process(0.016)
+	assert_false(area.aim_marker.force_hidden)
+	assert_eq(area.aim_marker.world_pos, HeightMap.cell_center(_beside_start(2)))
+	area.hotbar.select_slot(2)
+	area._process(0.016)
+	assert_true(area.aim_marker.force_hidden)

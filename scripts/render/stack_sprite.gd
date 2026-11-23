@@ -13,6 +13,8 @@ var draw_bias: int = 0  ## 同じ奥行きのとき、大きい方を後に描�
 ## マスの奥側に立っても、足元の床より後に描かれるようにするため。
 var sort_by_cell := false
 var _layers: Array[ImageTexture] = []
+## true の間は描かない。visible は画面外かどうかで毎フレーム書き換えるので、隠したいときはこちらを使う。
+var force_hidden := false
 
 ## 画面（320×180）からこれ以上はみ出したものは描かない。広いエリアで描画を軽くするため。
 ## 背の高いもの（台地・壁）が下から画面に入るので、縦は多めに取る。
@@ -32,7 +34,7 @@ func refresh() -> void:
 	if camera == null:
 		return
 	position = camera.world_to_screen(world_pos, base_height * LEVEL_PX + lift_px)
-	visible = VISIBLE_RECT.has_point(position)
+	visible = not force_hidden and VISIBLE_RECT.has_point(position)
 	if not visible:
 		return
 	var sort_pos := HeightMap.cell_center(HeightMap.world_to_cell(world_pos)) if sort_by_cell else world_pos

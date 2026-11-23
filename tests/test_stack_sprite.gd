@@ -31,3 +31,11 @@ func test_onscreen_sprite_is_visible_again():
 	cam.focus = Vector2(600, 0)
 	s.refresh()
 	assert_true(s.visible)
+
+func test_hidden_sprite_stays_hidden_on_screen():
+	var cam: StackCamera = autofree(StackCamera.new())
+	var s: StackSprite = autofree(StackSprite.new())
+	s.camera = cam
+	s.force_hidden = true
+	s.refresh()
+	assert_false(s.visible)

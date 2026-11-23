@@ -36,14 +36,18 @@ func return_to_hand() -> void:
 	state = State.HELD
 	_unreachable_for = 0.0
 
+## そのマスに鉄球を落とせるか。マップの外・奈落・水・壁には落とせない。
+## 墓石は壁と同じく通れないが、鉄球を落として壊せる。
+static func can_drop_at(target: Vector2i, map: HeightMap) -> bool:
+	if not map.in_bounds(target) or map.is_pit(target) or map.is_water(target):
+		return false
+	return map.is_grave(target) or not map.is_wall(target)
+
 func drop(player: PlayerMover, map: HeightMap) -> bool:
 	if state != State.HELD:
 		return false
 	var target := player.front_cell()
-	if not map.in_bounds(target) or map.is_pit(target) or map.is_water(target):
-		return false
-	# 墓石は壁と同じく通れないが、鉄球を落として壊せる
-	if map.is_wall(target) and not map.is_grave(target):
+	if not can_drop_at(target, map):
 		return false
 	cell = target
 	height = map.get_height(target)

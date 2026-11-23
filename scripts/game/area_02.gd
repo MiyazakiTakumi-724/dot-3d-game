@@ -1,6 +1,7 @@
 extends Node2D
 ## 試作2「死と取り返しの流れ」のエリア。死んでもシーンを読み込み直さず、中身を戻してチェックポイントから再開する。
-## 操作：矢印/WASD 移動、右ドラッグ or Q/E カメラ回転、X 鉄球を落とす、Z 拾う・扉を開ける、C 回復、1/2 鉄球の切り替え
+## 操作：矢印/WASD 移動、左クリック 手に持つアイテムを使う（カーソルの方向）、1/2 手に持つアイテムを選ぶ、
+## Tab インベントリ（使う鉄球を決める）、F 門を開ける、右ドラッグ or Q/E カメラ回転。鉄球は上を歩いて拾う。
 
 ## 数字 = 高さ（段）、# = 壁、_ = 奈落、C = チェックポイント、D = 扉、G = ゴール
 ## 左上の安全地帯から、帯状の道を右・左と折り返して下へ進む。左端の縦の通路は、扉を開けると近道になる。
@@ -77,6 +78,10 @@ var map: HeightMap
 var rules := MovementRules.new()
 var run: RunState
 var area_state := AreaState.new()
+var hotbar := Hotbar.new()
+var menu: InventoryMenu
+## 鉄球が落ちるマスに出す、地面の影のような印
+var aim_marker: StackSprite
 var camera: StackCamera
 var player: Player
 var ball: Ball
@@ -90,7 +95,6 @@ var _door_nodes: Array = []
 var _grave_node: StackSprite
 var _world: Node2D
 var _label: Label
-var _keys_was_down := {}
 
 func _ready() -> void:
 	map = HeightMap.new(Vector2i(LAYOUT[0].length(), LAYOUT.size()))
@@ -115,8 +119,15 @@ func _ready() -> void:
 	ball.rules_ball.landed.connect(_on_ball_landed)
 	_world.add_child(ball)
 
+	aim_marker = _marker(PLAYER_START, _aim_model(), 1)
+	aim_marker.force_hidden = true
+
 	_spawn_enemies()
 	_build_ui()
+	menu = InventoryMenu.new()
+	menu.setup(run)
+	menu.close_requested.connect(close_inventory)
+	add_child(menu)
 	_maybe_screenshot()
 
 func _process(delta: float) -> void:
@@ -132,6 +143,7 @@ func _process(delta: float) -> void:
 		player.lift_px = maxf(-FALL_SINK_PX, player.lift_px - FALL_SINK_PX / AreaState.FALL_SECONDS * delta)
 	elif area_state.result == AreaState.Result.DYING and player.mover.fell:
 		player.modulate.a = 0.0
+	_update_aim()
 	camera.focus = player.mover.pos
 	_update_ui()
 
@@ -147,21 +159,69 @@ func _play_step() -> void:
 		player.set_hp(Player.MAX_HP)
 	if c == goal:
 		area_state.on_goal()
-	if _just_pressed(KEY_Z):
-		if not try_open_door():
-			ball.rules_ball.try_pick_up(player.mover)
-	if _just_pressed(KEY_C):
-		use_heal()
-	if _just_pressed(KEY_1):
-		select_ball(false)
-	if _just_pressed(KEY_2):
-		select_ball(true)
+	# 落とした鉄球は上を歩くだけで拾う
+	ball.rules_ball.try_pick_up(player.mover)
+	# インベントリで決めた鉄球は、手に持っているときに反映する
+	if ball.rules_ball.state == IronBall.State.HELD:
+		ball.rules_ball.set_strong(run.inventory.ball_is_strong())
 
-func _just_pressed(key: Key) -> bool:
-	var down := Input.is_physical_key_pressed(key)
-	var was: bool = _keys_was_down.get(key, false)
-	_keys_was_down[key] = down
-	return down and not was
+func _unhandled_input(event: InputEvent) -> void:
+	if area_state.result != AreaState.Result.PLAYING:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		use_item()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo:
+		match event.physical_keycode:
+			KEY_1:
+				hotbar.select_slot(1)
+			KEY_2:
+				hotbar.select_slot(2)
+			KEY_F:
+				try_open_door()
+			KEY_TAB:
+				open_inventory()
+			_:
+				return
+		get_viewport().set_input_as_handled()
+
+## 手に持っているアイテムを使う（左クリック）。鉄球ならカーソルの方向の目の前に落とす。
+func use_item() -> bool:
+	if area_state.result != AreaState.Result.PLAYING or not player.controllable:
+		return false
+	match hotbar.selected:
+		Hotbar.Item.IRON_BALL:
+			return ball.rules_ball.drop(player.mover, map)
+		Hotbar.Item.HEAL:
+			return use_heal()
+	return false
+
+func open_inventory() -> bool:
+	if area_state.result != AreaState.Result.PLAYING:
+		return false
+	menu.open()
+	get_tree().paused = true
+	return true
+
+func close_inventory() -> void:
+	menu.close()
+	get_tree().paused = false
+
+## カーソルの方を向かせ、鉄球が落ちるマスに印を出す。
+func _update_aim() -> void:
+	var playing := area_state.result == AreaState.Result.PLAYING
+	if playing:
+		var mouse := get_viewport().get_mouse_position()
+		player.aim_world = camera.screen_to_world(mouse, player.mover.height * StackSprite.LEVEL_PX)
+	else:
+		player.aim_world = null
+	var target := player.mover.front_cell()
+	var show := playing and hotbar.selected == Hotbar.Item.IRON_BALL \
+		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map)
+	aim_marker.force_hidden = not show
+	if show:
+		aim_marker.world_pos = HeightMap.cell_center(target)
+		aim_marker.base_height = map.get_height(target)
 
 ## 死亡処理を始める。墓石を置き（古い墓石は消える）、操作を止める。
 func kill_player(fell: bool) -> void:
@@ -189,7 +249,7 @@ func respawn() -> void:
 		b[1].queue_free()
 	_bullets.clear()
 	ball.rules_ball.return_to_hand()
-	ball.rules_ball.set_strong(false)  # 強い鉄球は墓石に入っている
+	ball.rules_ball.set_strong(run.inventory.ball_is_strong())  # 強い鉄球は墓石に入っているので普通に戻る
 	player.mover.place(PLAYER_START)
 	player.set_hp(Player.MAX_HP)
 	player.lift_px = 0.0
@@ -213,12 +273,6 @@ func use_heal() -> bool:
 		return false
 	player.set_hp(player.hp + 1)
 	return true
-
-## 使う鉄球を切り替える。強い鉄球は持っているときだけ。手に持っていないと切り替えられない。
-func select_ball(strong: bool) -> bool:
-	if strong and not run.inventory.has_strong_ball:
-		return false
-	return ball.rules_ball.set_strong(strong)
 
 func _spawn_enemies() -> void:
 	for e in ENEMIES:
@@ -296,6 +350,9 @@ func _marker(cell: Vector2i, model: VoxelModel, bias: int) -> StackSprite:
 	_world.add_child(s)
 	return s
 
+func _aim_model() -> VoxelModel:
+	return VoxelModel.box(Vector3i(14, 14, 1), Color(0, 0, 0, 0.35))
+
 ## 墓石：遠くからでも見つけやすい、背の高い白っぽい石。
 func _grave_model() -> VoxelModel:
 	var m := VoxelModel.box(Vector3i(10, 6, 22), Color("d8d4e8"))
@@ -358,8 +415,13 @@ func _build_ui() -> void:
 func _update_ui() -> void:
 	var inv := run.inventory
 	var text := "HP %d   MONEY %d   MAT %d   HEAL %d   EXP %d\n" % [player.hp, inv.money, inv.materials, inv.heals, inv.exp]
-	text += "BALL: %s (1/2 to switch)\n" % ("STRONG" if ball.rules_ball.strong else "NORMAL")
-	text += "MOVE: arrows  CAMERA: drag/QE  DROP: X  PICK UP/OPEN: Z  HEAL: C"
+	var ball_name := "BALL:STRONG" if ball.rules_ball.strong else "BALL:NORMAL"
+	var heal_name := "HEAL x%d" % inv.heals
+	if hotbar.selected == Hotbar.Item.IRON_BALL:
+		text += "[1 %s]   2 %s\n" % [ball_name, heal_name]
+	else:
+		text += " 1 %s   [2 %s]\n" % [ball_name, heal_name]
+	text += "CLICK: use  1/2: hold  TAB: inventory  F: gate  R-DRAG/QE: camera"
 	match area_state.result:
 		AreaState.Result.DYING:
 			text += "\n\nYOU DIED"
@@ -368,7 +430,7 @@ func _update_ui() -> void:
 	_label.text = text
 
 ## `-- --screenshot=path.png` で数フレーム後に画面を保存して終了する（確認用）。
-## `--angle=0.8` でカメラ角度、`--player=x,y` でプレイヤー位置を変えられる。`--fps` で平均FPSを出す。
+## `--angle=0.8` でカメラ角度、`--player=x,y` でプレイヤー位置を変えられる。`--fps` で平均FPSを出す。`--inventory` でインベントリを開いた画面。
 func _maybe_screenshot() -> void:
 	var path := ""
 	var measure_fps := false
@@ -382,6 +444,8 @@ func _maybe_screenshot() -> void:
 			player.mover.place(Vector2i(int(p[0]), int(p[1])))
 		elif a == "--fps":
 			measure_fps = true
+		elif a == "--inventory":
+			open_inventory.call_deferred()
 	if path == "":
 		return
 	var start := Time.get_ticks_msec()
