@@ -22,8 +22,9 @@ func move(world_delta: Vector2) -> void:
 	if not _try(pos + Vector2(world_delta.x, 0)):
 		_try(pos + Vector2(0, world_delta.y))
 
+## 目の前のマス。マスの中心から1マス分先を見るので、斜めを向いていても必ず隣のマスになる。
 func front_cell() -> Vector2i:
-	return HeightMap.world_to_cell(pos + facing * HeightMap.CELL_PX)
+	return HeightMap.world_to_cell(HeightMap.cell_center(cell()) + facing * HeightMap.CELL_PX)
 
 func cell() -> Vector2i:
 	return HeightMap.world_to_cell(pos)

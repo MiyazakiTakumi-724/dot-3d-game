@@ -16,6 +16,7 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	mover.height = map.get_height(start_cell)
 	camera = cam
 	draw_bias = 2
+	sort_by_cell = true
 	var m := VoxelModel.box(Vector3i(6, 6, 10), Color("3b6dd8"))
 	for y in 2:  # 顔の向きが分かるように前側に目印
 		for x in 2:

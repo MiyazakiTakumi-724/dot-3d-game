@@ -42,3 +42,10 @@ func test_plateau_is_reachable_by_stairs():
 	for i in 5:
 		p.move(Vector2(16, 0))
 	assert_eq(p.height, 3)
+
+func test_new_bullet_sprite_starts_at_bullet_position():
+	var b := Bullet.new()
+	b.pos = HeightMap.cell_center(Vector2i(6, 6))
+	stage._on_enemy_shot(b)
+	var s: StackSprite = stage._bullets[-1][1]
+	assert_eq(s.position, stage.camera.world_to_screen(b.pos, s.base_height * StackSprite.LEVEL_PX + s.lift_px))

@@ -17,6 +17,7 @@ func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, 
 	target = p
 	camera = cam
 	draw_bias = 1
+	sort_by_cell = true
 	_cooldown = first_shot_delay
 	var m := VoxelModel.box(Vector3i(8, 8, 8), Color("c0392b"))
 	for x in 2:  # 目

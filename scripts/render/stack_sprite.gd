@@ -9,6 +9,9 @@ var world_pos: Vector2 = Vector2.ZERO
 var base_height: int = 0
 var lift_px: float = 0.0  ## 段とは別に浮かせる量（落下中の鉄球など）
 var draw_bias: int = 0  ## 同じ奥行きのとき、大きい方を後に描く
+## true なら立っているマスの中心で奥行きを決める（動くもの用）。
+## マスの奥側に立っても、足元の床より後に描かれるようにするため。
+var sort_by_cell := false
 var _layers: Array[ImageTexture] = []
 
 func set_model(m: VoxelModel) -> void:
@@ -18,10 +21,15 @@ func set_model(m: VoxelModel) -> void:
 	queue_redraw()
 
 func _process(_delta: float) -> void:
+	refresh()
+
+## 画面上の位置と描く順番を今の状態に合わせる。
+func refresh() -> void:
 	if camera == null:
 		return
 	position = camera.world_to_screen(world_pos, base_height * LEVEL_PX + lift_px)
-	z_index = clampi(int(camera.depth_key(world_pos)) * 4 + draw_bias, -4000, 4000)
+	var sort_pos := HeightMap.cell_center(HeightMap.world_to_cell(world_pos)) if sort_by_cell else world_pos
+	z_index = clampi(int(camera.depth_key(sort_pos)) * 4 + draw_bias, -4000, 4000)
 	queue_redraw()
 
 func _draw() -> void:

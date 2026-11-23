@@ -17,6 +17,7 @@ func setup(p: Player, height_map: HeightMap, movement_rules: MovementRules, cam:
 	rules = movement_rules
 	camera = cam
 	draw_bias = 3
+	sort_by_cell = true
 	set_model(VoxelModel.sphere(4, Color("6b6f78")))
 
 func _process(delta: float) -> void:

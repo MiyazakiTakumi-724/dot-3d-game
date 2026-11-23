@@ -39,3 +39,12 @@ func test_bullet_ignores_height_differences():
 	b.vel = Vector2(80, 0)
 	b.step(0.5, map)
 	assert_true(b.alive)
+
+func test_bullet_does_not_graze_through_wall_corner():
+	var map := HeightMap.new(Vector2i(8, 8))
+	map.set_wall(Vector2i(2, 1), true)
+	var b := Bullet.new()
+	b.pos = Vector2(40.5, 7.8)  # 壁マス(2,1)の左上の角をわずかにかすめる斜めの軌道
+	b.vel = Vector2(-320, 320)
+	b.step(0.05, map)
+	assert_false(b.alive)

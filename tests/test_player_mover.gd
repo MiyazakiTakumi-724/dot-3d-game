@@ -48,3 +48,9 @@ func test_input_is_relative_to_camera():
 	var c: StackCamera = autofree(StackCamera.new())
 	c.angle = PI / 2
 	assert_almost_eq(c.screen_dir_to_world(Vector2.UP), Vector2(1, 0), Vector2(0.01, 0.01))
+
+func test_front_cell_with_diagonal_facing_from_cell_edge():
+	var m := _mover_at(Vector2i(1, 1))
+	m.pos = Vector2(17, 24)
+	m.facing = Vector2(0.88, 0.48).normalized()
+	assert_eq(m.front_cell(), Vector2i(2, 1))

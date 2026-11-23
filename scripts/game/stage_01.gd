@@ -165,7 +165,9 @@ func _on_enemy_shot(b: Bullet) -> void:
 	s.base_height = b.height
 	s.lift_px = 3
 	s.draw_bias = 3
+	s.sort_by_cell = true
 	s.set_model(VoxelModel.sphere(2, Color("ffd23f")))
+	s.refresh()  # 最初のフレームから弾の位置に出す
 	_world.add_child(s)
 	_bullets.append([b, s])
 
