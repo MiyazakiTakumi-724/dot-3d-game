@@ -165,3 +165,12 @@ func test_no_control_while_dying():
 	assert_false(area.player.controllable)
 	_finish_death()
 	assert_true(area.player.controllable)
+
+func test_old_enemy_shot_after_respawn_is_ignored():
+	var old: Enemy = area.enemies[0]
+	area.kill_player(false)
+	_finish_death()
+	var b := Bullet.new()
+	b.pos = area.player.mover.pos + Vector2(40, 0)
+	old.shot.emit(b)
+	assert_eq(area._bullets.size(), 0)

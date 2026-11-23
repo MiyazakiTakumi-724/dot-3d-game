@@ -69,3 +69,22 @@ func test_start_area_is_walkable():
 		var c := Vector2i(area.PLAYER_START.x + dx, area.PLAYER_START.y)
 		assert_false(area.map.is_wall(c))
 		assert_eq(area.map.get_height(c), 0)
+
+## 敵が往復する範囲のどこからも、安全地帯（チェックポイントの周り）へ弾が届かない
+func test_no_enemy_can_shoot_into_safe_zone():
+	var targets: Array[Vector2i] = [area.PLAYER_START]
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			targets.append(area.checkpoint + Vector2i(dx, dy))
+	for e in area.ENEMIES:
+		var w := EnemyWalker.new(area.map, e[0], e[1])
+		for i in 2000:
+			w.step(0.05)
+			for t in targets:
+				var to := HeightMap.cell_center(t)
+				if w.pos.distance_to(to) > Enemy.SHOOT_RANGE:
+					continue
+				assert_true(Bullet._first_wall_on_path(w.pos, to, area.map) >= 0.0,
+					"%s の敵が %s から %s を撃てる" % [e[0], w.cell(), t])
+				if Bullet._first_wall_on_path(w.pos, to, area.map) < 0.0:
+					return
