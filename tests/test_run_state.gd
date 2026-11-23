@@ -94,3 +94,20 @@ func test_near_checkpoint():
 	assert_true(rs.is_near_checkpoint(Vector2i(1, 1)))
 	assert_true(rs.is_near_checkpoint(Vector2i(2, 2)))
 	assert_false(rs.is_near_checkpoint(Vector2i(3, 1)))
+
+func test_ball_is_strong_needs_both():
+	var inv := rs.inventory
+	inv.equipped_strong = true
+	assert_false(inv.ball_is_strong())
+	inv.has_strong_ball = true
+	assert_true(inv.ball_is_strong())
+	inv.equipped_strong = false
+	assert_false(inv.ball_is_strong())
+
+func test_equip_survives_death_and_returns_with_grave():
+	rs.inventory.has_strong_ball = true
+	rs.inventory.equipped_strong = true
+	rs.on_death(Vector2i(4, 4))
+	assert_false(rs.inventory.ball_is_strong())
+	rs.break_grave()
+	assert_true(rs.inventory.ball_is_strong())
