@@ -6,13 +6,14 @@ var size: Vector3i:
 	set(v):
 		size = v
 		_voxels.clear()
+		_textures = []
 var _voxels: Dictionary = {}  # Vector3i -> Color
 var _textures: Array[ImageTexture] = []
 
 func set_voxel(p: Vector3i, c: Color) -> void:
 	if p.x >= 0 and p.y >= 0 and p.z >= 0 and p.x < size.x and p.y < size.y and p.z < size.z:
 		_voxels[p] = c
-		_textures.clear()
+		_textures = []  # 使い回している側の配列は空にしない（新しい配列にする）
 
 ## 輪切りの画像をテクスチャにしたもの。同じモデルを使うスプライト同士で共有する（作り直しは形が変わったときだけ）。
 func textures() -> Array[ImageTexture]:

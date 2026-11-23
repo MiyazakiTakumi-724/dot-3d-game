@@ -16,3 +16,16 @@ func test_sphere_top_slice_smaller_than_middle():
 	var s := VoxelModel.sphere(4, Color.GRAY).slices()
 	assert_eq(s.size(), 8)
 	assert_true(s[7].get_used_rect().size.x < s[4].get_used_rect().size.x)
+
+func test_changing_model_does_not_empty_shared_textures():
+	var m := VoxelModel.box(Vector3i(2, 2, 2), Color.RED)
+	var t := m.textures()
+	m.set_voxel(Vector3i(0, 0, 0), Color.BLUE)
+	assert_eq(t.size(), 2)
+	assert_ne(m.textures(), t)
+
+func test_resizing_model_rebuilds_textures():
+	var m := VoxelModel.box(Vector3i(2, 2, 2), Color.RED)
+	m.textures()
+	m.size = Vector3i(2, 2, 3)
+	assert_eq(m.textures().size(), 3)

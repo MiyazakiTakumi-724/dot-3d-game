@@ -87,7 +87,7 @@ func _build_ui() -> void:
 	_update_ui()
 
 func _update_ui() -> void:
-	var text := "HP %d   ENEMIES %d\nMOVE: arrows  CAMERA: drag/QE  DROP: X  PICK UP: Z" % [player.hp, state.enemies_left]
+	var text := "HP %d   ENEMIES %d\nMOVE: arrows  CAMERA: R-drag/QE  DROP: X  PICK UP: Z" % [player.hp, state.enemies_left]
 	match state.result:
 		StageState.Result.CLEAR:
 			text += "\n\nCLEAR!   R: retry"

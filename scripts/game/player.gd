@@ -11,8 +11,11 @@ var mover: PlayerMover
 var hp: int = MAX_HP
 ## false の間は動かせない（死亡処理中など）。
 var controllable := true
-## マウスカーソルが指すワールドの位置。null でなければ、歩く向きとは別にいつもそちらを向く。
-var aim_world = null
+## マウスカーソルの画面上の位置。null でなければ、歩く向きとは別にいつもそちらを向く。
+var aim_screen = null
+
+## カーソルが自分のマスの上にあるとき、向きを変えない範囲（画面px）
+const AIM_DEAD_ZONE_PX := 6.0
 
 func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: StackCamera) -> void:
 	mover = PlayerMover.new(map, rules)
@@ -33,11 +36,27 @@ func take_hit() -> void:
 	hp -= 1
 	hp_changed.emit(hp)
 
-## world の方を向く。近すぎる（カーソルが真上にある）ときは向きを変えない。
-func aim_at(world: Vector2) -> void:
-	var d := world - mover.pos
-	if d.length() >= 0.5:
-		mover.facing = d.normalized()
+## 画面上のカーソルに一番近い隣のマス（8方向）を向く。マスは高さも含めて画面に置いて比べるので、
+## 高台から下のマスを指しても斜めにずれない。カーソルが自分のマスの上にあるときは向きを変えない。
+func aim_at_screen(screen: Vector2) -> void:
+	var here := mover.cell()
+	if screen.distance_to(_cell_on_screen(here)) < AIM_DEAD_ZONE_PX:
+		return
+	var best := here
+	var best_d := INF
+	for dy in [-1, 0, 1]:
+		for dx in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			var n: Vector2i = here + Vector2i(dx, dy)
+			var d := screen.distance_to(_cell_on_screen(n))
+			if d < best_d:
+				best_d = d
+				best = n
+	mover.facing = Vector2(best - here).normalized()
+
+func _cell_on_screen(c: Vector2i) -> Vector2:
+	return camera.world_to_screen(HeightMap.cell_center(c), mover.map.get_height(c) * LEVEL_PX)
 
 func set_hp(v: int) -> void:
 	hp = v
@@ -52,8 +71,8 @@ func _process(delta: float) -> void:
 		if Input.is_physical_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_S): dir.y += 1
 		if dir != Vector2.ZERO:
 			mover.move(camera.screen_dir_to_world(dir.normalized()) * SPEED * delta)
-		if aim_world != null:
-			aim_at(aim_world)
+		if aim_screen != null:
+			aim_at_screen(aim_screen)
 	_sync()
 	super._process(delta)
 

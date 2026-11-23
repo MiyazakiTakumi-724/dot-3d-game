@@ -232,10 +232,9 @@ func close_inventory() -> void:
 func _update_aim() -> void:
 	var playing := area_state.result == AreaState.Result.PLAYING
 	if playing:
-		var mouse := get_viewport().get_mouse_position()
-		player.aim_world = camera.screen_to_world(mouse, player.mover.height * StackSprite.LEVEL_PX)
+		player.aim_screen = get_viewport().get_mouse_position()
 	else:
-		player.aim_world = null
+		player.aim_screen = null
 	var target := player.mover.front_cell()
 	var show := playing and hotbar.selected == Hotbar.Item.IRON_BALL \
 		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map)
@@ -277,15 +276,21 @@ func respawn() -> void:
 	player.modulate.a = 1.0
 	player.controllable = true
 
-## 目の前の閉じた扉を、奥側から開ける。開けたら true。
+## 門の奥側の前のマス（DOOR_OPEN_FROM）に立っていれば、向きに関係なく開ける。開けたら true。
 func try_open_door() -> bool:
 	for i in doors.size():
 		if run.is_door_open(i):
 			continue
-		if player.mover.cell() == DOOR_OPEN_FROM[i] and player.mover.front_cell() == doors[i]:
+		if player.mover.cell() == DOOR_OPEN_FROM[i]:
 			run.open_door(i)
 			map.set_blocker(doors[i], HeightMap.Blocker.NONE)
 			_door_nodes[i].queue_free()
+			return true
+	return false
+
+func _can_open_door_here() -> bool:
+	for i in doors.size():
+		if not run.is_door_open(i) and player.mover.cell() == DOOR_OPEN_FROM[i]:
 			return true
 	return false
 
@@ -386,7 +391,12 @@ func _grave_model() -> VoxelModel:
 	return m
 
 func _bonfire_model() -> VoxelModel:
-	var m := VoxelModel.box(Vector3i(10, 10, 2), Color("5b3a22"))
+	var m := VoxelModel.new()
+	m.size = Vector3i(10, 10, 9)
+	for y in 10:
+		for x in 10:
+			for z in 2:
+				m.set_voxel(Vector3i(x, y, z), Color("5b3a22"))
 	for z in range(2, 9):
 		var r := 4 - z / 2
 		for y in range(5 - r, 5 + r):
@@ -443,6 +453,8 @@ func _update_ui() -> void:
 	else:
 		text += " 1 %s   [2 %s]\n" % [ball_name, heal_name]
 	text += "CLICK: use  1/2: hold  TAB: inventory  F: gate  R-DRAG/QE: camera"
+	if area_state.result == AreaState.Result.PLAYING and _can_open_door_here():
+		text += "\n\nF: open the gate"
 	match area_state.result:
 		AreaState.Result.DYING:
 			text += "\n\nYOU DIED"

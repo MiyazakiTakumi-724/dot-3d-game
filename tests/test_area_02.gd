@@ -172,19 +172,62 @@ func test_old_enemy_shot_after_respawn_is_ignored():
 	old.shot.emit(b)
 	assert_eq(area._bullets.size(), 0)
 
-func test_aim_at_sets_front_cell():
+func _screen_of(cell: Vector2i) -> Vector2:
+	return area.camera.world_to_screen(HeightMap.cell_center(cell), area.map.get_height(cell) * StackSprite.LEVEL_PX)
+
+func _aim_from(cell: Vector2i, offset: Vector2, target: Vector2i) -> Vector2i:
+	var p: Player = area.player
+	p.mover.place(cell)
+	p.mover.pos += offset
+	area.camera.focus = p.mover.pos
+	p.aim_at_screen(_screen_of(target))
+	return p.mover.front_cell()
+
+func test_aim_hits_cell_under_cursor():
+	assert_eq(_aim_from(_beside_start(1), Vector2.ZERO, _beside_start(2)), _beside_start(2))
+	var below := _beside_start(1) + Vector2i.DOWN
+	assert_eq(_aim_from(_beside_start(1), Vector2.ZERO, below), below)
+
+## マスの角に立っていても、カーソルのマスに落ちる
+func test_aim_from_cell_corner():
+	assert_eq(_aim_from(_beside_start(1), Vector2(6, -6), _beside_start(2)), _beside_start(2))
+
+## 高台から下のマスを指すと、そのマスに落ちる（高さの違いで斜めにずれない）
+func test_aim_down_from_high_ground():
+	var top := Vector2i(52, 14)
+	var below := Vector2i(51, 14)
+	assert_eq(area.map.get_height(top), 3)
+	assert_eq(area.map.get_height(below), 0)
+	assert_eq(_aim_from(top, Vector2.ZERO, below), below)
+
+func test_aim_with_rotated_camera():
+	area.camera.angle = 0.9
+	var below := _beside_start(1) + Vector2i.DOWN
+	assert_eq(_aim_from(_beside_start(1), Vector2.ZERO, below), below)
+
+func test_cursor_on_player_keeps_facing():
 	var p: Player = area.player
 	p.mover.place(_beside_start(1))
-	p.aim_at(p.mover.pos + Vector2(0, 30))
-	assert_eq(p.mover.front_cell(), _beside_start(1) + Vector2i.DOWN)
-	p.aim_at(p.mover.pos + Vector2(30, 0))
-	assert_eq(p.mover.front_cell(), _beside_start(2))
-
-func test_aim_at_own_position_keeps_facing():
-	var p: Player = area.player
+	area.camera.focus = p.mover.pos
 	p.mover.facing = Vector2.RIGHT
-	p.aim_at(p.mover.pos)
+	p.aim_at_screen(_screen_of(_beside_start(1)) + Vector2(2, 1))
 	assert_eq(p.mover.facing, Vector2.RIGHT)
+
+func test_real_left_click_drops_ball():
+	var p: PlayerMover = area.player.mover
+	p.place(_beside_start(1))
+	p.facing = Vector2.RIGHT
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = true
+	area._unhandled_input(e)
+	assert_ne(area.ball.rules_ball.state, IronBall.State.HELD)
+
+func test_gate_opens_from_its_cell_whatever_the_facing():
+	var mover: PlayerMover = area.player.mover
+	mover.place(area.DOOR_OPEN_FROM[0])
+	mover.facing = Vector2.UP
+	assert_true(area.try_open_door())
 
 func _drop_right_of_start() -> IronBall:
 	var p: PlayerMover = area.player.mover

@@ -21,7 +21,7 @@ func setup(r: RunState) -> void:
 	_panel.position = Vector2(40, 24)
 	_panel.size = Vector2(240, 132)
 	add_child(_panel)
-	_title = _label("INVENTORY   (TAB: close)", Vector2(8, 6))
+	_title = _label("INVENTORY   (TAB / ESC: close)", Vector2(8, 6))
 	_normal = _button(Vector2(8, 24), false)
 	_strong = _button(Vector2(8, 44), true)
 	_items = _label("", Vector2(8, 72))
@@ -48,14 +48,19 @@ func choose_ball(strong: bool) -> bool:
 func refresh() -> void:
 	var inv := run.inventory
 	_normal.text = ("> " if not inv.equipped_strong else "  ") + "IRON BALL (NORMAL)"
-	_strong.text = ("> " if inv.equipped_strong else "  ") + ("IRON BALL (STRONG)" if inv.has_strong_ball else "IRON BALL (STRONG)  -- not owned")
+	if inv.has_strong_ball:
+		_strong.text = ("> " if inv.equipped_strong else "  ") + "IRON BALL (STRONG)"
+	elif inv.equipped_strong:
+		_strong.text = "> IRON BALL (STRONG)  -- in your grave"
+	else:
+		_strong.text = "  IRON BALL (STRONG)  -- not owned"
 	_strong.disabled = not inv.has_strong_ball
 	_items.text = "HEAL x%d   MATERIAL x%d\nMONEY %d   EXP %d\n\nThe chosen ball is used when it is in your hand." % [inv.heals, inv.materials, inv.money, inv.exp]
 
 func _input(event: InputEvent) -> void:
 	if not is_open():
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_TAB:
+	if event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_TAB or event.physical_keycode == KEY_ESCAPE):
 		get_viewport().set_input_as_handled()
 		close_requested.emit()
 
