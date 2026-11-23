@@ -24,8 +24,6 @@ const ENEMIES := [
 	[Vector2i(4, 6), Vector2.RIGHT, 2.2],
 	[Vector2i(12, 10), Vector2.LEFT, 2.9],
 ]
-const LEVEL_COLORS := [Color("5f8f4e"), Color("7a9a55"), Color("98a85c"), Color("b5b063")]
-const WALL_COLOR := Color("8a8f99")
 const BULLET_HIT_RADIUS := 6.0
 
 var map: HeightMap
@@ -70,51 +68,10 @@ func _ready() -> void:
 
 func _build_map() -> void:
 	map = HeightMap.new(Vector2i(LAYOUT[0].length(), LAYOUT.size()))
-	for y in LAYOUT.size():
-		for x in LAYOUT[y].length():
-			var ch: String = LAYOUT[y][x]
-			if ch == "#":
-				map.set_wall(Vector2i(x, y), true)
-			else:
-				map.set_height(Vector2i(x, y), int(ch))
+	Terrain.parse(LAYOUT, map)
 
 func _build_terrain() -> void:
-	var models := {}
-	for y in map.size.y:
-		for x in map.size.x:
-			var cell := Vector2i(x, y)
-			var key: String = "wall" if map.is_wall(cell) else str(map.get_height(cell))
-			if not models.has(key):
-				models[key] = _wall_model() if key == "wall" else _ground_model(int(key))
-			var s := StackSprite.new()
-			s.camera = camera
-			s.world_pos = HeightMap.cell_center(cell)
-			s.set_model(models[key])
-			_world.add_child(s)
-
-func _ground_model(h: int) -> VoxelModel:
-	var layers := maxi(1, h * StackSprite.LEVEL_PX)
-	var top: Color = LEVEL_COLORS[clampi(h, 0, LEVEL_COLORS.size() - 1)]
-	var m := VoxelModel.new()
-	m.size = Vector3i(16, 16, layers)
-	for z in layers:
-		var c := top if z == layers - 1 else Color("6b5a45").lightened(0.03 * (z % 8))
-		for yy in 16:
-			for xx in 16:
-				# 上面の縁を少し暗くしてマスの区切りを見せる
-				var edge := xx == 0 or yy == 0 or xx == 15 or yy == 15
-				m.set_voxel(Vector3i(xx, yy, z), c.darkened(0.12) if edge and z == layers - 1 else c)
-	return m
-
-func _wall_model() -> VoxelModel:
-	var m := VoxelModel.new()
-	m.size = Vector3i(14, 14, 20)
-	for z in 20:
-		for yy in 14:
-			for xx in 14:
-				var brick := (z % 5 == 0) or ((xx + (z / 5) * 4) % 7 == 0)
-				m.set_voxel(Vector3i(xx, yy, z), WALL_COLOR.darkened(0.15) if brick else WALL_COLOR)
-	return m
+	Terrain.build(map, camera, _world)
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
