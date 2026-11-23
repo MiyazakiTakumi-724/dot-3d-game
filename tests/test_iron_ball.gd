@@ -142,3 +142,8 @@ func test_cannot_drop_into_water():
 	map.set_water(Vector2i(2, 1), true)
 	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
 	assert_false(IronBall.new().drop(p, map))
+
+func test_cannot_drop_into_void():
+	var m := HeightMap.new(Vector2i(4, 4))
+	m.set_void(Vector2i(2, 1), true)
+	assert_false(IronBall.can_drop_at(Vector2i(2, 1), m))

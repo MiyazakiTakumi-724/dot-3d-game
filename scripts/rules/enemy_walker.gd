@@ -1,11 +1,14 @@
 class_name EnemyWalker
 extends RefCounted
 ## 敵の歩き方と体力。自分の段と同じ高さのマスだけを往復する。奈落と水には入らない。
+## 体当たり：同じ高さで体が触れているかを touches() で調べる。
 
 signal died
 
 const SPEED := 24.0
 const MAX_HP := 3
+## 体当たりになる、中心どうしの距離（px）。敵の体は8px、プレイヤーは6px。
+const TOUCH_RADIUS := 9.0
 
 var map: HeightMap
 var pos: Vector2
@@ -14,8 +17,9 @@ var height: int
 var hp: int = MAX_HP
 var alive := true
 
-func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2) -> void:
+func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2, max_hp: int = MAX_HP) -> void:
 	map = height_map
+	hp = max_hp
 	pos = HeightMap.cell_center(start_cell)
 	dir = start_dir.normalized()
 	height = map.get_height(start_cell)
@@ -32,6 +36,10 @@ func step(delta: float) -> void:
 		dir = -dir
 		return
 	pos += dir * SPEED * delta
+
+## pos に立っている、高さ h のものに触れているか。
+func touches(p: Vector2, h: int) -> bool:
+	return alive and h == height and pos.distance_to(p) < TOUCH_RADIUS
 
 func take_damage(n: int) -> void:
 	if not alive:

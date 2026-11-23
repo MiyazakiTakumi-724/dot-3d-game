@@ -1,6 +1,6 @@
 class_name HeightMap
 extends RefCounted
-## マスごとの高さ（段）と壁。奈落と、壁のようにふさぐもの（墓石・閉じた扉）も持つ。
+## マスごとの高さ（段）と壁。奈落・水・島の外と、壁のようにふさぐもの（墓石・閉じた扉）も持つ。
 
 const CELL_PX := 16
 
@@ -13,6 +13,7 @@ var _walls: PackedByteArray
 var _pits: PackedByteArray
 var _water: PackedByteArray
 var _blockers: PackedByteArray
+var _void: PackedByteArray
 
 func _init(map_size: Vector2i) -> void:
 	size = map_size
@@ -21,6 +22,7 @@ func _init(map_size: Vector2i) -> void:
 	_pits.resize(size.x * size.y)
 	_water.resize(size.x * size.y)
 	_blockers.resize(size.x * size.y)
+	_void.resize(size.x * size.y)
 
 static func world_to_cell(p: Vector2) -> Vector2i:
 	return Vector2i(floori(p.x / CELL_PX), floori(p.y / CELL_PX))
@@ -44,12 +46,22 @@ func set_wall(cell: Vector2i, wall: bool) -> void:
 	if in_bounds(cell):
 		_walls[cell.y * size.x + cell.x] = 1 if wall else 0
 
-## マップの外は壁として扱う（外へは出られない）。ふさぐものがあるマスも壁。
+## マップの外と島の外は壁として扱う（外へは出られない）。ふさぐものがあるマスも壁。
 func is_wall(cell: Vector2i) -> bool:
 	if not in_bounds(cell):
 		return true
 	var i := cell.y * size.x + cell.x
-	return _walls[i] == 1 or _blockers[i] != Blocker.NONE
+	return _walls[i] == 1 or _blockers[i] != Blocker.NONE or _void[i] == 1
+
+## 島の外：何もない所。描かず、入れない（ふちから落ちることはない）。マップの外も島の外。
+func set_void(cell: Vector2i, v: bool) -> void:
+	if in_bounds(cell):
+		_void[cell.y * size.x + cell.x] = 1 if v else 0
+
+func is_void(cell: Vector2i) -> bool:
+	if not in_bounds(cell):
+		return true
+	return _void[cell.y * size.x + cell.x] == 1
 
 ## 奈落：踏み込むと落ちて死ぬマス。マップの外は奈落ではない。
 func set_pit(cell: Vector2i, pit: bool) -> void:

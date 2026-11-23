@@ -1,6 +1,6 @@
 class_name Enemy
 extends StackSprite
-## 敵の見た目。平らな所を往復し、2秒ごとにプレイヤーへ弾を撃つ。
+## 敵の見た目。平らな所を往復し、can_shoot なら2秒ごとにプレイヤーへ弾を撃つ。
 
 signal shot(bullet: Bullet)
 
@@ -10,14 +10,17 @@ const BULLET_SPEED := 80.0
 
 var walker: EnemyWalker
 var target: Player
+## false なら撃たない（体当たりだけの敵）
+var can_shoot := true
 var _cooldown := SHOOT_INTERVAL
 
-func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, cam: StackCamera, first_shot_delay: float) -> void:
-	walker = EnemyWalker.new(map, start_cell, start_dir)
+func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, cam: StackCamera, first_shot_delay: float = SHOOT_INTERVAL, max_hp: int = EnemyWalker.MAX_HP) -> void:
+	walker = EnemyWalker.new(map, start_cell, start_dir, max_hp)
 	target = p
 	camera = cam
 	draw_bias = 1
 	sort_by_cell = true
+	always_redraw = true  # 向きが変わる
 	_cooldown = first_shot_delay
 	var m := VoxelModel.box(Vector3i(8, 8, 8), Color("c0392b"))
 	for x in 2:  # 目
@@ -28,7 +31,7 @@ func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, 
 
 func _process(delta: float) -> void:
 	walker.step(delta)
-	if target.hp > 0:
+	if can_shoot and target.hp > 0:
 		_cooldown -= delta
 		var to_player := target.mover.pos - walker.pos
 		if _cooldown <= 0.0 and to_player.length() <= SHOOT_RANGE:

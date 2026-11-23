@@ -57,3 +57,12 @@ func test_water_flag():
 	assert_false(m.is_water(Vector2i(2, 2)))
 	assert_false(m.is_water(Vector2i(-1, 0)))
 	assert_false(m.is_wall(Vector2i(1, 2)))
+
+## 島の外：壁と同じく歩けず、外のマスでもない
+func test_void_is_wall():
+	var m := HeightMap.new(Vector2i(3, 3))
+	assert_false(m.is_void(Vector2i(1, 1)))
+	m.set_void(Vector2i(1, 1), true)
+	assert_true(m.is_void(Vector2i(1, 1)))
+	assert_true(m.is_wall(Vector2i(1, 1)))
+	assert_true(m.is_void(Vector2i(-1, 0)))  # マップの外も島の外

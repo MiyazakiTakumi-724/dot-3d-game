@@ -74,30 +74,28 @@ func _build_map() -> void:
 
 func _build_terrain() -> void:
 	Terrain.build(map, camera, _world)
+	Terrain.add_background(self)
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	_label = Label.new()
+	_label = UiText.label()
 	_label.position = Vector2(4, 2)
-	_label.add_theme_font_size_override("font_size", 8)
-	_label.add_theme_color_override("font_outline_color", Color.BLACK)
-	_label.add_theme_constant_override("outline_size", 2)
 	layer.add_child(_label)
 	_update_ui()
 
 func _update_ui() -> void:
-	var text := "HP %d   ENEMIES %d\nMOVE: arrows  CAMERA: R-drag/QE  DROP: X  PICK UP: Z" % [player.hp, state.enemies_left]
+	var text := "体力 %d　　残りの敵 %d\n矢印:移動　X:鉄球を落とす　Z:拾う　右ドラッグ/Q・E:カメラ" % [player.hp, state.enemies_left]
 	match state.result:
 		StageState.Result.CLEAR:
-			text += "\n\nCLEAR!   R: retry"
+			text += "\n\nクリア！　R:もう一度"
 		StageState.Result.GAME_OVER:
-			text += "\n\nGAME OVER   R: retry"
+			text += "\n\nやられた…　R:もう一度"
 	_label.text = text
 
 func _process(delta: float) -> void:
 	_read_ball_keys()
-	camera.focus = player.mover.pos
+	camera.follow(player.mover.pos, player.mover.height * StackSprite.LEVEL_PX, delta)
 	_step_bullets(delta)
 	if Input.is_physical_key_pressed(KEY_R) and state.result != StageState.Result.PLAYING:
 		get_tree().reload_current_scene()
@@ -119,7 +117,7 @@ func _step_bullets(delta: float) -> void:
 		var b: Bullet = _bullets[i][0]
 		var s: StackSprite = _bullets[i][1]
 		b.step(delta, map)
-		if b.alive and player.hp > 0 and b.pos.distance_to(player.mover.pos) < BULLET_HIT_RADIUS:
+		if player.hp > 0 and b.hits(player.mover.pos, player.mover.height, BULLET_HIT_RADIUS):
 			b.alive = false
 			player.take_hit()
 		if not b.alive or not map.in_bounds(HeightMap.world_to_cell(b.pos)):

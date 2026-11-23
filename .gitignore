@@ -2,3 +2,6 @@
 .godot/
 *.import
 build/
+
+# フォントは読み込みの設定（ぼかさない）を共有するので入れる
+!fonts/*.import

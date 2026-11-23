@@ -40,7 +40,7 @@ func test_respawn_clears_bullets_and_resets_enemies():
 	assert_eq(area.enemies.size(), area.ENEMIES.size())
 	for en in area.enemies:
 		assert_true(en.walker.alive)
-		assert_eq(en.walker.hp, EnemyWalker.MAX_HP)
+		assert_eq(en.walker.hp, area.ENEMY_HP)
 
 func test_new_death_moves_grave_marker():
 	var c1 := _beside_start(2)
@@ -194,10 +194,18 @@ func test_aim_from_cell_corner():
 
 ## 高台から下のマスを指すと、そのマスに落ちる（高さの違いで斜めにずれない）
 func test_aim_down_from_high_ground():
-	var top := Vector2i(52, 14)
-	var below := Vector2i(51, 14)
-	assert_eq(area.map.get_height(top), 3)
-	assert_eq(area.map.get_height(below), 0)
+	# 2段以上の崖の上で、左隣が下の地面になっている所を地図から探す
+	var m: HeightMap = area.map
+	var top := Vector2i(-1, -1)
+	for y in m.size.y:
+		for x in m.size.x:
+			var c := Vector2i(x, y)
+			var l := c + Vector2i.LEFT
+			if top.x < 0 and not m.is_wall(c) and not m.is_wall(l) and not m.is_water(c) and not m.is_water(l) \
+					and not m.is_pit(l) and m.get_height(c) - m.get_height(l) >= 2:
+				top = c
+	assert_gt(top.x, 0)
+	var below := top + Vector2i.LEFT
 	assert_eq(_aim_from(top, Vector2.ZERO, below), below)
 
 func test_aim_with_rotated_camera():
@@ -299,3 +307,46 @@ func test_aim_marker_on_drop_cell():
 	area.hotbar.select_slot(2)
 	area._process(0.016)
 	assert_true(area.aim_marker.force_hidden)
+
+## 最初のステージの敵は、体力1で撃たない
+func test_area_enemies_have_one_hp_and_do_not_shoot():
+	assert_eq(area.ENEMY_HP, 1)
+	for e in area.enemies:
+		assert_eq(e.walker.hp, 1)
+		assert_false(e.can_shoot)
+
+## 敵に触れると1ダメージ。触れたままでも、1秒たつまでは次のダメージを受けない
+func test_enemy_touch_damage_has_cooldown():
+	var e: Enemy = area.enemies[0]
+	area.player.mover.place(e.walker.cell())
+	area.player.mover.pos = e.walker.pos
+	area._process(0.016)
+	assert_eq(area.player.hp, Player.MAX_HP - 1)
+	for i in 10:
+		area.player.mover.pos = e.walker.pos
+		area._process(0.05)
+	assert_eq(area.player.hp, Player.MAX_HP - 1)
+	area.player._process(Player.INVULNERABLE_SECONDS)
+	area.player.mover.pos = e.walker.pos
+	area._process(0.016)
+	assert_eq(area.player.hp, Player.MAX_HP - 2)
+
+func test_respawn_clears_invulnerability():
+	assert_true(area.player.take_hit())
+	assert_false(area.player.take_hit())
+	area.kill_player(false)
+	_finish_death()
+	assert_true(area.player.take_hit())
+
+func test_messages_are_japanese():
+	area.player.mover.place(area.DOOR_OPEN_FROM[0])
+	assert_string_contains(area.ui_message(), "門を開ける")
+	area.kill_player(false)
+	assert_string_contains(area.ui_message(), "やられた")
+	_finish_death()
+	assert_string_contains(area.ui_message(), "墓石")
+
+func test_start_hint_then_nothing():
+	assert_string_contains(area.ui_message(), "旗")
+	area._process(9.0)
+	assert_eq(area.ui_message(), "")

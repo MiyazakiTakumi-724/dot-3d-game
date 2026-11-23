@@ -51,3 +51,19 @@ func test_enemy_turns_at_water():
 	for i in 200:
 		w.step(0.05)
 		assert_ne(w.cell(), Vector2i(3, 1))
+
+func test_walker_custom_hp():
+	var e := EnemyWalker.new(HeightMap.new(Vector2i(4, 4)), Vector2i(1, 1), Vector2.RIGHT, 1)
+	assert_eq(e.hp, 1)
+	e.take_damage(1)
+	assert_false(e.alive)
+
+## 体当たりは、同じ高さで体が触れているときだけ
+func test_touches_needs_same_height():
+	var map := HeightMap.new(Vector2i(4, 4))
+	var e := EnemyWalker.new(map, Vector2i(1, 1), Vector2.RIGHT)
+	assert_true(e.touches(e.pos + Vector2(6, 0), 0))
+	assert_false(e.touches(e.pos + Vector2(6, 0), 1))
+	assert_false(e.touches(e.pos + Vector2(16, 0), 0))
+	e.take_damage(99)
+	assert_false(e.touches(e.pos, 0))

@@ -21,10 +21,10 @@ func setup(r: RunState) -> void:
 	_panel.position = Vector2(40, 24)
 	_panel.size = Vector2(240, 132)
 	add_child(_panel)
-	_title = _label("INVENTORY   (TAB / ESC: close)", Vector2(8, 6))
+	_title = _label("持ち物　（Tab / Esc：閉じる）", Vector2(8, 6))
 	_normal = _button(Vector2(8, 24), false)
-	_strong = _button(Vector2(8, 44), true)
-	_items = _label("", Vector2(8, 72))
+	_strong = _button(Vector2(8, 46), true)
+	_items = _label("", Vector2(8, 74))
 	_panel.hide()
 
 func is_open() -> bool:
@@ -47,15 +47,16 @@ func choose_ball(strong: bool) -> bool:
 
 func refresh() -> void:
 	var inv := run.inventory
-	_normal.text = ("> " if not inv.equipped_strong else "  ") + "IRON BALL (NORMAL)"
+	# ● が今使う鉄球
+	_normal.text = ("●" if not inv.equipped_strong else "○") + " 鉄球（ふつう）"
 	if inv.has_strong_ball:
-		_strong.text = ("> " if inv.equipped_strong else "  ") + "IRON BALL (STRONG)"
+		_strong.text = ("●" if inv.equipped_strong else "○") + " 鉄球（強い）"
 	elif inv.equipped_strong:
-		_strong.text = "> IRON BALL (STRONG)  -- in your grave"
+		_strong.text = "● 鉄球（強い）：墓石の中にある"
 	else:
-		_strong.text = "  IRON BALL (STRONG)  -- not owned"
+		_strong.text = "○ 鉄球（強い）：まだ持っていない"
 	_strong.disabled = not inv.has_strong_ball
-	_items.text = "HEAL x%d   MATERIAL x%d\nMONEY %d   EXP %d\n\nThe chosen ball is used when it is in your hand." % [inv.heals, inv.materials, inv.money, inv.exp]
+	_items.text = "回復 ×%d　　素材 ×%d\nお金 %d　　経験 %d\n\n選んだ鉄球は、手に持っているときに使う。" % [inv.heals, inv.materials, inv.money, inv.exp]
 
 func _input(event: InputEvent) -> void:
 	if not is_open():
@@ -68,7 +69,7 @@ func _label(text: String, pos: Vector2) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.position = pos
-	l.add_theme_font_size_override("font_size", 8)
+	UiText.style(l)
 	_panel.add_child(l)
 	return l
 
@@ -76,7 +77,7 @@ func _button(pos: Vector2, strong: bool) -> Button:
 	var b := Button.new()
 	b.position = pos
 	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_size_override("font_size", 8)
+	UiText.style(b)
 	b.pressed.connect(func(): choose_ball(strong))
 	_panel.add_child(b)
 	return b

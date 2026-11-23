@@ -65,31 +65,55 @@ func test_has_pits():
 	assert_gt(pits, 0)
 
 func test_start_area_is_walkable():
+	var h: int = area.map.get_height(area.PLAYER_START)
 	for dx in [1, 2, 3]:
 		var c := Vector2i(area.PLAYER_START.x + dx, area.PLAYER_START.y)
 		assert_false(area.map.is_wall(c))
-		assert_eq(area.map.get_height(c), 0)
+		assert_eq(area.map.get_height(c), h)
 
-## 敵が往復する範囲のどこからも、安全地帯（チェックポイントの周り）へ弾が届かない
-func test_no_enemy_can_shoot_into_safe_zone():
-	var targets: Array[Vector2i] = [area.PLAYER_START]
-	for dy in [-1, 0, 1]:
-		for dx in [-1, 0, 1]:
-			targets.append(area.checkpoint + Vector2i(dx, dy))
+## 敵は往復しても、安全地帯（チェックポイントの周り8マス）に入ってこない
+func test_no_enemy_walks_near_safe_zone():
 	var problems: Array[String] = []
 	for e in area.ENEMIES:
 		var w := EnemyWalker.new(area.map, e[0], e[1])
 		for i in 2000:
 			w.step(0.05)
-			for t in targets:
-				var to := HeightMap.cell_center(t)
-				if w.pos.distance_to(to) <= Enemy.SHOOT_RANGE and Bullet._first_wall_on_path(w.pos, to, area.map) < 0.0:
-					problems.append("%s の敵が %s から %s を撃てる" % [e[0], w.cell(), t])
-					break
-			if not problems.is_empty():
+			var c := w.cell()
+			if maxi(absi(c.x - area.checkpoint.x), absi(c.y - area.checkpoint.y)) <= 8:
+				problems.append("%s の敵が %s まで来る" % [e[0], c])
 				break
 	assert_eq(problems, [] as Array[String])
 
+## 敵はちゃんと往復する（置いた所で止まっていない）
+func test_every_enemy_patrols():
+	for e in area.ENEMIES:
+		var w := EnemyWalker.new(area.map, e[0], e[1])
+		var cells := {}
+		for i in 400:
+			w.step(0.05)
+			cells[w.cell()] = true
+		assert_gt(cells.size(), 2, str(e[0]))
+
 func test_goal_is_on_high_ground():
-	assert_eq(area.map.get_height(area.goal), area.GOAL_HEIGHT)
-	assert_gt(area.GOAL_HEIGHT, 0)
+	assert_gt(area.map.get_height(area.goal), 2)
+
+## 島は四角くない：地図の四隅は島の外
+func test_island_is_not_rectangular():
+	var s: Vector2i = area.map.size
+	for c in [Vector2i(0, 0), Vector2i(s.x - 1, 0), Vector2i(0, s.y - 1), Vector2i(s.x - 1, s.y - 1)]:
+		assert_true(area.map.is_void(c))
+
+## 箱庭らしさ：段々の高さ（0〜5のうち4種類以上）と、島のふちから落ちる滝がある
+func test_has_terraces_and_waterfall_off_edge():
+	var heights := {}
+	var falls := 0
+	for y in area.map.size.y:
+		for x in area.map.size.x:
+			var c := Vector2i(x, y)
+			if area.map.is_void(c):
+				continue
+			heights[area.map.get_height(c)] = true
+			if area.map.is_water(c) and Terrain.column_bottom(area.map, c) < 0:
+				falls += 1
+	assert_gt(heights.size(), 3)
+	assert_gt(falls, 0)

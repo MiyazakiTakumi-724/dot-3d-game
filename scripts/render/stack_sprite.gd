@@ -15,10 +15,14 @@ var sort_by_cell := false
 var _layers: Array[ImageTexture] = []
 ## true の間は描かない。visible は画面外かどうかで毎フレーム書き換えるので、隠したいときはこちらを使う。
 var force_hidden := false
+## true なら毎フレーム描き直す（向きが変わるプレイヤーや敵など）。
+## false のものは、カメラの角度が変わったときだけ描き直す（地形など。動かすだけなら描き直さなくてよい）。
+var always_redraw := false
+var _drawn_angle := NAN
 
-## 画面（320×180）からこれ以上はみ出したものは描かない。広いエリアで描画を軽くするため。
-## 背の高いもの（台地・壁）が下から画面に入るので、縦は多めに取る。
-const VISIBLE_RECT := Rect2(-48, -48, 320 + 96, 180 + 120)
+## 画面（320×180）から、これだけ外にはみ出したものは描かない。広いエリアで描画を軽くするため。
+## 輪切りを回すと、マスより少し大きく見えるので、その分の余裕。
+const VISIBLE_MARGIN := 24.0
 
 func set_model(m: VoxelModel) -> void:
 	_layers = m.textures()
@@ -32,16 +36,28 @@ func refresh() -> void:
 	if camera == null:
 		return
 	position = camera.world_to_screen(world_pos, base_height * LEVEL_PX + lift_px)
-	visible = not force_hidden and VISIBLE_RECT.has_point(position)
+	var was_visible := visible
+	visible = not force_hidden and _on_screen()
 	if not visible:
 		return
 	var sort_pos := HeightMap.cell_center(HeightMap.world_to_cell(world_pos)) if sort_by_cell else world_pos
 	z_index = clampi(int(camera.depth_key(sort_pos)) * 4 + draw_bias, -4000, 4000)
-	queue_redraw()
+	if needs_redraw() or not was_visible:
+		queue_redraw()
+
+## 一番下の輪切り（position）から一番上（輪切りの枚数だけ上）までのどこかが、画面に入っているか。
+func _on_screen() -> bool:
+	var m := VISIBLE_MARGIN
+	return position.x > -m and position.x < 320.0 + m \
+		and position.y + m > 0.0 and position.y - _layers.size() - m < 180.0
+
+func needs_redraw() -> bool:
+	return always_redraw or camera == null or camera.angle != _drawn_angle
 
 func _draw() -> void:
 	if camera == null:
 		return
+	_drawn_angle = camera.angle
 	for i in _layers.size():
 		var t := _layers[i]
 		draw_set_transform(Vector2(0, -i), -camera.angle, Vector2.ONE)

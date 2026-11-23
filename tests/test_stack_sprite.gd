@@ -39,3 +39,19 @@ func test_hidden_sprite_stays_hidden_on_screen():
 	s.force_hidden = true
 	s.refresh()
 	assert_false(s.visible)
+
+## 動かない絵は、カメラを回したときだけ描き直す（動くものは always_redraw で毎回）
+func test_static_sprite_redraws_only_on_turn():
+	var cam: StackCamera = autofree(StackCamera.new())
+	var s: StackSprite = autofree(StackSprite.new())
+	s.camera = cam
+	assert_true(s.needs_redraw())
+	s._drawn_angle = cam.angle  # 描いた（_draw は描画中にしか呼べないので、記録だけまねる）
+	assert_false(s.needs_redraw())
+	cam.focus = Vector2(30, 0)
+	assert_false(s.needs_redraw())
+	cam.angle = 0.3
+	assert_true(s.needs_redraw())
+	s._drawn_angle = cam.angle
+	s.always_redraw = true
+	assert_true(s.needs_redraw())

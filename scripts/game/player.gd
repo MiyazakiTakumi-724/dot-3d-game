@@ -6,6 +6,8 @@ signal hp_changed(hp: int)
 
 const SPEED := 60.0
 const MAX_HP := 3
+## ダメージを受けた後、次のダメージを受けない時間（秒）。この間は点滅する。
+const INVULNERABLE_SECONDS := 1.0
 
 var mover: PlayerMover
 var hp: int = MAX_HP
@@ -13,6 +15,8 @@ var hp: int = MAX_HP
 var controllable := true
 ## マウスカーソルの画面上の位置。null でなければ、歩く向きとは別にいつもそちらを向く。
 var aim_screen = null
+
+var _invulnerable := 0.0
 
 ## カーソルが自分のマスの上にあるとき、向きを変えない範囲（画面px）
 const AIM_DEAD_ZONE_PX := 6.0
@@ -23,6 +27,7 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	camera = cam
 	draw_bias = 2
 	sort_by_cell = true
+	always_redraw = true  # 向きが変わる
 	var m := VoxelModel.box(Vector3i(6, 6, 10), Color("3b6dd8"))
 	for y in 2:  # 顔の向きが分かるように前側に目印
 		for x in 2:
@@ -30,11 +35,21 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	set_model(m)
 	_sync()
 
-func take_hit() -> void:
-	if hp <= 0:
-		return
+## 1ダメージを受ける。無敵の間は受けない。受けたら true。
+func take_hit() -> bool:
+	if hp <= 0 or _invulnerable > 0.0:
+		return false
 	hp -= 1
+	_invulnerable = INVULNERABLE_SECONDS
 	hp_changed.emit(hp)
+	return true
+
+func is_invulnerable() -> bool:
+	return _invulnerable > 0.0
+
+func clear_invulnerable() -> void:
+	_invulnerable = 0.0
+	self_modulate.a = 1.0
 
 ## 画面上のカーソルに一番近い隣のマス（8方向）を向く。マスは高さも含めて画面に置いて比べるので、
 ## 高台から下のマスを指しても斜めにずれない。カーソルが自分のマスの上にあるときは向きを変えない。
@@ -63,6 +78,10 @@ func set_hp(v: int) -> void:
 	hp_changed.emit(hp)
 
 func _process(delta: float) -> void:
+	if _invulnerable > 0.0:
+		_invulnerable = maxf(0.0, _invulnerable - delta)
+		# 0.1秒ごとに薄くして点滅させる
+		self_modulate.a = 0.35 if int(_invulnerable * 10.0) % 2 == 1 else 1.0
 	if hp > 0 and controllable:
 		var dir := Vector2.ZERO
 		if Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A): dir.x -= 1
@@ -83,6 +102,7 @@ func _sync() -> void:
 func _draw() -> void:
 	if camera == null:
 		return
+	_drawn_angle = camera.angle
 	# 向いている方向の目印が回るよう、モデルの「前」(+y) を facing に合わせる
 	var face_angle := mover.facing.angle() - PI / 2
 	for i in _layers.size():

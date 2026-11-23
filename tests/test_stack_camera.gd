@@ -35,3 +35,22 @@ func test_screen_to_world_roundtrip():
 	var w := Vector2(123, 45)
 	var s := c.world_to_screen(w, 16)
 	assert_almost_eq(c.screen_to_world(s, 16), w, Vector2(0.01, 0.01))
+
+## 高い所に立つと、その高さが画面の真ん中に来る（高台でプレイヤーが画面の上に寄らない）
+func test_focus_height_centers_high_ground():
+	var c := _cam()
+	c.focus = Vector2(100, 100)
+	c.focus_height = 40.0
+	assert_eq(c.world_to_screen(Vector2(100, 100), 40.0), Vector2(160, 90))
+	var w := c.screen_to_world(c.world_to_screen(Vector2(130, 90), 16.0), 16.0)
+	assert_almost_eq(w, Vector2(130, 90), Vector2(0.01, 0.01))
+
+func test_follow_height_moves_smoothly():
+	var c := _cam()
+	c.follow(Vector2(10, 10), 40.0, 0.016)
+	assert_gt(c.focus_height, 0.0)
+	assert_lt(c.focus_height, 40.0)
+	for i in 200:
+		c.follow(Vector2(10, 10), 40.0, 0.016)
+	assert_almost_eq(c.focus_height, 40.0, 0.5)
+	assert_eq(c.focus, Vector2(10, 10))
