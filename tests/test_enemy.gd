@@ -35,3 +35,11 @@ func test_dead_enemy_does_not_die_twice():
 	e.take_damage(4)
 	e.take_damage(4)
 	assert_signal_emit_count(e, "died", 1)
+
+func test_enemy_turns_at_pit():
+	var m := HeightMap.new(Vector2i(6, 3))
+	m.set_pit(Vector2i(3, 1), true)
+	var w := EnemyWalker.new(m, Vector2i(1, 1), Vector2.RIGHT)
+	for i in 200:
+		w.step(0.05)
+		assert_ne(w.cell(), Vector2i(3, 1))

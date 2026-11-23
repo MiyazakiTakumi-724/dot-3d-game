@@ -1,6 +1,6 @@
 class_name EnemyWalker
 extends RefCounted
-## 敵の歩き方と体力。自分の段と同じ高さのマスだけを往復する。
+## 敵の歩き方と体力。自分の段と同じ高さのマスだけを往復する。奈落には入らない。
 
 signal died
 
@@ -28,7 +28,7 @@ func step(delta: float) -> void:
 		return
 	# 体の半分先（8px）のマスを見て、入れなければ引き返す
 	var ahead := HeightMap.world_to_cell(pos + dir * (HeightMap.CELL_PX * 0.5 + 0.1))
-	if ahead != cell() and (map.is_wall(ahead) or map.get_height(ahead) != height):
+	if ahead != cell() and (map.is_wall(ahead) or map.is_pit(ahead) or map.get_height(ahead) != height):
 		dir = -dir
 		return
 	pos += dir * SPEED * delta
