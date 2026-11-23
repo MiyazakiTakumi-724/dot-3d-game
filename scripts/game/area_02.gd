@@ -107,7 +107,8 @@ func _ready() -> void:
 	add_child(camera)
 	_world = Node2D.new()
 	add_child(_world)
-	Terrain.build(map, camera, _world)
+	Terrain.build(map, camera, _world, info["deco"])
+	RenderingServer.set_default_clear_color(Terrain.SEA_COLOR)
 	_build_markers()
 
 	player = Player.new()

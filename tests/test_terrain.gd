@@ -18,3 +18,14 @@ func test_parse_without_markers():
 	assert_false(info.has("checkpoint"))
 	assert_false(info.has("goal"))
 	assert_eq(info["doors"], [])
+
+func test_parse_outdoor_symbols():
+	var m := HeightMap.new(Vector2i(4, 1))
+	var info := Terrain.parse(["RT~="], m)
+	assert_true(m.is_wall(Vector2i(0, 0)))
+	assert_true(m.is_wall(Vector2i(1, 0)))
+	assert_true(m.is_water(Vector2i(2, 0)))
+	assert_false(m.is_wall(Vector2i(3, 0)))
+	assert_false(m.is_water(Vector2i(3, 0)))
+	assert_eq(m.get_height(Vector2i(3, 0)), 0)
+	assert_eq(info["deco"], {Vector2i(0, 0): "rock", Vector2i(1, 0): "tree", Vector2i(3, 0): "bridge"})
