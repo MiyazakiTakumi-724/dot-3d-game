@@ -6,10 +6,11 @@ func _drag(cam: StackCamera, dx: float, mask: int) -> void:
 	e.button_mask = mask
 	cam._unhandled_input(e)
 
-func test_drag_with_button_held_rotates():
+## 左クリックはアイテムを使うボタンなので、左ドラッグではカメラを回さない
+func test_left_drag_does_not_rotate():
 	var c: StackCamera = autofree(StackCamera.new())
 	_drag(c, 50, MOUSE_BUTTON_MASK_LEFT)
-	assert_almost_eq(c.angle, 50 * StackCamera.MOUSE_SENSITIVITY, 0.0001)
+	assert_eq(c.angle, 0.0)
 
 func test_drag_right_button_also_rotates():
 	var c: StackCamera = autofree(StackCamera.new())

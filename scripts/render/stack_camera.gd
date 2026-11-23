@@ -1,7 +1,7 @@
 class_name StackCamera
 extends Node2D
 ## sprite stacking 用のカメラ。ワールド座標（真上から見た平面）を画面座標に変える。
-## Q / E、またはマウスのボタンを押したまま左右に動かして回す。
+## Q / E、またはマウスの右ボタンを押したまま左右に動かして回す（左クリックはアイテムを使うボタン）。
 
 const SCREEN_CENTER := Vector2(160, 90)
 const TURN_SPEED := PI / 2  # 1秒で90°
@@ -20,13 +20,16 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
-		var held := MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT
-		if event.button_mask & held:
+		if event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			angle = wrapf(angle + event.relative.x * MOUSE_SENSITIVITY, -PI, PI)
 
 func world_to_screen(world: Vector2, height_px: float) -> Vector2:
 	var p := (world - focus).rotated(-angle)
 	return SCREEN_CENTER + p - Vector2(0, height_px)
+
+## world_to_screen の逆。height_px の高さの面の上で、画面の点に当たるワールドの位置。
+func screen_to_world(screen: Vector2, height_px: float) -> Vector2:
+	return focus + (screen - SCREEN_CENTER + Vector2(0, height_px)).rotated(angle)
 
 ## 画面上の向き（例：上キー = Vector2.UP）をワールドの向きに変える。
 func screen_dir_to_world(dir: Vector2) -> Vector2:

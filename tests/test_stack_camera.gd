@@ -27,3 +27,11 @@ func test_screen_dir_roundtrip():
 func test_nearer_objects_have_larger_depth():
 	var c := _cam()
 	assert_gt(c.depth_key(Vector2(0, 50)), c.depth_key(Vector2(0, 10)))
+
+func test_screen_to_world_roundtrip():
+	var c := _cam()
+	c.angle = 1.0
+	c.focus = Vector2(40, 70)
+	var w := Vector2(123, 45)
+	var s := c.world_to_screen(w, 16)
+	assert_almost_eq(c.screen_to_world(s, 16), w, Vector2(0.01, 0.01))
