@@ -8,7 +8,7 @@
 
 **Tech Stack:** Godot 4（最新の安定版）、GDScript、GUT（Godot Unit Test）。
 
-**Spec:** 設計メモ「sprite stackingアクション 設計メモ」（Claude Docs）。手元の写し：`docs/2026-11-23-sprite-stack-action-design.md`（マップ構成と素材の節は設計メモ側が最新）。
+**Spec:** 設計メモ「sprite stackingアクション 設計メモ」（Claude Docs）。`docs/design.md`。
 
 ## Global Constraints
 
