@@ -14,6 +14,10 @@ var draw_bias: int = 0  ## 同じ奥行きのとき、大きい方を後に描�
 var sort_by_cell := false
 var _layers: Array[ImageTexture] = []
 
+## 画面（320×180）からこれ以上はみ出したものは描かない。広いエリアで描画を軽くするため。
+## 背の高いもの（台地・壁）が下から画面に入るので、縦は多めに取る。
+const VISIBLE_RECT := Rect2(-48, -48, 320 + 96, 180 + 120)
+
 func set_model(m: VoxelModel) -> void:
 	_layers.clear()
 	for img in m.slices():
@@ -28,6 +32,9 @@ func refresh() -> void:
 	if camera == null:
 		return
 	position = camera.world_to_screen(world_pos, base_height * LEVEL_PX + lift_px)
+	visible = VISIBLE_RECT.has_point(position)
+	if not visible:
+		return
 	var sort_pos := HeightMap.cell_center(HeightMap.world_to_cell(world_pos)) if sort_by_cell else world_pos
 	z_index = clampi(int(camera.depth_key(sort_pos)) * 4 + draw_bias, -4000, 4000)
 	queue_redraw()
