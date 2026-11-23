@@ -58,6 +58,8 @@ static func parse_layers(heights: Array, objects: Array, map: HeightMap) -> Dict
 			if hc == ".":
 				map.set_void(cell, true)
 				continue
+			if not hc.is_valid_int():
+				push_error("高さの層に知らない記号 '%s' がある：%s" % [hc, cell])
 			map.set_height(cell, int(hc))
 			var oc: String = objects[y][x] if y < objects.size() and x < objects[y].length() else "."
 			_put_object(oc, cell, map, info)
@@ -169,6 +171,7 @@ static func add_background(parent: Node) -> void:
 	tex.height = 64
 	rect.texture = tex
 	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE  # クリックやドラッグを横取りしない
 	rect.position = Vector2.ZERO
 	rect.size = Vector2(320, 180)
 	layer.add_child(rect)
@@ -327,7 +330,7 @@ static func bridge_model(h: int, depth: int, across_ns: bool) -> VoxelModel:
 		m.set_voxel(p, water._voxels[p])
 	for yy in 16:
 		for xx in 16:
-			var along := yy if across_ns else xx  # 板の継ぎ目は渡る向きと直角
+			var along := xx if across_ns else yy  # 板の継ぎ目は渡る向きと直角（板は渡る向きに並ぶ）
 			var plank := Color("a06a3a") if (along / 4) % 2 == 0 else Color("94603a")
 			if along % 4 == 3:
 				plank = Color("6e4526")

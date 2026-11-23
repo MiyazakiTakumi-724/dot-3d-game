@@ -67,3 +67,11 @@ func test_touches_needs_same_height():
 	assert_false(e.touches(e.pos + Vector2(16, 0), 0))
 	e.take_damage(99)
 	assert_false(e.touches(e.pos, 0))
+
+func test_enemy_turns_at_void():
+	var m := HeightMap.new(Vector2i(6, 3))
+	m.set_void(Vector2i(3, 1), true)
+	var w := EnemyWalker.new(m, Vector2i(1, 1), Vector2.RIGHT)
+	for i in 200:
+		w.step(0.05)
+		assert_ne(w.cell(), Vector2i(3, 1))

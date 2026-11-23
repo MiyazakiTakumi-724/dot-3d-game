@@ -5,3 +5,8 @@ build/
 
 # フォントは読み込みの設定（ぼかさない）を共有するので入れる
 !fonts/*.import
+
+# 島の地図スクリプトの生成物
+tools/island_map/*.txt
+tools/island_map/consts.gd
+tools/island_map/*.png

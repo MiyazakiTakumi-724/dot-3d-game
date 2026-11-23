@@ -26,7 +26,7 @@ func hits(target: Vector2, target_height: int, radius: float) -> bool:
 ## from から to までの線が通るマスを順に調べ（グリッドを1マスずつたどる）、
 ## 最初に壁（または bullet_height より高い地面）へ入る位置を 0〜1 の割合で返す。なければ -1。
 ## 点を間引いて調べないので、壁の角をかすめても必ず当たる。
-static func _first_wall_on_path(from: Vector2, to: Vector2, map: HeightMap, bullet_height: int = 0) -> float:
+static func _first_wall_on_path(from: Vector2, to: Vector2, map: HeightMap, bullet_height: int) -> float:
 	var size := float(HeightMap.CELL_PX)
 	var c := HeightMap.world_to_cell(from)
 	var end := HeightMap.world_to_cell(to)

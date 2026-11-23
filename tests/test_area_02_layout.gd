@@ -117,3 +117,13 @@ func test_has_terraces_and_waterfall_off_edge():
 				falls += 1
 	assert_gt(heights.size(), 3)
 	assert_gt(falls, 0)
+
+## 落ちたら出られないくぼみがない：行けるマスからは、どこからでも歩いてスタートへ戻れる
+func test_no_pocket_without_exit():
+	var fwd := Reach.reachable(area.map, rules, area.PLAYER_START)
+	var back := Reach.reachable(area.map, rules, area.PLAYER_START, true)
+	var trapped: Array = []
+	for c in fwd:
+		if not back.has(c):
+			trapped.append(c)
+	assert_eq(trapped, [])
