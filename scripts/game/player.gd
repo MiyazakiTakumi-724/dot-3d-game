@@ -11,6 +11,8 @@ var mover: PlayerMover
 var hp: int = MAX_HP
 ## false の間は動かせない（死亡処理中など）。
 var controllable := true
+## マウスカーソルが指すワールドの位置。null でなければ、歩く向きとは別にいつもそちらを向く。
+var aim_world = null
 
 func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: StackCamera) -> void:
 	mover = PlayerMover.new(map, rules)
@@ -31,6 +33,12 @@ func take_hit() -> void:
 	hp -= 1
 	hp_changed.emit(hp)
 
+## world の方を向く。近すぎる（カーソルが真上にある）ときは向きを変えない。
+func aim_at(world: Vector2) -> void:
+	var d := world - mover.pos
+	if d.length() >= 0.5:
+		mover.facing = d.normalized()
+
 func set_hp(v: int) -> void:
 	hp = v
 	hp_changed.emit(hp)
@@ -44,6 +52,8 @@ func _process(delta: float) -> void:
 		if Input.is_physical_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_S): dir.y += 1
 		if dir != Vector2.ZERO:
 			mover.move(camera.screen_dir_to_world(dir.normalized()) * SPEED * delta)
+		if aim_world != null:
+			aim_at(aim_world)
 	_sync()
 	super._process(delta)
 

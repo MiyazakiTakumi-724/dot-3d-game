@@ -147,8 +147,9 @@ func _play_step() -> void:
 		player.set_hp(Player.MAX_HP)
 	if c == goal:
 		area_state.on_goal()
-	if _just_pressed(KEY_Z) and try_open_door():
-		ball.skip_pick_up = true
+	if _just_pressed(KEY_Z):
+		if not try_open_door():
+			ball.rules_ball.try_pick_up(player.mover)
 	if _just_pressed(KEY_C):
 		use_heal()
 	if _just_pressed(KEY_1):

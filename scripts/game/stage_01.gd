@@ -36,6 +36,8 @@ var enemies: Array[Enemy] = []
 var _bullets: Array = []  # [Bullet, StackSprite]
 var _world: Node2D
 var _label: Label
+var _x_was_down := false
+var _z_was_down := false
 
 func _ready() -> void:
 	_build_map()
@@ -94,10 +96,23 @@ func _update_ui() -> void:
 	_label.text = text
 
 func _process(delta: float) -> void:
+	_read_ball_keys()
 	camera.focus = player.mover.pos
 	_step_bullets(delta)
 	if Input.is_physical_key_pressed(KEY_R) and state.result != StageState.Result.PLAYING:
 		get_tree().reload_current_scene()
+
+## X で鉄球を落とす、Z で拾う（試作1の操作）。
+func _read_ball_keys() -> void:
+	var x_down := Input.is_physical_key_pressed(KEY_X)
+	var z_down := Input.is_physical_key_pressed(KEY_Z)
+	if player.hp > 0:
+		if x_down and not _x_was_down:
+			ball.rules_ball.drop(player.mover, map)
+		if z_down and not _z_was_down:
+			ball.rules_ball.try_pick_up(player.mover)
+	_x_was_down = x_down
+	_z_was_down = z_down
 
 func _step_bullets(delta: float) -> void:
 	for i in range(_bullets.size() - 1, -1, -1):

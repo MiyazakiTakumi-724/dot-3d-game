@@ -174,3 +174,17 @@ func test_old_enemy_shot_after_respawn_is_ignored():
 	b.pos = area.player.mover.pos + Vector2(40, 0)
 	old.shot.emit(b)
 	assert_eq(area._bullets.size(), 0)
+
+func test_aim_at_sets_front_cell():
+	var p: Player = area.player
+	p.mover.place(_beside_start(1))
+	p.aim_at(p.mover.pos + Vector2(0, 30))
+	assert_eq(p.mover.front_cell(), _beside_start(1) + Vector2i.DOWN)
+	p.aim_at(p.mover.pos + Vector2(30, 0))
+	assert_eq(p.mover.front_cell(), _beside_start(2))
+
+func test_aim_at_own_position_keeps_facing():
+	var p: Player = area.player
+	p.mover.facing = Vector2.RIGHT
+	p.aim_at(p.mover.pos)
+	assert_eq(p.mover.facing, Vector2.RIGHT)
