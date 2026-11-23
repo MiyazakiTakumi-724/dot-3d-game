@@ -1,6 +1,6 @@
 extends Node2D
 ## 鉄球の試作ステージ。地形・プレイヤー・敵・鉄球はすべてコードで作った形で描く。
-## 操作：矢印/WASD 移動、Q/E カメラ回転、X 鉄球を落とす、Z 拾う、R やり直し
+## 操作：矢印/WASD 移動、マウスのボタンを押したまま左右に動かす or Q/E でカメラ回転、X 鉄球を落とす、Z 拾う、R やり直し
 
 ## 数字 = 高さ（段）、# = 壁
 const LAYOUT := [
@@ -128,7 +128,7 @@ func _build_ui() -> void:
 	_update_ui()
 
 func _update_ui() -> void:
-	var text := "HP %d   ENEMIES %d\nMOVE: arrows  CAMERA: Q/E  DROP: X  PICK UP: Z" % [player.hp, state.enemies_left]
+	var text := "HP %d   ENEMIES %d\nMOVE: arrows  CAMERA: drag/QE  DROP: X  PICK UP: Z" % [player.hp, state.enemies_left]
 	match state.result:
 		StageState.Result.CLEAR:
 			text += "\n\nCLEAR!   R: retry"
