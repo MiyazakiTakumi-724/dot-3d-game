@@ -119,8 +119,10 @@ func test_weak_walker_does_not_chase():
 	assert_eq(w.dir, Vector2.UP)
 
 func test_kind_table():
-	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK), 1)
-	assert_eq(EnemyKind.hp(EnemyKind.Kind.MELEE), 2)
+	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK), 5)
+	assert_eq(EnemyKind.attack(EnemyKind.Kind.WEAK), 3)
+	assert_eq(EnemyKind.hp(EnemyKind.Kind.MELEE), 10)
+	assert_eq(EnemyKind.attack(EnemyKind.Kind.MELEE), 4)
 	assert_eq(EnemyKind.climb(EnemyKind.Kind.MELEE), 1)
 	assert_eq(EnemyKind.climb(EnemyKind.Kind.SHOOTER), 0)
 	assert_true(EnemyKind.shoots(EnemyKind.Kind.SHOOTER))
@@ -162,3 +164,15 @@ func test_chase_fuzz_never_enters_bad_cell():
 				assert_false(m.is_water(c), "water %s" % c)
 				assert_lte(absi(m.get_height(c) - m.get_height(prev)), 1, "step %s→%s" % [prev, c])
 				prev = c
+
+## 敵のレベルで体力と攻撃力が20%ずつ増える（17.1）
+func test_kind_stats_scale_with_level():
+	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK, 3), 7)
+	assert_eq(EnemyKind.attack(EnemyKind.Kind.WEAK, 3), 4)
+	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.WEAK, 1), 2)
+	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.MELEE, 2), 8)
+
+func test_walker_remembers_max_hp():
+	var w := EnemyWalker.new(_flat(), Vector2i(1, 1), Vector2.UP, 7, 0)
+	w.take_damage(3)
+	assert_eq([w.hp, w.max_hp], [4, 7])

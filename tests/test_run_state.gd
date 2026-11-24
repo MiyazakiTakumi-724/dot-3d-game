@@ -10,7 +10,7 @@ func _fill():
 	rs.inventory.materials = 3
 	rs.inventory.heals = 2
 	rs.inventory.has_strong_ball = true
-	rs.inventory.exp = 5
+	rs.stats.add_exp(5)
 
 func test_death_moves_belongings_to_grave():
 	_fill()
@@ -18,7 +18,7 @@ func test_death_moves_belongings_to_grave():
 	assert_eq(g.cell, Vector2i(9, 4))
 	assert_eq([g.money, g.materials, g.heals, g.has_strong_ball], [20, 3, 2, true])
 	var inv := rs.inventory
-	assert_eq([inv.money, inv.materials, inv.heals, inv.has_strong_ball, inv.exp], [20, 0, 0, false, 5])
+	assert_eq([inv.money, inv.materials, inv.heals, inv.has_strong_ball, rs.stats.exp], [20, 0, 0, false, 5])
 
 func test_odd_money_keeps_larger_half():
 	rs.inventory.money = 25
@@ -31,7 +31,7 @@ func test_break_grave_returns_everything():
 	rs.on_death("hills", Vector2i(9, 4))
 	rs.break_grave()
 	var inv := rs.inventory
-	assert_eq([inv.money, inv.materials, inv.heals, inv.has_strong_ball, inv.exp], [40, 3, 2, true, 5])
+	assert_eq([inv.money, inv.materials, inv.heals, inv.has_strong_ball, rs.stats.exp], [40, 3, 2, true, 5])
 	assert_null(rs.grave)
 
 func test_second_death_erases_old_grave():
@@ -58,8 +58,23 @@ func test_break_without_grave_does_nothing():
 	assert_eq(rs.inventory.money, 0)
 
 func test_enemy_reward():
-	rs.on_enemy_killed()
-	assert_eq([rs.inventory.money, rs.inventory.exp], [10, 1])
+	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.WEAK, 1), 0)
+	assert_eq([rs.inventory.money, rs.stats.exp], [10, 2])
+	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.MELEE, 1), 1)  # 経験 6 でレベル2
+	assert_eq(rs.stats.level, 2)
+
+## 死んでもレベル・経験値・振り分けは残る
+func test_death_keeps_stats():
+	rs.stats.add_exp(5)
+	rs.stats.allocate(PlayerStats.Stat.ATTACK)
+	rs.on_death("hills", Vector2i(2, 2))
+	assert_eq([rs.stats.level, rs.stats.exp, rs.stats.points_in(PlayerStats.Stat.ATTACK)], [2, 5, 1])
+
+## 敵のレベルは、その敵のレベルに倒したボスの数を足したもの（8章）
+func test_enemy_level_rises_with_bosses():
+	assert_eq(rs.enemy_level(1), 1)
+	rs.bosses_defeated = 2
+	assert_eq(rs.enemy_level(1), 3)
 
 func test_pickups_only_once():
 	assert_true(rs.collect("a:7", RunState.PickupKind.MONEY, 15))

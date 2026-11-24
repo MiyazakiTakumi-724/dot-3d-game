@@ -203,13 +203,13 @@ func test_death_places_grave_and_respawns_at_bonfire():
 	_finish_death()
 	assert_eq(f.area.id, "camp")
 	assert_eq(f.player.mover.cell(), Continent.START_CELL)
-	assert_eq(f.player.hp, Player.MAX_HP)
+	assert_eq(f.player.hp, f.player.max_hp)
 	assert_eq(f.run.inventory.money, 15)
 
 func test_checkpoint_heals_in_camp():
 	f.player.set_hp(1)
 	f._process(0.016)
-	assert_eq(f.player.hp, Player.MAX_HP)
+	assert_eq(f.player.hp, f.player.max_hp)
 
 func test_walking_on_pickup_collects_it():
 	_walk_out(_exit("camp", "hills"))
@@ -234,7 +234,7 @@ func test_melee_enemy_hit_hurts_player():
 	for e in f.enemies:
 		if e.kind == EnemyKind.Kind.MELEE:
 			e.melee_hit.emit()
-			assert_eq(f.player.hp, Player.MAX_HP - 1)
+			assert_eq(f.player.hp, f.player.max_hp - e.attack)
 			return
 	fail_test("丘陵に敵2がいない")
 
@@ -297,3 +297,54 @@ func test_pickup_collected_from_next_cell_edge():
 		pending("となりのマスが同じ高さでない")
 		return
 	assert_true(f.run.is_picked(f.area.pickup_id(0)))
+
+## 体力は数値（初期10）で、敵の攻撃力の分だけ減る（17.1）
+func test_player_hp_from_stats():
+	assert_eq(f.player.max_hp, 10)
+	assert_eq(f.player.hp, 10)
+	assert_true(f.hurt_player(3))
+	assert_eq(f.player.hp, 7)
+
+func test_easy_mode_halves_damage():
+	f.easy_mode = true
+	f.hurt_player(4)
+	assert_eq(f.player.hp, 8)
+
+## 鉄球のダメージは17章の式（初期の攻撃力5、同じ高さなら5）
+func test_ball_damage_uses_formula():
+	_walk_out(_exit("camp", "hills"))
+	var c := _open_cell()
+	var e: Enemy = f.enemies[0]
+	e.set_process(false)
+	f.player.mover.place(c)
+	var target: Vector2 = f.player.mover.pos + Vector2(14, 3)
+	e.walker.pos = target
+	e.walker.height = f.map.get_height(HeightMap.world_to_cell(target))
+	var hp: int = e.walker.hp
+	var b: IronBall = f.ball.rules_ball
+	assert_true(b.drop_at(f.player.mover, f.map, target))
+	b.update(1.0, f.player.mover, f.map, f.rules)
+	assert_eq(hp - e.walker.hp, Damage.iron_ball(5, b.fall_levels, 1))
+
+func test_killing_enemies_levels_up_and_raises_max_hp_with_points():
+	_walk_out(_exit("camp", "hills"))
+	for e in f.enemies.duplicate():
+		e.walker.take_damage(999)
+	assert_gt(f.run.stats.level, 1)
+	assert_string_contains(f.ui_message(), "レベル")
+	f.run.stats.allocate(PlayerStats.Stat.VITALITY)
+	f.apply_stats()
+	assert_eq(f.player.max_hp, 10 + PlayerStats.HP_PER_POINT)
+
+func test_heal_restores_fixed_amount():
+	f.run.inventory.heals = 1
+	f.player.set_hp(2)
+	assert_true(f.use_heal())
+	assert_eq(f.player.hp, 2 + Inventory.HEAL_AMOUNT)
+
+func test_enemy_level_follows_bosses():
+	f.run.bosses_defeated = 2
+	_walk_out(_exit("camp", "hills"))
+	var e: Enemy = f.enemies[0]
+	assert_eq(e.level, 3)
+	assert_eq(e.walker.max_hp, EnemyKind.hp(e.kind, 3))

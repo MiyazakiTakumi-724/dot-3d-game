@@ -1,14 +1,16 @@
 class_name RunState
 extends RefCounted
 ## 冒険の状態。死んでもステージを読み込み直さないので、死んだときに何が残り何が戻るかをここで決める。
-## 死んでも変わらないもの：拾い済みのもの、開けた扉、経験値、お金の半分。
+## 死んでも変わらないもの：拾い済みのもの、開けた扉、レベル・経験値・振り分け（stats）、お金の半分。
 
 enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL }
 
 const ENEMY_MONEY := 10
-const ENEMY_EXP := 1
 
 var inventory := Inventory.new()
+var stats := PlayerStats.new()
+## 倒したボスの数。1体ごとに世界中の敵のレベルが1上がる（design.md 8章）
+var bosses_defeated := 0
 var grave: Gravestone = null
 var checkpoint_area: String
 var checkpoint_cell: Vector2i
@@ -46,9 +48,14 @@ func break_grave() -> void:
 	inventory.has_strong_ball = inventory.has_strong_ball or grave.has_strong_ball
 	grave = null
 
-func on_enemy_killed() -> void:
+## 敵を倒したときのお金と経験値。上がったレベルの数を返す。
+func on_enemy_killed(kind: EnemyKind.Kind, level: int) -> int:
 	inventory.money += ENEMY_MONEY
-	inventory.exp += ENEMY_EXP
+	return stats.add_exp(EnemyKind.exp_reward(kind, level))
+
+## base_level（その敵のレベル）の敵が、今出てくるときのレベル。
+func enemy_level(base_level: int) -> int:
+	return base_level + bosses_defeated
 
 ## 拾えるものを拾う。一度拾ったものは死んでも復活しないので、2回目は false。
 func collect(id: String, kind: PickupKind, amount: int) -> bool:

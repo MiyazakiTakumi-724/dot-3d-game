@@ -19,6 +19,7 @@ var pos: Vector2
 var dir: Vector2
 var height: int
 var hp: int = MAX_HP
+var max_hp: int = MAX_HP
 var alive := true
 ## 登り降りできる段数
 var climb := 0
@@ -27,9 +28,10 @@ var forbidden := {}
 var _chasing := false
 var _chase_target := Vector2.ZERO
 
-func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2, max_hp: int = MAX_HP, climb_levels: int = 0) -> void:
+func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2, hp_max: int = MAX_HP, climb_levels: int = 0) -> void:
 	map = height_map
-	hp = max_hp
+	hp = hp_max
+	max_hp = hp_max
 	climb = climb_levels
 	pos = HeightMap.cell_center(start_cell)
 	dir = start_dir.normalized()

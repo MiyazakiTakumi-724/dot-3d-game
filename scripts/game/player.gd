@@ -5,12 +5,16 @@ extends StackSprite
 signal hp_changed(hp: int)
 
 const SPEED := 60.0
+## 試作1の体力。試作3からは max_hp をステータスから決める
 const MAX_HP := 3
 ## ダメージを受けた後、次のダメージを受けない時間（秒）。この間は点滅する。
 const INVULNERABLE_SECONDS := 1.0
 
 var mover: PlayerMover
 var hp: int = MAX_HP
+var max_hp: int = MAX_HP
+## 足の速さの倍率（体の動きのポイントで上がる）
+var speed_mult := 1.0
 ## false の間は動かせない（死亡処理中など）。
 var controllable := true
 ## マウスカーソルの画面上の位置。null でなければ、歩く向きとは別にいつもそちらを向く。
@@ -36,11 +40,11 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	set_model(m)
 	_sync()
 
-## 1ダメージを受ける。無敵の間は受けない。受けたら true。
-func take_hit() -> bool:
+## amount のダメージを受ける。無敵の間は受けない。受けたら true。
+func take_hit(amount := 1) -> bool:
 	if hp <= 0 or _invulnerable > 0.0:
 		return false
-	hp -= 1
+	hp = maxi(0, hp - amount)
 	_invulnerable = INVULNERABLE_SECONDS
 	hp_changed.emit(hp)
 	return true
@@ -93,7 +97,7 @@ func _process(delta: float) -> void:
 		if Input.is_physical_key_pressed(KEY_UP) or Input.is_physical_key_pressed(KEY_W): dir.y -= 1
 		if Input.is_physical_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_S): dir.y += 1
 		if dir != Vector2.ZERO:
-			mover.move(camera.screen_dir_to_world(dir.normalized()) * SPEED * delta)
+			mover.move(camera.screen_dir_to_world(dir.normalized()) * SPEED * speed_mult * delta)
 		if aim_screen != null:
 			aim_at_screen(aim_screen)
 	_sync()

@@ -56,7 +56,7 @@ func refresh() -> void:
 	else:
 		_strong.text = "○ 鉄球（強い）：まだ持っていない"
 	_strong.disabled = not inv.has_strong_ball
-	_items.text = "回復 ×%d　　素材 ×%d\nお金 %d　　経験 %d\n\n選んだ鉄球は、手に持っているときに使う。" % [inv.heals, inv.materials, inv.money, inv.exp]
+	_items.text = "回復 ×%d　　素材 ×%d\nお金 %d　　Lv%d　ポイント %d\n\n選んだ鉄球は、手に持っているときに使う。" % [inv.heals, inv.materials, inv.money, run.stats.level, run.stats.points]
 
 func _input(event: InputEvent) -> void:
 	if not is_open():

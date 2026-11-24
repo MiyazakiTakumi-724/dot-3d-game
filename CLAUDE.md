@@ -46,7 +46,7 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
   area_def.gd        1つのエリアのデータ（大陸の上の位置・地図・出口・敵・拾いもの）。entry_safe_cells は出口から3マス
   exit_def.gd        エリアの出口（辺・範囲・相手・門）
   world_map.gd       大陸。exit_through（出口を外へ歩いたか）、arrival（相手のエリアの着く所）、problems（データの確かめ）
-  enemy_kind.gd      敵の種類（敵1 WEAK・敵2 MELEE・撃つ敵 SHOOTER）ごとの体力・登れる段・撃つか・体当たり
+  enemy_kind.gd      敵の種類（敵1 WEAK・敵2 MELEE・撃つ敵 SHOOTER）ごとの体力・攻撃力・経験値（レベルで伸びる）・登れる段・撃つか・体当たり
   melee_attack.gd    敵2の近接攻撃（0.5秒ためて叩く）
   enemy_roster.gd    倒した敵の復活の時間（300秒。エリアに入ったときだけ調べる）
   player_mover.gd    高さを考えた移動。段差は自動で登る。edge_push はマップの外へ歩こうとした向き（出口の判定）
@@ -54,9 +54,12 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
   bullet.gd          敵の弾。撃った高さを飛び、壁と弾より高い地面で止まる。当たるのは同じ高さだけ（hits）。通り道のマスを1つずつ調べて、壁の角でもすり抜けない
   enemy_walker.gd    敵の往復移動と体力と体当たり（touches）。climb で登れる段数、chase で近くのプレイヤーへ寄る、forbidden に入らない
   stage_state.gd     試作1のクリア・ゲームオーバーの判定
-  inventory.gd       持ち物（お金・素材・回復・強い鉄球・経験値）
+  inventory.gd       持ち物（お金・素材・回復・強い鉄球）
+  player_stats.gd    レベル・経験値・振り分けポイント（体力・攻撃力・剣・弓・エアガン・体の動き）。3ポイントごとに技能
+  damage.gd          ダメージの式（design.md 17章）。鉄球・敵の攻撃（簡単モードで半分）・敵のレベルでの伸び
   gravestone.gd      墓石の場所と中身
-  run_state.gd       死んだときの持ち物の移し替え、拾い済み（"エリア:番号"）、開けた門、チェックポイント。墓石はエリアを覚える
+  run_state.gd       死んだときの持ち物の移し替え、拾い済み（"エリア:番号"）、開けた門、チェックポイント。墓石はエリアを覚える。
+                     stats（PlayerStats、死んでも残る）と bosses_defeated（敵のレベル＝敵ごとのレベル＋この数）
   area_state.gd      PLAYING / DYING と再開のタイミング（CLEAR は試作2の名残で使っていない）
 scripts/render/  描画まわり
   voxel_model.gd     ボクセルの形から輪切り画像を作る（今の素材はすべてコードで生成）。テクスチャは textures() で共有する
@@ -69,6 +72,7 @@ scripts/game/    ノード（ルールのクラスを持って描画するだけ
                      高さを読みやすくする：段のふちの明るい線（lower_sides）、側面の段ごとの帯、top_color（高いほど明るい）。arrow_model は出口の矢印
   ui_text.gd         画面の文字（日本語のドット絵フォント PixelMplus 10px・12px）
   inventory_menu.gd  Tab で開くインベントリ画面
+  damage_popup.gd    当たったときに出るダメージの数字
 fonts/           PixelMplus（M+ FONT LICENSE。商用利用・再配布が自由）とライセンスの文。*.import はぼかさない設定なので git に入れている
 scripts/areas/   4エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）
 scripts/game/field.gd エリアを入れ替えるメインシーンの中身（enter_area・切り替え・死と再開・門・UI）

@@ -16,11 +16,16 @@ var melee := MeleeAttack.new()
 var target: Player
 ## false なら撃たない（体当たりだけの敵）
 var can_shoot := true
+var level := 1
+## 攻撃力（体当たり・叩く・弾のダメージのもと）
+var attack := 1
 var _cooldown := SHOOT_INTERVAL
 
-func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, cam: StackCamera, enemy_kind: EnemyKind.Kind = EnemyKind.Kind.WEAK, first_shot_delay: float = SHOOT_INTERVAL) -> void:
+func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, cam: StackCamera, enemy_kind: EnemyKind.Kind = EnemyKind.Kind.WEAK, first_shot_delay: float = SHOOT_INTERVAL, enemy_level := 1) -> void:
 	kind = enemy_kind
-	walker = EnemyWalker.new(map, start_cell, start_dir, EnemyKind.hp(kind), EnemyKind.climb(kind))
+	level = enemy_level
+	attack = EnemyKind.attack(kind, level)
+	walker = EnemyWalker.new(map, start_cell, start_dir, EnemyKind.hp(kind, level), EnemyKind.climb(kind))
 	can_shoot = EnemyKind.shoots(kind)
 	target = p
 	camera = cam
@@ -65,6 +70,7 @@ func _process(delta: float) -> void:
 			b.pos = walker.pos
 			b.vel = to_player.normalized() * BULLET_SPEED
 			b.height = walker.height
+			b.damage = attack
 			shot.emit(b)
 	world_pos = walker.pos
 	base_height = walker.height
@@ -80,3 +86,8 @@ func _draw() -> void:
 		draw_set_transform(Vector2(0, -i), face_angle - camera.angle, Vector2.ONE)
 		draw_texture(t, -t.get_size() * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# 傷ついたら頭の上に体力のバーを出す
+	if walker.alive and walker.hp < walker.max_hp:
+		var y := -_layers.size() - 6.0
+		draw_rect(Rect2(-6, y, 12, 2), Color(0.1, 0.05, 0.05))
+		draw_rect(Rect2(-6, y, 12.0 * walker.hp / walker.max_hp, 2), Color("e74c3c"))

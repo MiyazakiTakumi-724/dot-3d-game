@@ -6,6 +6,8 @@ extends RefCounted
 var pos: Vector2 = Vector2.ZERO
 var vel: Vector2 = Vector2.ZERO
 var height: int = 0
+## 当たったときに与えるダメージ（撃った敵の攻撃力）
+var damage: int = 1
 var alive := true
 
 func step(delta: float, map: HeightMap) -> void:

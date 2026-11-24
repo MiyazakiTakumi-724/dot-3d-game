@@ -12,6 +12,9 @@ const BULLET_HIT_RADIUS := 6.0
 const FALL_SINK_PX := 40.0  ## 奈落に落ちる演出で沈む量（0.5秒で）
 const GRAVE_HINT_SECONDS := 6.0
 const MAX_HEIGHT := 8
+const LEVEL_UP_SECONDS := 3.0
+## 簡単モード（受けるダメージが半分。design.md 13章）。設定画面はまだない
+var easy_mode := false
 
 var world: WorldMap
 var area: AreaDef
@@ -48,6 +51,8 @@ var _start_hint_time := 8.0
 var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・墓石のあるエリア
 var _message: Label  ## 真ん中：エリアの名前・門のヒント・やられた
 var _guide: Label  ## 下：操作の説明
+var _popups: Control  ## ダメージの数字を置く所（エリアを切り替えると片付ける）
+var _level_up_time := 0.0
 var _arrow_blink := 0.0
 ## まだ作っていない、ほかのエリアのモデルの名前（遊んでいる間に少しずつ作る）
 var _warm_queue: Array[String] = []
@@ -78,6 +83,8 @@ func _ready() -> void:
 
 	enter_area(Continent.START_AREA, Continent.START_CELL)
 	player.setup(map, rules, Continent.START_CELL, camera)
+	apply_stats()
+	player.set_hp(player.max_hp)
 	ball.setup(player, map, rules, camera)
 	camera.follow(player.mover.pos, player.mover.height * StackSprite.LEVEL_PX, 1.0)
 	_title_time = 0.0  # 始めは名前より操作のヒントを出す
@@ -102,6 +109,9 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_gate_nodes.clear()
 	_arrows.clear()
 	_grave_node = null
+	if _popups != null:
+		for c in _popups.get_children():
+			c.queue_free()
 	for c in _area_root.get_children():
 		_area_root.remove_child(c)
 		c.queue_free()
@@ -169,11 +179,12 @@ func _spawn_enemies() -> void:
 			continue
 		var d = area.enemies[i]
 		var e := Enemy.new()
-		e.setup(map, d[0], d[1], player, camera, d[2])
+		var lv := run.enemy_level(d[3] if d.size() > 3 else 1)
+		e.setup(map, d[0], d[1], player, camera, d[2], Enemy.SHOOT_INTERVAL, lv)
 		e.walker.forbidden = safe
 		e.shot.connect(_on_enemy_shot)
-		e.melee_hit.connect(_on_melee_hit)
-		e.walker.died.connect(_on_enemy_died.bind(area.id, i))
+		e.melee_hit.connect(_on_melee_hit.bind(e))
+		e.walker.died.connect(_on_enemy_died.bind(area.id, i, e.kind, lv))
 		_area_root.add_child(e)
 		enemies.append(e)
 		_enemy_index[e] = i
@@ -188,13 +199,40 @@ func has_enemy(index: int) -> bool:
 			return true
 	return false
 
-func _on_enemy_died(area_id: String, index: int) -> void:
+func _on_enemy_died(area_id: String, index: int, kind: EnemyKind.Kind, level: int) -> void:
 	roster.kill(area_id, index)
-	run.on_enemy_killed()
+	if run.on_enemy_killed(kind, level) > 0:
+		_level_up_time = LEVEL_UP_SECONDS
+		apply_stats()
 
-func _on_melee_hit() -> void:
+func _on_melee_hit(e: Enemy) -> void:
 	if area_state.result == AreaState.Result.PLAYING and not is_switching():
-		player.take_hit()
+		hurt_player(e.attack)
+
+## 敵の攻撃（攻撃力 enemy_attack）を受ける。無敵の間は受けない。受けたら true。
+func hurt_player(enemy_attack: int) -> bool:
+	var dmg := Damage.enemy_hit(enemy_attack, easy_mode)
+	if not player.take_hit(dmg):
+		return false
+	_popup(player.mover.pos, player.mover.height, dmg, Color("ff6b6b"))
+	return true
+
+## ステータス（レベル・振り分け）を体力の最大と足の速さに反映する。最大が増えた分は今の体力も増える。
+func apply_stats() -> void:
+	var new_max := run.stats.max_hp()
+	if new_max > player.max_hp:
+		player.hp += new_max - player.max_hp
+	player.max_hp = new_max
+	player.hp = mini(player.hp, new_max)
+	player.speed_mult = run.stats.move_speed_mult()
+
+## 手に持っている武器を足した攻撃力。
+func current_attack() -> int:
+	var bonus := Inventory.STRONG_BALL_ATTACK if hotbar.selected == Hotbar.Item.IRON_BALL and ball.rules_ball.strong else 0
+	return run.stats.attack(bonus)
+
+func _popup(pos: Vector2, h: int, amount: int, color: Color) -> void:
+	_popups.add_child(DamagePopup.make(camera, pos, h * StackSprite.LEVEL_PX, amount, color))
 
 func is_switching() -> bool:
 	return _switch_phase != 0
@@ -247,6 +285,7 @@ func _process(delta: float) -> void:
 	camera.follow(player.mover.pos, player.mover.height * StackSprite.LEVEL_PX, delta)
 	_title_time = maxf(0.0, _title_time - delta)
 	_grave_hint_time = maxf(0.0, _grave_hint_time - delta)
+	_level_up_time = maxf(0.0, _level_up_time - delta)
 	_start_hint_time = maxf(0.0, _start_hint_time - delta)
 	_arrow_blink += delta
 	var a := 0.55 + 0.45 * sin(_arrow_blink * 4.0)
@@ -263,11 +302,11 @@ func _play_step() -> void:
 		if reach and run.collect(area.pickup_id(i), p[1], p[2]):
 			_pickup_nodes[i].queue_free()
 			_pickup_nodes.erase(i)
-	if run.is_near_checkpoint(area.id, c) and player.hp < Player.MAX_HP:
-		player.set_hp(Player.MAX_HP)
+	if run.is_near_checkpoint(area.id, c) and player.hp < player.max_hp:
+		player.set_hp(player.max_hp)
 	for e in enemies:
 		if is_instance_valid(e) and EnemyKind.contact(e.kind) and e.walker.touches(player.mover.pos, player.mover.height):
-			player.take_hit()
+			hurt_player(e.attack)
 			break
 	ball.rules_ball.try_pick_up(player.mover)
 	if ball.rules_ball.state == IronBall.State.HELD:
@@ -308,9 +347,9 @@ func use_item() -> bool:
 	return false
 
 func use_heal() -> bool:
-	if not run.inventory.try_use_heal(player.hp, Player.MAX_HP):
+	if not run.inventory.try_use_heal(player.hp, player.max_hp):
 		return false
-	player.set_hp(player.hp + 1)
+	player.set_hp(mini(player.max_hp, player.hp + Inventory.HEAL_AMOUNT))
 	return true
 
 func open_inventory() -> bool:
@@ -357,7 +396,7 @@ func kill_player(fell: bool) -> void:
 func respawn() -> void:
 	enter_area(run.checkpoint_area, Continent.START_CELL)
 	ball.rules_ball.set_strong(run.inventory.ball_is_strong())  # 強い鉄球は墓石に入っているので普通に戻る
-	player.set_hp(Player.MAX_HP)
+	player.set_hp(player.max_hp)
 	player.clear_invulnerable()
 	player.lift_px = 0.0
 	player.modulate.a = 1.0
@@ -417,7 +456,7 @@ func _step_bullets(delta: float) -> void:
 		var playing := area_state.result == AreaState.Result.PLAYING
 		if playing and player.hp > 0 and b.hits(player.mover.pos, player.mover.height, BULLET_HIT_RADIUS):
 			b.alive = false
-			player.take_hit()
+			hurt_player(b.damage)
 		if not b.alive or not map.in_bounds(HeightMap.world_to_cell(b.pos)):
 			s.queue_free()
 			_bullets.remove_at(i)
@@ -441,15 +480,18 @@ func _on_enemy_shot(b: Bullet) -> void:
 	_area_root.add_child(s)
 	_bullets.append([b, s])
 
-func _on_ball_landed(land_pos: Vector2, damage: int) -> void:
+## 鉄球が着いた。ダメージは17章の式で、攻撃力（強い鉄球なら上乗せ）・落とした高さ・レベルで決まる。
+func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
 	if area_state.result != AreaState.Result.PLAYING:
 		return  # 死んでいる間に着いた鉄球は何も壊さない（できたばかりの墓石を壊さないように）
 	if run.grave != null and run.grave.area_id == area.id and IronBall.touches_cell(land_pos, run.grave.cell):
 		_remove_grave_marker()  # 墓石のマスを空けてから中身を戻す（break_grave で grave が null になるため）
 		run.break_grave()
+	var damage := Damage.iron_ball(current_attack(), ball.rules_ball.fall_levels, run.stats.level)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height):
 			e.walker.take_damage(damage)
+			_popup(e.walker.pos, e.walker.height, damage, Color.WHITE)
 
 func _remove_grave_marker() -> void:
 	if run.grave != null and run.grave.area_id == area.id:
@@ -529,6 +571,9 @@ func _build_ui() -> void:
 	_guide.modulate.a = 0.8
 	_guide.text = "クリック:使う　1・2:持ちかえ　Tab:持ち物　右ドラッグ:カメラ"
 	layer.add_child(_guide)
+	_popups = Control.new()
+	_popups.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_popups)
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 0)
 	_fade.size = Vector2(320, 180)
@@ -543,10 +588,8 @@ func _update_ui() -> void:
 ## 左上の2行。
 func status_text() -> String:
 	var inv := run.inventory
-	var hearts := ""
-	for i in Player.MAX_HP:
-		hearts += "●" if i < player.hp else "○"
-	var text := "体力 %s　お金 %d　素材 %d　経験 %d" % [hearts, inv.money, inv.materials, inv.exp]
+	var st := run.stats
+	var text := "Lv%d　体力 %d/%d　経験 %d/%d　お金 %d　素材 %d" % [st.level, player.hp, player.max_hp, st.exp_in_level(), st.exp_level_span(), inv.money, inv.materials]
 	if run.grave != null:
 		text += "　墓石：%s" % world.area(run.grave.area_id).title
 	var ball_name := "鉄球（強い）" if ball.rules_ball.strong else "鉄球"
@@ -563,6 +606,8 @@ func ui_message() -> String:
 		return "やられた…\nたき火から やり直す"
 	if _gate_here() != null:
 		return "F：門を開ける"
+	if _level_up_time > 0.0:
+		return "レベル%d になった！\nTab：ポイントを振る" % run.stats.level
 	if _title_time > 0.0:
 		return area.title
 	if _grave_hint_time > 0.0:
