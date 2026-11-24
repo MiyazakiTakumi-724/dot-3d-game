@@ -17,7 +17,7 @@ func test_ball_from_plateau_kills_enemy_below():
 	p.height = 3
 	p.facing = Vector2.DOWN
 	var b: IronBall = stage.ball.rules_ball
-	assert_true(b.drop(p, stage.map))
+	assert_true(b.drop_at(p, stage.map, HeightMap.cell_center(p.front_cell())))
 	b.update(1.0, p, stage.map, stage.rules)
 	assert_false(e.walker.alive)
 	assert_eq(stage.state.enemies_left, 2)
@@ -30,7 +30,7 @@ func test_ball_on_same_level_only_hurts():
 	p.height = 0
 	p.facing = Vector2.RIGHT
 	var b: IronBall = stage.ball.rules_ball
-	b.drop(p, stage.map)
+	b.drop_at(p, stage.map, HeightMap.cell_center(p.front_cell()))
 	b.update(1.0, p, stage.map, stage.rules)
 	assert_true(e.walker.alive)
 	assert_eq(e.walker.hp, 2)

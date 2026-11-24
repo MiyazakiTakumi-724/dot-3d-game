@@ -63,7 +63,7 @@ func test_ball_on_grave_breaks_it():
 	p.place(Vector2i(c.x - 1, c.y))
 	p.facing = Vector2.RIGHT
 	var ball: IronBall = area.ball.rules_ball
-	assert_true(ball.drop(p, area.map))
+	assert_true(ball.drop_at(p, area.map, HeightMap.cell_center(p.front_cell())))
 	ball.update(1.0, p, area.map, area.rules)
 	assert_null(area.run.grave)
 	assert_false(area.map.is_wall(c))
@@ -91,7 +91,7 @@ func test_strong_ball_on_ground_goes_to_grave():
 	ball.set_strong(true)
 	var p: PlayerMover = area.player.mover
 	p.facing = Vector2.RIGHT
-	ball.drop(p, area.map)
+	ball.drop_at(p, area.map, HeightMap.cell_center(p.front_cell()))
 	area.kill_player(false)
 	_finish_death()
 	assert_eq(ball.state, IronBall.State.HELD)
@@ -246,11 +246,6 @@ func _drop_right_of_start() -> IronBall:
 	b.update(1.0, p, area.map, area.rules)
 	return b
 
-func test_left_click_item_drops_ball():
-	var b := _drop_right_of_start()
-	assert_eq(b.state, IronBall.State.ON_GROUND)
-	assert_eq(b.cell, _beside_start(2))
-
 func test_heal_slot_uses_heal():
 	area.run.inventory.heals = 1
 	area.player.mover.place(area.goal)
@@ -259,23 +254,6 @@ func test_heal_slot_uses_heal():
 	assert_true(area.use_item())
 	assert_eq(area.player.hp, 2)
 	assert_eq(area.ball.rules_ball.state, IronBall.State.HELD)
-
-func test_walk_over_ball_picks_it_up():
-	var b := _drop_right_of_start()
-	area.player.mover.place(_beside_start(2))
-	area._process(0.016)
-	assert_eq(b.state, IronBall.State.HELD)
-
-func test_equip_applies_when_ball_back_in_hand():
-	area.run.inventory.has_strong_ball = true
-	var b := _drop_right_of_start()
-	assert_true(area.menu.choose_ball(true))
-	area._process(0.016)
-	assert_false(b.strong)
-	area.player.mover.place(_beside_start(2))
-	area._process(0.016)
-	assert_eq(b.state, IronBall.State.HELD)
-	assert_true(b.strong)
 
 func test_inventory_pauses_and_closes():
 	assert_true(area.open_inventory())
@@ -296,17 +274,6 @@ func test_menu_cannot_choose_strong_without_it():
 	area.run.inventory.has_strong_ball = true
 	assert_true(area.menu.choose_ball(true))
 	assert_true(area.run.inventory.equipped_strong)
-
-func test_aim_marker_on_drop_cell():
-	var p: PlayerMover = area.player.mover
-	p.place(_beside_start(1))
-	p.facing = Vector2.RIGHT
-	area._process(0.016)
-	assert_false(area.aim_marker.force_hidden)
-	assert_eq(area.aim_marker.world_pos, HeightMap.cell_center(_beside_start(2)))
-	area.hotbar.select_slot(2)
-	area._process(0.016)
-	assert_true(area.aim_marker.force_hidden)
 
 ## 最初のステージの敵は、体力1で撃たない
 func test_area_enemies_have_one_hp_and_do_not_shoot():

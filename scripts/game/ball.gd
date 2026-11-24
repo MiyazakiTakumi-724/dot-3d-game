@@ -31,7 +31,7 @@ func _process(delta: float) -> void:
 		base_height = player.mover.height
 		lift_px = HELD_LIFT_PX
 	else:
-		world_pos = HeightMap.cell_center(rules_ball.cell)
+		world_pos = rules_ball.pos
 		base_height = rules_ball.height
 		lift_px = rules_ball.remaining_fall_levels() * LEVEL_PX
 	super._process(delta)

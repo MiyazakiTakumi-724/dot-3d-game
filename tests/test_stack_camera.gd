@@ -54,3 +54,18 @@ func test_follow_height_moves_smoothly():
 		c.follow(Vector2(10, 10), 40.0, 0.016)
 	assert_almost_eq(c.focus_height, 40.0, 0.5)
 	assert_eq(c.focus, Vector2(10, 10))
+
+func test_pick_ground_prefers_high_cell_under_cursor():
+	var m := HeightMap.new(Vector2i(4, 4))
+	m.set_height(Vector2i(1, 1), 2)
+	var cam := _cam()
+	cam.focus = HeightMap.cell_center(Vector2i(1, 1))
+	var screen := cam.world_to_screen(HeightMap.cell_center(Vector2i(1, 1)), 16)
+	assert_eq(HeightMap.world_to_cell(cam.pick_ground(screen, m, 8)), Vector2i(1, 1))
+
+func test_pick_ground_falls_to_low_cell():
+	var m := HeightMap.new(Vector2i(4, 4))
+	var cam := _cam()
+	cam.focus = HeightMap.cell_center(Vector2i(2, 2))
+	var screen := cam.world_to_screen(HeightMap.cell_center(Vector2i(2, 2)), 0)
+	assert_eq(cam.pick_ground(screen, m, 8), HeightMap.cell_center(Vector2i(2, 2)))

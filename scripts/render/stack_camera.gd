@@ -40,6 +40,16 @@ func world_to_screen(world: Vector2, height_px: float) -> Vector2:
 func screen_to_world(screen: Vector2, height_px: float) -> Vector2:
 	return focus + (screen - SCREEN_CENTER + Vector2(0, height_px - focus_height)).rotated(angle)
 
+## 画面の点に見えている地面の点。高い段から順に、その高さの面の上の点を求め、
+## そこのマスがちょうどその高さなら、それが見えている地面。なければ高さ0の面の点。
+func pick_ground(screen: Vector2, map: HeightMap, max_h: int) -> Vector2:
+	for h in range(max_h, -1, -1):
+		var w := screen_to_world(screen, h * StackSprite.LEVEL_PX)
+		var c := HeightMap.world_to_cell(w)
+		if map.in_bounds(c) and not map.is_void(c) and map.get_height(c) == h:
+			return w
+	return screen_to_world(screen, 0)
+
 ## 画面上の向き（例：上キー = Vector2.UP）をワールドの向きに変える。
 func screen_dir_to_world(dir: Vector2) -> Vector2:
 	return dir.rotated(angle)

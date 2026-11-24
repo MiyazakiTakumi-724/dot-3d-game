@@ -333,7 +333,7 @@ func use_item() -> bool:
 		return false
 	match hotbar.selected:
 		Hotbar.Item.IRON_BALL:
-			return ball.rules_ball.drop(player.mover, map)
+			return ball.rules_ball.drop_at(player.mover, map, _aim_point())
 		Hotbar.Item.HEAL:
 			return use_heal()
 	return false
@@ -357,13 +357,17 @@ func _update_aim() -> void:
 		player.aim_screen = get_viewport().get_mouse_position()
 	else:
 		player.aim_screen = null
-	var target := player.mover.front_cell()
+	var target := IronBall.reach_point(player.mover.pos, _aim_point())
 	var show := playing and hotbar.selected == Hotbar.Item.IRON_BALL \
 		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map)
 	aim_marker.force_hidden = not show
 	if show:
-		aim_marker.world_pos = HeightMap.cell_center(target)
-		aim_marker.base_height = map.get_height(target)
+		aim_marker.world_pos = target
+		aim_marker.base_height = map.get_height(HeightMap.world_to_cell(target))
+
+## カーソルが指している地面の点。
+func _aim_point() -> Vector2:
+	return camera.pick_ground(get_viewport().get_mouse_position(), map, 8)
 
 ## 死亡処理を始める。墓石を置き（古い墓石は消える）、操作を止める。
 func kill_player(fell: bool) -> void:
@@ -466,12 +470,12 @@ func _on_enemy_shot(b: Bullet) -> void:
 	_world.add_child(s)
 	_bullets.append([b, s])
 
-func _on_ball_landed(cell: Vector2i, damage: int) -> void:
-	if map.is_grave(cell):
+func _on_ball_landed(land_pos: Vector2, damage: int) -> void:
+	if run.grave != null and IronBall.touches_cell(land_pos, run.grave.cell):
 		_remove_grave_marker()  # 墓石のマスを空けてから中身を戻す（break_grave で grave が null になるため）
 		run.break_grave()
 	for e in enemies:
-		if is_instance_valid(e) and e.walker.alive and e.walker.cell() == cell and e.walker.height == ball.rules_ball.height:
+		if is_instance_valid(e) and e.walker.alive and IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height):
 			e.walker.take_damage(damage)
 
 func _remove_grave_marker() -> void:

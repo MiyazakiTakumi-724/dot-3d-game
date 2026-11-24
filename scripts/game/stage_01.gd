@@ -106,7 +106,7 @@ func _read_ball_keys() -> void:
 	var z_down := Input.is_physical_key_pressed(KEY_Z)
 	if player.hp > 0:
 		if x_down and not _x_was_down:
-			ball.rules_ball.drop(player.mover, map)
+			ball.rules_ball.drop_at(player.mover, map, HeightMap.cell_center(player.mover.front_cell()))
 		if z_down and not _z_was_down:
 			ball.rules_ball.try_pick_up(player.mover)
 	_x_was_down = x_down
@@ -141,9 +141,9 @@ func _on_enemy_shot(b: Bullet) -> void:
 	_world.add_child(s)
 	_bullets.append([b, s])
 
-func _on_ball_landed(cell: Vector2i, damage: int) -> void:
+func _on_ball_landed(land_pos: Vector2, damage: int) -> void:
 	for e in enemies:
-		if is_instance_valid(e) and e.walker.alive and e.walker.cell() == cell and e.walker.height == ball.rules_ball.height:
+		if is_instance_valid(e) and e.walker.alive and IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height):
 			e.walker.take_damage(damage)
 
 func _on_enemy_died() -> void:
