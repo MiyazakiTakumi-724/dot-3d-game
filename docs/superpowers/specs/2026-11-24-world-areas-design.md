@@ -1,6 +1,6 @@
 # 試作3「大陸のエリアをつなぐ」設計
 
-日付：2026-11-24
+日付：2026-11-24（ユーザー承認済み。実装済み：計画 `docs/superpowers/plans/2026-11-24-world-areas.md`）
 前提：`docs/design.md`（全体の仕様）、`docs/superpowers/specs/2026-11-23-death-loop-design.md`（試作2。墓石・たき火・門・持ち物の扱いはここから引き継ぐ）。
 
 表記のルール
