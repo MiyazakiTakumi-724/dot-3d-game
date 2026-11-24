@@ -430,8 +430,8 @@ func test_falling_slash_after_drop():
 	assert_true(f.swing_sword())
 	assert_eq(hp - e.walker.hp, Damage.sword(5, 0, 2))
 
-## 高所の有利：1段下の敵を剣で斬ると、威力が上がる
-func test_sword_high_ground_bonus():
+## 剣は1段下の敵に当たる（高さの上乗せはない）。1段上の敵には、下から当たらない
+func test_sword_down_but_not_up():
 	f.run.inventory.equipment.gain(Equipment.Slot.SWORD, 1)
 	f.hotbar.select_slot(2, f.run.inventory.equipment)
 	var m := HeightMap.new(Vector2i(6, 3))
@@ -454,8 +454,16 @@ func test_sword_high_ground_bonus():
 		f.run.stats.allocate(PlayerStats.Stat.ATTACK)  # つよさ10
 	var hp: int = e.walker.hp
 	assert_true(f.swing_sword())
-	assert_eq(hp - e.walker.hp, Damage.sword(10, 0, 0, false, 1))
-	assert_gt(Damage.sword(10, 0, 0, false, 1), Damage.sword(10, 0, 0))
+	assert_eq(hp - e.walker.hp, Damage.sword(10, 0, 0))
+	# 入れ替えて、下から上の敵を斬る
+	f.player.mover.place(Vector2i(2, 1))
+	e.walker.pos = HeightMap.cell_center(Vector2i(1, 1))
+	e.walker.height = 1
+	f.player.mover.facing = Vector2.LEFT
+	f.sword.update(1.0)
+	hp = e.walker.hp
+	assert_true(f.swing_sword())
+	assert_eq(e.walker.hp, hp)
 
 func _get_camp_pickup(kind) -> void:
 	for i in f.area.pickups.size():
@@ -534,7 +542,7 @@ func _use_map(m: HeightMap, cell: Vector2i) -> void:
 	f.player.mover.map = m
 	f.player.mover.place(cell)
 
-## 最初から無の杖を持っている。敵にカーソルを重ねて無の弾を使うと、その高さへまっすぐ飛んで当たる（高所の有利も乗る）
+## 最初から無の杖を持っている。敵にカーソルを重ねて無の弾を使うと、その高さへまっすぐ飛んで当たる
 func test_null_bolt_auto_aims_enemy():
 	assert_true(f.hotbar.select_slot(4, f.run.inventory.equipment))
 	var m := HeightMap.new(Vector2i(12, 3))
@@ -550,7 +558,7 @@ func test_null_bolt_auto_aims_enemy():
 	assert_eq(f.mana.value, 50.0 - Magic.COST[Magic.Spell.NULL_BOLT])
 	for i in 60:
 		f._step_bolts(1.0 / 60)
-	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.NULL_BOLT], 0, 2))
+	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.NULL_BOLT], 0))
 	assert_false(f.cast_spell(screen))  # 次に使えるまで少し待つ
 
 ## マナが足りなければ使えない
@@ -577,8 +585,8 @@ func test_fire_staff_from_camp_and_wheel():
 	assert_string_contains(f.hotbar_text(), "火柱")
 	assert_string_contains(f.status_text(), "マナ50/50")
 
-## 火柱は、崖の上の敵にも当たる（全部の高さ）
-func test_fire_pillar_hits_enemy_on_cliff():
+## 火柱は下の敵に当たってやけどにする。崖の上（自分より高い所）の敵には当たらない
+func test_fire_pillar_only_hits_at_or_below():
 	var eq: Equipment = f.run.inventory.equipment
 	eq.gain(Equipment.Slot.STAFF_FIRE, 2)
 	eq.choose_staff(Equipment.Slot.STAFF_FIRE)
@@ -587,17 +595,23 @@ func test_fire_pillar_hits_enemy_on_cliff():
 		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
 	f.hotbar.select_slot(4, eq)
 	f.cycle_spell(1)
+	assert_eq(f.current_spell(), Magic.Spell.FIRE_PILLAR)
 	var m := HeightMap.new(Vector2i(12, 3))
 	for y in 3:
 		for x in range(4, 12):
 			m.set_height(Vector2i(x, y), 2)
 	_use_map(m, Vector2i(1, 1))
 	var e := _solo_enemy(m, Vector2i(4, 1))
-	e.walker.hp = 50  # 一撃で倒れないようにして、やけども確かめる
-	var screen: Vector2 = f.camera.world_to_screen(e.walker.pos, e.walker.height * StackSprite.LEVEL_PX + 4.0)
 	var hp: int = e.walker.hp
-	assert_true(f.cast_spell(screen))
-	assert_eq(hp - e.walker.hp, Damage.magic(f.current_attack(), Magic.POWER[Magic.Spell.FIRE_PILLAR], 3, 0))
+	f._fire_pillar(e.walker.pos)
+	assert_eq(e.walker.hp, hp)
+	# 崖の上から、下の敵を焼く
+	f.player.mover.place(Vector2i(5, 1))
+	e.walker.pos = HeightMap.cell_center(Vector2i(2, 1))
+	e.walker.height = 0
+	e.walker.hp = 50
+	f._fire_pillar(e.walker.pos)
+	assert_eq(50 - e.walker.hp, Damage.magic(f.current_attack(), Magic.POWER[Magic.Spell.FIRE_PILLAR], 3))
 	assert_eq(f.current_attack(), 5 + Equipment.rank_attack(2))  # 杖のランクもつよさに足される
 	assert_true(e.walker.is_burning())
 
@@ -615,7 +629,7 @@ func test_fireball_burns():
 	assert_true(f.cast_spell(screen))
 	for i in 60:
 		f._step_bolts(1.0 / 60)
-	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.FIREBALL], 0, 0))
+	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.FIREBALL], 0))
 	assert_true(e.walker.is_burning())
 	assert_eq(f.fires_burning(), 1)
 

@@ -4,7 +4,7 @@ extends RefCounted
 ## 戦っている間も、いつも毎秒 REGEN ずつ戻る【提案】（2026-11-24 決定）。
 
 const BASE_MAX := 50
-const REGEN := 2.0
+const REGEN := 1.5
 
 var max_value := BASE_MAX
 var value: float = BASE_MAX

@@ -13,12 +13,19 @@ const NAMES := {
 	Spell.FIRE_PILLAR: "火柱",
 	Spell.FIRE_RAIN: "炎の雨",
 }
-## 使うのに要るマナ
+## 使うのに要るマナ（燃費は悪くして、何発も撃てないようにする。2026-11-24 23:07 の指示）
 const COST := {
-	Spell.NULL_BOLT: 5,
-	Spell.FIREBALL: 8,
-	Spell.FIRE_PILLAR: 12,
-	Spell.FIRE_RAIN: 20,
+	Spell.NULL_BOLT: 10,
+	Spell.FIREBALL: 15,
+	Spell.FIRE_PILLAR: 25,
+	Spell.FIRE_RAIN: 35,
+}
+## 魔法ごとの待ち時間（秒）。使ってからこの間は、同じ魔法を使えない（連発させない）
+const COOLDOWN := {
+	Spell.NULL_BOLT: 1.5,
+	Spell.FIREBALL: 3.0,
+	Spell.FIRE_PILLAR: 5.0,
+	Spell.FIRE_RAIN: 10.0,
 }
 ## 威力の倍率（Damage.magic）
 const POWER := {
@@ -33,12 +40,12 @@ const STAFF_SPELLS := {
 	Equipment.Slot.STAFF_FIRE: [Spell.FIREBALL, Spell.FIRE_PILLAR, Spell.FIRE_RAIN],
 }
 
-const INTERVAL := 0.35  ## 次の魔法を使えるまで（秒）
+const INTERVAL := 0.35  ## どの魔法でも、次を使えるまで（秒）
 ## 火の玉：当たった所で弾け、まわりも焼く。落ちた所が少しの間燃える
 const FIREBALL_RADIUS := 14.0
 const BURN_SECONDS := 3.0
 const FIRE_PATCH_SECONDS := 2.5
-## 火柱：狙った点（REACH まで）の、全部の高さに当たる
+## 火柱：狙った点（REACH まで）に立つ。自分より高い所の敵には当たらない
 const PILLAR_REACH := 64.0
 const PILLAR_RADIUS := 10.0
 ## 炎の雨：狙った点（REACH まで）のまわりに降る。自分より高い所には降らない。高い所から使うほど広い
@@ -48,6 +55,7 @@ const RAIN_RADIUS_PER_LEVEL := 8.0
 
 var cooldown := 0.0
 var _index := 0
+var _spell_cd := {}  # Spell → 残りの待ち時間
 
 ## 杖（slot）のランク rank で使える魔法。
 static func staff_spells(slot: Equipment.Slot, rank: int) -> Array:
@@ -64,12 +72,19 @@ static func rain_radius(caster_h: int, ground_h: int) -> float:
 
 func update(delta: float) -> void:
 	cooldown = maxf(0.0, cooldown - delta)
+	for k in _spell_cd.keys():
+		_spell_cd[k] = maxf(0.0, _spell_cd[k] - delta)
+
+## その魔法をまた使えるまでの秒数。
+func remaining(spell: Spell) -> float:
+	return _spell_cd.get(spell, 0.0)
 
 ## 使えればマナを払って true。
 func try_cast(spell: Spell, mana: Mana) -> bool:
-	if cooldown > 0.0 or not mana.try_spend(COST[spell]):
+	if cooldown > 0.0 or remaining(spell) > 0.0 or not mana.try_spend(COST[spell]):
 		return false
 	cooldown = INTERVAL
+	_spell_cd[spell] = COOLDOWN[spell]
 	return true
 
 ## 選んでいる魔法（list は usable の結果）。list が空なら -1。

@@ -1,5 +1,5 @@
 extends GutTest
-## マナ：最大は50（ステータスの魔法で＋10）。戦っている間も、毎秒2ずつ戻る【提案】
+## マナ：最大は50（ステータスの魔法で＋10）。戦っている間も、毎秒1.5ずつ戻る【提案】
 
 func test_starts_full():
 	var m := Mana.new()
@@ -11,7 +11,7 @@ func test_spend_and_regen():
 	assert_true(m.try_spend(20))
 	assert_eq(m.value, 30.0)
 	m.update(2.0)
-	assert_eq(m.value, 34.0)
+	assert_eq(m.value, 33.0)
 	m.update(100.0)
 	assert_eq(m.value, 50.0)
 	m.value = 4.0

@@ -1,20 +1,20 @@
 class_name MeleeAttack
 extends RefCounted
 ## 敵2の近接攻撃。近くにいると0.5秒ためて（体が光る）から叩く。
-## ためている間に離れるか、2段以上の段差の上へ逃げればよけられる。叩いた後は1秒休む。
+## ためている間に離れるか、1段でも上へ逃げればよけられる（下から上へは叩けない）。叩いた後は1秒休む。
 
 enum State { IDLE, WINDUP, COOLDOWN }
 
 const RANGE := 16.0  ## 叩ける距離（体の前1マスほど）
 const WINDUP := 0.5
 const COOLDOWN := 1.0
-const MAX_LEVEL_DIFF := 1  ## 1段違いまでは届く
+const MAX_LEVEL_DIFF := 1  ## 1段下までは届く
 
 var state: State = State.IDLE
 var _timer := 0.0
 
 static func in_reach(self_pos: Vector2, self_h: int, target_pos: Vector2, target_h: int) -> bool:
-	return self_pos.distance_to(target_pos) <= RANGE and absi(target_h - self_h) <= MAX_LEVEL_DIFF
+	return self_pos.distance_to(target_pos) <= RANGE and Damage.can_hit(self_h, target_h) and self_h - target_h <= MAX_LEVEL_DIFF
 
 ## 叩いて当たった瞬間だけ true。
 func update(delta: float, self_pos: Vector2, self_h: int, target_pos: Vector2, target_h: int) -> bool:

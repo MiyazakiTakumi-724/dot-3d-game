@@ -18,9 +18,6 @@ func test_one_below_hits_but_not_above_or_two_below():
 	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(16, 0), 0))
 	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(16, 0), 3))
 
-func test_reach_up_when_allowed():
-	assert_true(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(16, 0), 3, true))
-	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(16, 0), 4, true))
 
 func test_swing_interval():
 	var s := Sword.new()
@@ -31,10 +28,6 @@ func test_swing_interval():
 	s.update(0.11)
 	assert_true(s.try_swing())
 
-func test_rank2_reaches_up():
-	assert_false(Sword.reaches_up(1, false))
-	assert_true(Sword.reaches_up(2, false))
-	assert_true(Sword.reaches_up(1, true))
 
 ## 回転斬り：周りの敵をまとめて斬る（後ろにも当たる）
 func test_spin_hits_all_around():
@@ -50,3 +43,14 @@ func test_spin_has_longer_interval():
 	assert_false(s.try_swing())
 	s.update(Sword.SPIN_INTERVAL)
 	assert_true(s.try_swing())
+
+## 技能「突き」：前へ細く長く届く（斬り上げの代わり。2026-11-24 決定）
+func test_thrust_reaches_farther_in_front():
+	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(30, 0), 2))
+	assert_true(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(30, 0), 2, true))
+	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(Sword.THRUST_REACH + 2, 0), 2, true))
+	# 細いので、斜め前の遠くには届かない
+	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(26, 18), 2, true))
+	# 上へは届かない
+	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(30, 0), 3, true))
+	assert_eq(PlayerStats.SKILLS[PlayerStats.Stat.SWORD][1], "突き")

@@ -13,7 +13,6 @@ const FALL_SINK_PX := 40.0  ## 奈落に落ちる演出で沈む量（0.5秒で�
 const GRAVE_HINT_SECONDS := 6.0
 const MAX_HEIGHT := 8
 const LEVEL_UP_SECONDS := 3.0
-const HIGH_GROUND_COLOR := Color("8fd3ff")  ## 高所の有利が乗ったダメージの数字の色
 ## 設定（簡単モードなど）。インベントリ画面の「設定」のページで変える
 var settings := GameSettings.new()
 
@@ -456,18 +455,16 @@ func swing_sword() -> bool:
 	var st := run.stats
 	var fall := mv.recent_drop(Sword.FALL_WINDOW)
 	var strong_fall := st.skills_in(PlayerStats.Stat.SWORD) >= 1
-	var up := Sword.reaches_up(run.inventory.equipment.effective(Equipment.Slot.SWORD), st.skills_in(PlayerStats.Stat.SWORD) >= 2)
+	var thrust := st.skills_in(PlayerStats.Stat.SWORD) >= 2  # 技能「突き」
 	player.swing(fall > 0)
 	for e in enemies:
-		if is_instance_valid(e) and e.walker.alive and Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, up):
-			# 低い敵には高所の有利が乗る（数字の色で分かるようにする）
-			var lower: int = mv.height - e.walker.height
-			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall, lower)
+		if is_instance_valid(e) and e.walker.alive and Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, thrust):
+			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
 			e.walker.take_damage(dmg)
-			_popup(e.walker.pos, e.walker.height, dmg, Color("ffb347") if fall > 0 else (HIGH_GROUND_COLOR if lower > 0 else Color.WHITE))
+			_popup(e.walker.pos, e.walker.height, dmg, Color("ffb347") if fall > 0 else Color.WHITE)
 	if run.grave != null and run.grave.area_id == area.id:
 		var g := run.grave.cell
-		if Sword.hits(mv.pos, mv.height, mv.facing, HeightMap.cell_center(g), map.get_height(g), up):
+		if Sword.hits(mv.pos, mv.height, mv.facing, HeightMap.cell_center(g), map.get_height(g), thrust):
 			_remove_grave_marker()
 			run.break_grave()
 	return true
@@ -566,8 +563,9 @@ func _arrow_landed(a: Arrow, dmg: int) -> void:
 	if not map.in_bounds(c) or map.is_water(c) or map.is_pit(c):
 		return
 	var land_h := map.get_height(c)
+	# 撃った所より高い地面に落ちた矢は、そこの敵に当たらない（下から上へは攻撃できない）
 	for e in enemies:
-		if is_instance_valid(e) and e.walker.alive and Arrow.hits(a.to, land_h, e.walker.pos, e.walker.height):
+		if is_instance_valid(e) and e.walker.alive and Damage.can_hit(a.from_h, land_h) and Arrow.hits(a.to, land_h, e.walker.pos, e.walker.height):
 			e.walker.take_damage(dmg)
 			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
 			if a.kind == Arrow.Kind.POISON:
@@ -597,11 +595,10 @@ func spin_slash() -> bool:
 	var mv := player.mover
 	player.spin()
 	for e in enemies:
-		if is_instance_valid(e) and e.walker.alive and Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, true):
-			var lower: int = mv.height - e.walker.height
-			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0, false, lower)
+		if is_instance_valid(e) and e.walker.alive and Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height):
+			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0)
 			e.walker.take_damage(dmg)
-			_popup(e.walker.pos, e.walker.height, dmg, HIGH_GROUND_COLOR if lower > 0 else Color.WHITE)
+			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
 	return true
 
 ## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
@@ -670,15 +667,14 @@ func cast_spell(screen = null) -> bool:
 			_fire_rain(_spell_point(spell, aim))
 	return true
 
-## 魔法のダメージ。lower は相手が自分より何段低いか（高所の有利）。
-func _magic_damage(spell: int, lower: int) -> int:
-	return Damage.magic(current_attack(), Magic.POWER[spell], run.stats.points_in(PlayerStats.Stat.MAGIC), lower)
-
-func _hit_enemy(e: Enemy, spell: int, from_h: int) -> void:
-	var lower: int = from_h - e.walker.height
-	var dmg := _magic_damage(spell, lower)
+## 魔法を敵に当てる。from_h は使ったときの段で、それより高い所の敵には当たらない（false を返す）。
+func _hit_enemy(e: Enemy, spell: int, from_h: int) -> bool:
+	if not Damage.can_hit(from_h, e.walker.height):
+		return false
+	var dmg := Damage.magic(current_attack(), Magic.POWER[spell], run.stats.points_in(PlayerStats.Stat.MAGIC))
 	e.walker.take_damage(dmg)
-	_popup(e.walker.pos, e.walker.height, dmg, HIGH_GROUND_COLOR if lower > 0 else Color.WHITE)
+	_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
+	return true
 
 ## 無の弾・火の玉：狙った高さへまっすぐ飛ばす。
 func _launch_bolt(spell: int, aim: Dictionary) -> void:
@@ -719,7 +715,7 @@ func _step_bolts(delta: float) -> void:
 		p.step(delta, map)
 		if p.alive and playing:
 			for e in enemies:
-				if is_instance_valid(e) and e.walker.alive and p.hits_body(e.walker.pos, e.walker.height):
+				if is_instance_valid(e) and e.walker.alive and Damage.can_hit(from_h, e.walker.height) and p.hits_body(e.walker.pos, e.walker.height):
 					if spell != Magic.Spell.FIREBALL:
 						_hit_enemy(e, spell, from_h)
 					p.alive = false
@@ -740,8 +736,8 @@ func _explode(pos: Vector2, z: float, from_h: int) -> void:
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(pos) < Magic.FIREBALL_RADIUS \
 				and absf(e.walker.height * StackSprite.LEVEL_PX + 4.0 - z) <= 12.0:
-			_hit_enemy(e, Magic.Spell.FIREBALL, from_h)
-			e.walker.burn(Magic.BURN_SECONDS)
+			if _hit_enemy(e, Magic.Spell.FIREBALL, from_h):
+				e.walker.burn(Magic.BURN_SECONDS)
 	var c := HeightMap.world_to_cell(pos)
 	if map.in_bounds(c) and not map.is_wall(c) and z - map.get_height(c) * StackSprite.LEVEL_PX < 10.0:
 		var s := _effect_sprite(_flame_model(), pos, map.get_height(c), 0.0, Magic.FIRE_PATCH_SECONDS)
@@ -763,13 +759,13 @@ func _step_fires(delta: float) -> void:
 func fires_burning() -> int:
 	return _fires.size()
 
-## 火柱：狙った点の、全部の高さの敵に当たる（崖の上の敵にも届く）。
+## 火柱：狙った点に立ち、そこの敵に当たる。自分より高い所の敵には当たらない。
 func _fire_pillar(point: Vector2) -> void:
 	var mv := player.mover
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(point) < Magic.PILLAR_RADIUS:
-			_hit_enemy(e, Magic.Spell.FIRE_PILLAR, mv.height)
-			e.walker.burn(Magic.BURN_SECONDS)
+			if _hit_enemy(e, Magic.Spell.FIRE_PILLAR, mv.height):
+				e.walker.burn(Magic.BURN_SECONDS)
 	var c := HeightMap.world_to_cell(point)
 	if run.grave != null and run.grave.area_id == area.id and c == run.grave.cell:
 		_remove_grave_marker()
@@ -876,7 +872,7 @@ func _on_skill_learned(skill: String) -> void:
 		"よじ登り": "2段の段差に向かって歩き続けると登れる",
 		"受け身": "4段まで飛び降りられる",
 		"矢の種類": "Tab：弓の枠で毒矢を選べる",
-		"斬り上げ": "剣が1段上の敵にも届く",
+		"突き": "剣が正面へ細く長く届く",
 		"魔法2つ目": "杖に魔法が2つあれば、ホイールで替えて使える",
 		"最大マナ＋10": "マナが %d までたまる" % run.stats.max_mana(),
 		"魔法3つ目": "杖に魔法が3つあれば、3つとも使える",

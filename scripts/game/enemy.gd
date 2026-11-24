@@ -69,7 +69,8 @@ func _process(delta: float) -> void:
 	if can_shoot and target.hp > 0:
 		_cooldown -= delta
 		var to_player := target.mover.pos - walker.pos
-		if _cooldown <= 0.0 and to_player.length() <= SHOOT_RANGE:
+		# 自分より高い所にいる相手は撃たない（下から上へは当たらない）
+		if _cooldown <= 0.0 and to_player.length() <= SHOOT_RANGE and Damage.can_hit(walker.height, target.mover.height):
 			_cooldown = SHOOT_INTERVAL
 			# 相手の体へまっすぐ撃つ。高い所からなら下まで届き、下からだと崖に当たりやすい
 			var b := Bullet.new()

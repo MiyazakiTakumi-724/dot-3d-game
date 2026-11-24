@@ -122,7 +122,15 @@ func test_aimed_bullet_from_below_hits_cliff():
 func test_bullet_hits_by_z():
 	var b := Bullet.new()
 	b.pos = Vector2(8, 8)
-	b.height = 0
+	b.height = 2
 	b.z = 20.0  # 2段の高さ（地面0に立つ相手の頭の上）
 	assert_false(b.hits(Vector2(8, 8), 0, 6.0))
 	assert_true(b.hits(Vector2(8, 8), 2, 6.0))
+
+## 下から撃った弾は、上に立つ相手には当たらない（1段でも）
+func test_bullet_cannot_hit_upward():
+	var b := Bullet.new()
+	b.pos = Vector2(8, 8)
+	b.height = 0
+	b.z = 12.0  # 1段上に立つ相手の体の高さ
+	assert_false(b.hits(Vector2(8, 8), 1, 6.0))

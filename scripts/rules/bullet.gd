@@ -51,9 +51,10 @@ func step(delta: float, map: HeightMap) -> void:
 	z = z1
 
 ## target に立っている、段 target_height のものに当たるか。距離が radius 未満で、弾の高さが体の中（足元から BODY_PX まで）のとき。
+## 撃った敵より高い所に立つものには当たらない（下から上へは攻撃できない）。
 func hits(target: Vector2, target_height: int, radius: float) -> bool:
 	var rel := get_z() - target_height * 8.0
-	return alive and rel >= -1.0 and rel < BODY_PX - 1.0 and pos.distance_to(target) < radius
+	return alive and Damage.can_hit(height, target_height) and rel >= -1.0 and rel < BODY_PX - 1.0 and pos.distance_to(target) < radius
 
 ## from から to までの線が通るマスを順に調べ（グリッドを1マスずつたどる）、
 ## 最初に壁か、弾より高い地面へ入る位置を 0〜1 の割合で返す。なければ -1。弾の高さは z0 から z1 へまっすぐ変わる。

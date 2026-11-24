@@ -41,16 +41,14 @@ func test_bow():
 	assert_eq(Damage.bow(5, 1.0, 0.5, 0), 2)
 	assert_eq(Damage.bow(5, 1.0, 1.0, 0, 2), 10)  # 高所射撃で2段下
 
-## 魔法：つよさ × 魔法の倍率 ×（1 ＋ 魔法のポイント × 0.1）× 高所の有利
+## 魔法：つよさ × 魔法の倍率 ×（1 ＋ 魔法のポイント × 0.1）。高さによる上乗せはない
 func test_magic():
 	assert_eq(Damage.magic(10, 0.6, 0), 6)
 	assert_eq(Damage.magic(10, 0.6, 5), 9)
-	assert_eq(Damage.magic(10, 1.2, 0, 1), 15)
+	assert_eq(Damage.magic(10, 1.2, 0), 12)
 
-## 高所の有利：自分より低い敵を剣で攻めると、1段につき×（1 ＋ 0.25）【提案】
-func test_sword_high_ground():
-	assert_eq(Damage.sword(10, 0, 0, false, 0), 6)
-	assert_eq(Damage.sword(10, 0, 0, false, 1), 7)  # 6 × 1.25 = 7.5
-	assert_eq(Damage.sword(10, 0, 0, false, 2), 9)  # 6 × 1.5
-	assert_eq(Damage.high_ground(2), 1.5)
-	assert_eq(Damage.high_ground(-1), 1.0)  # 下から攻めても減らない
+## 下から上へは攻撃できない（1段でも上の相手には当たらない）。同じ高さと下へは当たる（2026-11-24 決定）
+func test_cannot_attack_upward():
+	assert_true(Damage.can_hit(2, 2))
+	assert_true(Damage.can_hit(2, 0))
+	assert_false(Damage.can_hit(2, 3))
