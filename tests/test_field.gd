@@ -364,15 +364,26 @@ func test_allocate_from_menu_applies_stats():
 
 ## 画面で鉄球のランクを選ぶと、手に持つ鉄球が替わり攻撃力に足される
 func test_choose_ball_rank_in_menu():
-	f.run.inventory.equipment.gain(Equipment.Slot.BALL, 2)
+	f.run.inventory.equipment.gain("ball_2")
 	f.open_inventory()
 	f.menu.select_slot(Equipment.Slot.BALL)
-	assert_true(f.menu.choose(2))
+	assert_true(f.menu.choose("ball_2"))
 	f._process(0.016)
 	assert_eq(f.ball_rank, 2)
 	assert_true(f.ball.rules_ball.strong)
 	assert_eq(f.current_attack(), 5 + Equipment.ATTACK_PER_RANK)
-	assert_false(f.menu.choose(3))
+	assert_false(f.menu.choose("sword_1"))  # 持っていない品物は選べない
+
+## 杖の枠は1つで、持っている杖（無の杖・炎の杖…）の中から選ぶ
+func test_choose_staff_in_menu():
+	f.run.inventory.equipment.gain("staff_fire_3")
+	f.open_inventory()
+	f.menu.select_slot(Equipment.Slot.STAFF)
+	assert_eq(f.menu.listed_items(), ["staff_none_1", "staff_fire_3"])
+	assert_true(f.menu.choose("staff_fire_3"))
+	f.hotbar.select_slot(4, f.run.inventory.equipment)
+	assert_eq(f.usable_spells(), [Magic.Spell.FIREBALL])
+	assert_string_contains(f.hotbar_text(), "炎の杖★3")
 
 ## ランク2の鉄球は当たる範囲が広い
 func test_rank2_ball_hits_wider():
@@ -408,7 +419,7 @@ func test_sword_not_usable_without_sword():
 
 ## 飛び降りてすぐに振ると落下斬り
 func test_falling_slash_after_drop():
-	f.run.inventory.equipment.gain(Equipment.Slot.SWORD, 1)
+	f.run.inventory.equipment.gain("sword_1")
 	f.hotbar.select_slot(2, f.run.inventory.equipment)
 	var m := HeightMap.new(Vector2i(6, 3))
 	m.set_height(Vector2i(1, 1), 2)
@@ -432,7 +443,7 @@ func test_falling_slash_after_drop():
 
 ## 剣は1段下の敵に当たる（高さの上乗せはない）。1段上の敵には、下から当たらない
 func test_sword_down_but_not_up():
-	f.run.inventory.equipment.gain(Equipment.Slot.SWORD, 1)
+	f.run.inventory.equipment.gain("sword_1")
 	f.hotbar.select_slot(2, f.run.inventory.equipment)
 	var m := HeightMap.new(Vector2i(6, 3))
 	m.set_height(Vector2i(1, 1), 1)
@@ -503,7 +514,7 @@ func test_bow_from_camp_hits_over_wall():
 	assert_eq(hp - e.walker.hp, Damage.bow(5, 1.0, 1.0, 0))
 
 func test_release_uses_one_arrow():
-	f.run.inventory.equipment.gain(Equipment.Slot.BOW, 1)
+	f.run.inventory.equipment.gain("bow_1")
 	f.run.inventory.add_arrows(Arrow.Kind.NORMAL, 2)
 	f.hotbar.select_slot(3, f.run.inventory.equipment)
 	assert_true(f.use_item())
@@ -512,7 +523,7 @@ func test_release_uses_one_arrow():
 	assert_eq(f.shots_in_flight(), 1)
 
 func test_no_arrows_no_charge():
-	f.run.inventory.equipment.gain(Equipment.Slot.BOW, 1)
+	f.run.inventory.equipment.gain("bow_1")
 	f.hotbar.select_slot(3, f.run.inventory.equipment)
 	assert_false(f.start_bow())
 	assert_string_contains(f.ui_message(), "矢がない")
@@ -560,6 +571,7 @@ func test_null_bolt_auto_aims_enemy():
 		f._step_bolts(1.0 / 60)
 	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.NULL_BOLT], 0))
 	assert_false(f.cast_spell(screen))  # 次に使えるまで少し待つ
+	assert_string_contains(f.hotbar_text(), "無の弾(2)")  # あと何秒で使えるか
 
 ## マナが足りなければ使えない
 func test_no_mana_no_cast():
@@ -572,8 +584,8 @@ func test_no_mana_no_cast():
 func test_fire_staff_from_camp_and_wheel():
 	_get_camp_pickup(RunState.PickupKind.STAFF_FIRE)
 	var eq: Equipment = f.run.inventory.equipment
-	assert_eq(eq.staff_slot(), Equipment.Slot.STAFF_NONE)
-	assert_true(eq.choose_staff(Equipment.Slot.STAFF_FIRE))
+	assert_eq(eq.current(Equipment.Slot.STAFF), "staff_none_1")
+	assert_true(eq.equip("staff_fire_3"))
 	f.hotbar.select_slot(4, eq)
 	assert_eq(f.usable_spells(), [Magic.Spell.FIREBALL])
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
@@ -585,11 +597,32 @@ func test_fire_staff_from_camp_and_wheel():
 	assert_string_contains(f.hotbar_text(), "火柱")
 	assert_string_contains(f.status_text(), "マナ50/50")
 
+## 火の玉が自分より高い地面で弾けても、そこは燃えない（下から上へは攻撃できない）
+func test_fireball_does_not_burn_higher_ground():
+	var m := HeightMap.new(Vector2i(12, 3))
+	for y in 3:
+		for x in range(4, 12):
+			m.set_height(Vector2i(x, y), 2)
+	_use_map(m, Vector2i(1, 1))
+	f._explode(HeightMap.cell_center(Vector2i(5, 1)), 2 * StackSprite.LEVEL_PX, 0)
+	assert_eq(f.fires_burning(), 0)
+	f._explode(HeightMap.cell_center(Vector2i(2, 1)), 0.0, 0)
+	assert_eq(f.fires_burning(), 1)
+
+## 野営地には、試すための炎の杖が2つ（ランク3と、魔法が3つの炎の大杖ランク9）ある
+func test_camp_has_two_fire_staffs():
+	var ranks := []
+	for p in f.area.pickups:
+		if p[1] == RunState.PickupKind.STAFF_FIRE:
+			ranks.append(p[2])
+	assert_eq(ranks, [3, 9])
+	assert_eq(ItemCatalog.spells("staff_fire_9").size(), 3)
+
 ## 火柱は下の敵に当たってやけどにする。崖の上（自分より高い所）の敵には当たらない
 func test_fire_pillar_only_hits_at_or_below():
 	var eq: Equipment = f.run.inventory.equipment
-	eq.gain(Equipment.Slot.STAFF_FIRE, 2)
-	eq.choose_staff(Equipment.Slot.STAFF_FIRE)
+	eq.gain("staff_fire_3")
+	eq.equip("staff_fire_3")
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
 	for i in 3:
 		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
@@ -612,14 +645,14 @@ func test_fire_pillar_only_hits_at_or_below():
 	e.walker.hp = 50
 	f._fire_pillar(e.walker.pos)
 	assert_eq(50 - e.walker.hp, Damage.magic(f.current_attack(), Magic.POWER[Magic.Spell.FIRE_PILLAR], 3))
-	assert_eq(f.current_attack(), 5 + Equipment.rank_attack(2))  # 杖のランクもつよさに足される
+	assert_eq(f.current_attack(), 5 + Equipment.rank_attack(3))  # 杖のランクもつよさに足される
 	assert_true(e.walker.is_burning())
 
 ## 火の玉は当たった所で弾けて敵をやけどにし、地面が少しの間燃える
 func test_fireball_burns():
 	var eq: Equipment = f.run.inventory.equipment
-	eq.gain(Equipment.Slot.STAFF_FIRE, 1)
-	eq.choose_staff(Equipment.Slot.STAFF_FIRE)
+	eq.gain("staff_fire_1")
+	eq.equip("staff_fire_1")
 	f.hotbar.select_slot(4, eq)
 	var m := HeightMap.new(Vector2i(12, 3))
 	_use_map(m, Vector2i(1, 1))
@@ -636,8 +669,8 @@ func test_fireball_burns():
 ## 炎の雨：高い所から使うほど広い。自分より高い所の敵には当たらない
 func test_fire_rain_from_high_ground():
 	var eq: Equipment = f.run.inventory.equipment
-	eq.gain(Equipment.Slot.STAFF_FIRE, 3)
-	eq.choose_staff(Equipment.Slot.STAFF_FIRE)
+	eq.gain("staff_fire_9")
+	eq.equip("staff_fire_9")
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(8))
 	for i in 9:
 		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
@@ -699,7 +732,7 @@ func test_armor_from_camp():
 
 ## 回転斬り：剣の技能を3つ覚えると、Space で後ろの敵にも当たる
 func test_spin_slash_needs_skill():
-	f.run.inventory.equipment.gain(Equipment.Slot.SWORD, 1)
+	f.run.inventory.equipment.gain("sword_1")
 	f.hotbar.select_slot(2, f.run.inventory.equipment)
 	assert_false(f.spin_slash())
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))

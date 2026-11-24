@@ -23,6 +23,6 @@ func test_weapon_needs_ownership():
 	var eq := Equipment.new()
 	assert_false(h.select_slot(2, eq))
 	assert_eq(h.selected, Hotbar.Item.IRON_BALL)
-	eq.gain(Equipment.Slot.SWORD, 1)
+	eq.gain("sword_1")
 	assert_true(h.select_slot(2, eq))
 	assert_eq(h.selected, Hotbar.Item.SWORD)

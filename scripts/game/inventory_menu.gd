@@ -1,8 +1,8 @@
 class_name InventoryMenu
 extends CanvasLayer
 ## インベントリ画面（design.md 11章。参考：Core Keeper）。Tab で開閉する。開いている間も世界は止まらない。
-## 「装備」のページ：真ん中に主人公の姿、その左に武器の枠、右に防具の枠。枠を選ぶと、右側に持っているランクが並び、
-## クリックで装備するランクを決める。下に持ち物（所持数は無限）。
+## 「装備」のページ：真ん中に主人公の姿、その左に武器の枠（鉄球・剣・弓・杖）、右に防具の枠。枠を選ぶと、右側に
+## その種類の持っている品物が並び、クリックで装備するものを決める（杖なら、無の杖・炎の杖…から選ぶ）。下に持ち物（所持数は無限）。
 ## 「ステータス」のページ：レベルアップでもらったポイントを、6つの項目に振る。3ポイントごとに技能を覚える。
 
 signal close_requested
@@ -19,11 +19,6 @@ const PORTRAIT_CENTER := Vector2(92, 104)  ## パネルの中の、主人公の�
 const PORTRAIT_SCALE := 4.0
 const PORTRAIT_TURN := 0.8  ## 主人公の姿が回る速さ（1秒あたりのラジアン）
 
-## ランクごとの特性（design.md 7章）。ここに足していく。
-const TRAITS := {
-	Equipment.Slot.BALL: {2: "当たる範囲が広い"},
-}
-
 var run: RunState
 var settings: GameSettings
 var page: Page = Page.EQUIP
@@ -35,6 +30,7 @@ var _stats_root: Control
 var _slot_buttons := {}
 var _detail_title: Label
 var _rank_box: VBoxContainer
+var _listed: Array = []  # 今並べている品物の id
 var _items: Label
 var _stats_header: Label
 var _stat_rows := {}  # Stat → [points Label, + Button, effect Label, skill Label]
@@ -86,11 +82,16 @@ func _build_equip_page() -> void:
 		var slot: Equipment.Slot = Equipment.ARMOR[i]
 		_slot_buttons[slot] = _button(_equip_root, "", Vector2(124, 56 + i * 20), func(): select_slot(slot))
 	_detail_title = _label(_equip_root, "", Vector2(176, 26))
+	# 品物が多くても収まるように、スクロールできる箱に並べる
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(176, 42)
+	scroll.size = Vector2(124, 82)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_equip_root.add_child(scroll)
 	_rank_box = VBoxContainer.new()
-	_rank_box.position = Vector2(176, 42)
 	_rank_box.add_theme_constant_override("separation", 2)
-	_equip_root.add_child(_rank_box)
-	_items = _label(_equip_root, "", Vector2(176, 120))
+	scroll.add_child(_rank_box)
+	_items = _label(_equip_root, "", Vector2(176, 128))
 
 func _build_stats_page() -> void:
 	_stats_root = _page_root()
@@ -147,11 +148,10 @@ func select_slot(slot: Equipment.Slot) -> void:
 	selected_slot = slot
 	refresh()
 
-## 選んでいる枠の、rank のものを装備する。持っていなければ false。
-func choose(rank: int) -> bool:
-	if not run.inventory.equipment.equip(selected_slot, rank):
+## 品物 id を装備する。持っていなければ false。
+func choose(id: String) -> bool:
+	if not run.inventory.equipment.equip(id):
 		return false
-	run.inventory.equipment.choose_staff(selected_slot)  # 杖なら、それを手に持つ
 	stats_changed.emit()  # 防具なら最大いのちが変わる
 	refresh()
 	return true
@@ -188,13 +188,15 @@ func allocate(stat: PlayerStats.Stat) -> bool:
 	refresh()
 	return true
 
-## 武器の枠に出す名前。ランク2以上は★と数字を付ける。
-static func weapon_label(slot: Equipment.Slot, rank: int) -> String:
-	if rank <= 0:
+## 武器の枠に出す名前。品物の名前（ランク2以上は★と数字）。何もなければ種類の名前と －。
+static func weapon_label(slot: Equipment.Slot, id: String) -> String:
+	if id == "":
 		return "%s －" % Equipment.NAMES[slot]
-	if rank == 1:
-		return Equipment.NAMES[slot]
-	return "%s★%d" % [Equipment.NAMES[slot], rank]
+	return ItemCatalog.label(id)
+
+## 今並べている品物（テスト用）。
+func listed_items() -> Array:
+	return _listed.duplicate()
 
 func refresh() -> void:
 	_equip_root.visible = page == Page.EQUIP
@@ -218,38 +220,39 @@ func _refresh_equip() -> void:
 	var eq := run.inventory.equipment
 	for slot in _slot_buttons:
 		var b: Button = _slot_buttons[slot]
-		b.text = weapon_label(slot, eq.effective(slot))
+		b.text = weapon_label(slot, eq.current(slot))
 		b.modulate = Color(1.0, 0.9, 0.5) if slot == selected_slot else Color.WHITE
 	_detail_title.text = Equipment.NAMES[selected_slot] + ("（武器）" if Equipment.WEAPONS.has(selected_slot) else "")
 	for c in _rank_box.get_children():
 		_rank_box.remove_child(c)
 		c.queue_free()
-	var ranks := eq.ranks(selected_slot)
-	var grave_ranks: Array = []
+	_listed = eq.items(selected_slot)
+	var in_grave: Array = []
 	if run.grave != null:
-		grave_ranks = run.grave.equipment.get(selected_slot, [])
-	if ranks.is_empty() and grave_ranks.is_empty():
+		for id in run.grave.equipment:
+			if ItemCatalog.slot(id) == selected_slot:
+				in_grave.append(id)
+	if _listed.is_empty() and in_grave.is_empty():
 		var l := _label(_rank_box, "まだ持っていない", Vector2.ZERO)
 		l.modulate.a = 0.7
-	for rank in ranks:
-		# 杖は、手に持っている種類のものだけ●
-		var held: bool = rank == eq.effective(selected_slot) and (not Equipment.STAFFS.has(selected_slot) or eq.staff_slot() == selected_slot)
-		var mark := "●" if held else "○"
-		var text := "%s ランク%d　つよさ＋%d" % [mark, rank, Equipment.rank_attack(rank)]
+	for id in _listed:
+		var mark := "●" if id == eq.current(selected_slot) else "○"
+		var rank := ItemCatalog.rank(id)
+		var text := "%s %s ランク%d\n　つよさ＋%d" % [mark, ItemCatalog.name_of(id), rank, Equipment.rank_attack(rank)]
 		if Equipment.ARMOR.has(selected_slot):
-			text = "%s ランク%d　いのち＋%d" % [mark, rank, rank * Equipment.HP_PER_ARMOR_RANK]
-		var t: String = TRAITS.get(selected_slot, {}).get(rank, "")
-		if Equipment.STAFFS.has(selected_slot):
+			text = "%s %s ランク%d\n　いのち＋%d" % [mark, ItemCatalog.name_of(id), rank, rank * Equipment.HP_PER_ARMOR_RANK]
+		var t := ItemCatalog.trait_of(id)
+		if selected_slot == Equipment.Slot.STAFF:
 			var names: Array[String] = []
-			for sp in Magic.staff_spells(selected_slot, rank):
+			for sp in ItemCatalog.spells(id):
 				names.append(Magic.NAMES[sp])
 			t = "・".join(names)
 		if t != "":
 			text += "\n　" + t
-		var r: int = rank
-		_button(_rank_box, text, Vector2.ZERO, func(): choose(r))
-	for rank in grave_ranks:
-		var l := _label(_rank_box, "× ランク%d：墓石の中にある" % rank, Vector2.ZERO)
+		var item_id: String = id
+		_button(_rank_box, text, Vector2.ZERO, func(): choose(item_id))
+	for id in in_grave:
+		var l := _label(_rank_box, "× %s：墓石の中" % ItemCatalog.label(id), Vector2.ZERO)
 		l.modulate.a = 0.7
 	if selected_slot == Equipment.Slot.BOW:
 		_add_arrow_choices()

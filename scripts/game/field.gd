@@ -283,7 +283,7 @@ func current_attack() -> int:
 		Hotbar.Item.SWORD, Hotbar.Item.BOW:
 			rank = run.inventory.equipment.effective(Hotbar.WEAPON_SLOT[hotbar.selected])
 		Hotbar.Item.STAFF:
-			rank = run.inventory.equipment.effective(run.inventory.equipment.staff_slot())
+			rank = run.inventory.equipment.effective(Equipment.Slot.STAFF)
 	return run.stats.attack(Equipment.rank_attack(rank))
 
 ## 手に持っている鉄球のランクを、装備に合わせる（落としている間は替えない）。
@@ -609,9 +609,7 @@ func _hold_to_swing() -> void:
 
 ## 手に持つ杖で、今使える魔法（ステータスの魔法の数まで）。
 func usable_spells() -> Array:
-	var eq := run.inventory.equipment
-	var slot := eq.staff_slot()
-	return Magic.usable(slot, eq.effective(slot), run.stats.spell_slots())
+	return ItemCatalog.usable_spells(run.inventory.equipment.current(Equipment.Slot.STAFF), run.stats.spell_slots())
 
 ## 選んでいる魔法。使えるものがなければ -1。
 func current_spell() -> int:
@@ -731,7 +729,7 @@ func _step_bolts(delta: float) -> void:
 			continue
 		_place_bolt(p, s)
 
-## 火の玉が弾ける。まわりの、高さの近い敵にダメージとやけど。地面の近くなら、そこが少しの間燃える。
+## 火の玉が弾ける。まわりの、高さの近い敵にダメージとやけど。地面の近くなら、そこが少しの間燃える（自分より高い地面は燃えない）。
 func _explode(pos: Vector2, z: float, from_h: int) -> void:
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(pos) < Magic.FIREBALL_RADIUS \
@@ -739,7 +737,8 @@ func _explode(pos: Vector2, z: float, from_h: int) -> void:
 			if _hit_enemy(e, Magic.Spell.FIREBALL, from_h):
 				e.walker.burn(Magic.BURN_SECONDS)
 	var c := HeightMap.world_to_cell(pos)
-	if map.in_bounds(c) and not map.is_wall(c) and z - map.get_height(c) * StackSprite.LEVEL_PX < 10.0:
+	if map.in_bounds(c) and not map.is_wall(c) and z - map.get_height(c) * StackSprite.LEVEL_PX < 10.0 \
+			and Damage.can_hit(from_h, map.get_height(c)):
 		var s := _effect_sprite(_flame_model(), pos, map.get_height(c), 0.0, Magic.FIRE_PATCH_SECONDS)
 		_fires.append([pos, map.get_height(c), Magic.FIRE_PATCH_SECONDS, s])
 
@@ -767,7 +766,8 @@ func _fire_pillar(point: Vector2) -> void:
 			if _hit_enemy(e, Magic.Spell.FIRE_PILLAR, mv.height):
 				e.walker.burn(Magic.BURN_SECONDS)
 	var c := HeightMap.world_to_cell(point)
-	if run.grave != null and run.grave.area_id == area.id and c == run.grave.cell:
+	if run.grave != null and run.grave.area_id == area.id and c == run.grave.cell \
+			and Damage.can_hit(mv.height, map.get_height(c)):
 		_remove_grave_marker()
 		run.break_grave()
 	var ground := map.get_height(c) if map.in_bounds(c) else 0
@@ -884,7 +884,7 @@ func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
 		RunState.PickupKind.BOW:
 			notice("弓を手に入れた！\n3：持ちかえ　押して溜め、離して撃つ")
 		RunState.PickupKind.STAFF_FIRE:
-			notice("炎の杖を手に入れた！\nTab：杖を持ちかえる　ホイール：魔法を替える")
+			notice("%sを手に入れた！\nTab：杖を持ちかえる　ホイール：魔法を替える" % ItemCatalog.label("staff_fire_%d" % amount))
 		RunState.PickupKind.ARMOR:
 			notice("防具を手に入れた！\n最大いのちが増えた")
 		RunState.PickupKind.ARROWS:
@@ -1200,16 +1200,19 @@ func hotbar_text() -> String:
 		if item == Hotbar.Item.HEAL:
 			name = "回復×%d" % run.inventory.heals
 		elif item == Hotbar.Item.IRON_BALL:
-			name = InventoryMenu.weapon_label(Equipment.Slot.BALL, ball_rank)
+			name = InventoryMenu.weapon_label(Equipment.Slot.BALL, "ball_%d" % ball_rank)
 		else:
-			var slot: Equipment.Slot = eq.staff_slot() if item == Hotbar.Item.STAFF else Hotbar.WEAPON_SLOT[item]
+			var slot: Equipment.Slot = Hotbar.WEAPON_SLOT[item]
 			if eq.effective(slot) == 0:
 				continue
-			name = InventoryMenu.weapon_label(slot, eq.effective(slot))
+			name = InventoryMenu.weapon_label(slot, eq.current(slot))
 			if item == Hotbar.Item.BOW:
 				name += "(矢%d)" % _usable_arrows()
 			elif item == Hotbar.Item.STAFF and item == hotbar.selected and current_spell() >= 0:
-				name += ":" + Magic.NAMES[current_spell()]
+				var spell := current_spell()
+				name += ":" + Magic.NAMES[spell]
+				if magic.remaining(spell) > 0.0:
+					name += "(%d)" % ceili(magic.remaining(spell))
 		var t := "%d %s" % [i + 1, name]
 		parts.append("[%s]" % t if item == hotbar.selected else " %s " % t)
 	return "".join(parts)
@@ -1233,7 +1236,7 @@ func ui_message() -> String:
 ## `-- --screenshot=path.png` で数フレーム後に画面を保存して終了する（確認用）。
 ## `--area=hills` でエリア、`--player=x,y` で位置、`--angle=0.8` でカメラ角度。`--fps` で平均FPSを出す。
 ## `--offset=dx,dy` でプレイヤーをマスの中心からずらす。`--ball=dx,dy` で鉄球をプレイヤーからずらして地面に置く。
-## `--inventory` でインベントリを開いた画面（`--inventory=stats` でステータスのページ）。`--exp=30` で経験値を足す。
+## `--inventory` でインベントリを開いた画面（`--inventory=stats` でステータスのページ、`--inventory=staff` で試しの杖を持って杖の欄）。`--exp=30` で経験値を足す。
 func _maybe_screenshot() -> void:
 	var path := ""
 	var measure_fps := false
@@ -1263,6 +1266,10 @@ func _maybe_screenshot() -> void:
 				menu.page = InventoryMenu.Page.STATS
 			elif a == "--inventory=settings":
 				menu.page = InventoryMenu.Page.SETTINGS
+			elif a == "--inventory=staff":
+				for id in ["staff_fire_1", "staff_fire_3", "staff_fire_9"]:
+					run.inventory.equipment.gain(id)
+				menu.selected_slot = Equipment.Slot.STAFF
 			get_tree().create_timer(0.05).timeout.connect(open_inventory)
 		elif a.begins_with("--exp="):
 			run.stats.add_exp(int(a.trim_prefix("--exp=")))

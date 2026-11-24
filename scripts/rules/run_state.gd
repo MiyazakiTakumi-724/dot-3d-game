@@ -79,19 +79,19 @@ func take_drop(kind: PickupKind, amount: int) -> void:
 		PickupKind.HEAL:
 			inventory.heals += amount
 		PickupKind.STRONG_BALL:
-			inventory.equipment.gain(Equipment.Slot.BALL, 2)
+			inventory.equipment.gain("ball_2")
 		PickupKind.SWORD:
-			inventory.equipment.gain(Equipment.Slot.SWORD, amount)
+			inventory.equipment.gain("sword_%d" % amount)
 		PickupKind.BOW:
-			inventory.equipment.gain(Equipment.Slot.BOW, amount)
+			inventory.equipment.gain("bow_%d" % amount)
 		PickupKind.ARROWS:
 			inventory.add_arrows(Arrow.Kind.NORMAL, amount)
 		PickupKind.POISON_ARROWS:
 			inventory.add_arrows(Arrow.Kind.POISON, amount)
 		PickupKind.STAFF_FIRE:
-			inventory.equipment.gain(Equipment.Slot.STAFF_FIRE, amount)
+			inventory.equipment.gain("staff_fire_%d" % amount)  # amount はランク（ItemCatalog にある炎の杖）
 		PickupKind.ARMOR:
-			inventory.equipment.gain(Equipment.Slot.ARMOR, amount)
+			inventory.equipment.gain("armor_%d" % amount)
 
 func is_picked(id: String) -> bool:
 	return _picked.has(id)

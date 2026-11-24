@@ -1,88 +1,84 @@
 class_name Equipment
 extends RefCounted
-## 武器と防具の持ち物と装備。種類（Slot）ごとに、持っているランクと、装備するランクを覚える。
-## ランク1が最低ランク。死ぬとランク1以外は墓石に入る（design.md 10章）。
-## 装備するランクは死んでも好みとして残るので、墓石から取り返すと設定し直さなくても元に戻る。
-## 鉄球のランク1は最初から持っている。
+## 武器と防具の持ち物と装備。品物（ItemCatalog の id）で持ち、種類（Slot）ごとに1つ装備する。
+## ランク1が最低ランク、10が最高。死ぬとランク1以外は墓石に入る（design.md 10章）。
+## 装備する品物は死んでも好みとして残るので、墓石から取り返すと設定し直さなくても元に戻る。
+## 鉄球（ランク1）と無の杖は最初から持っている。
 
-enum Slot { BALL, SWORD, BOW, STAFF_NONE, STAFF_FIRE, ARMOR }
+enum Slot { BALL, SWORD, BOW, STAFF, ARMOR }
 
 const NAMES := {
 	Slot.BALL: "鉄球",
 	Slot.SWORD: "剣",
 	Slot.BOW: "弓",
-	Slot.STAFF_NONE: "無の杖",
-	Slot.STAFF_FIRE: "炎の杖",
+	Slot.STAFF: "杖",
 	Slot.ARMOR: "防具",
 }
-const WEAPONS := [Slot.BALL, Slot.SWORD, Slot.BOW, Slot.STAFF_NONE, Slot.STAFF_FIRE]
-## 杖（種類ごとに別の枠。手に持つのは choose_staff で選んだ1本）
-const STAFFS := [Slot.STAFF_NONE, Slot.STAFF_FIRE]
+const WEAPONS := [Slot.BALL, Slot.SWORD, Slot.BOW, Slot.STAFF]
 ## 防具は頭・体・足に分けず、1つの枠だけ（2026-11-24 まさのりさんの指示）
 const ARMOR := [Slot.ARMOR]
 const MIN_RANK := 1
+const MAX_RANK := 10
 ## ランクが1上がるごとに足されるつよさ【提案】（ランク2の鉄球＝前の「強い鉄球」で＋2）
 const ATTACK_PER_RANK := 2
-
 ## 防具のランク1つにつき足される最大いのち【提案】（守りの値は未定。design.md 16章）
 const HP_PER_ARMOR_RANK := 4
 
-var _owned := {}  # Slot → Array[int]（小さい順）
-var _equipped := {}  # Slot → int
-var _staff: Slot = Slot.STAFF_NONE  # 手に持つ杖の種類（好み）
+var _owned: Array[String] = []
+var _equipped := {}  # Slot → id（好み）
 
 func _init() -> void:
-	gain(Slot.BALL, MIN_RANK)
-	gain(Slot.STAFF_NONE, MIN_RANK)  # 最初の杖は無の杖
-
-## 手に持つ杖の種類を選ぶ。持っていない杖や杖でないものは選べない。
-func choose_staff(slot: Slot) -> bool:
-	if not STAFFS.has(slot) or effective(slot) == 0:
-		return false
-	_staff = slot
-	return true
-
-## 実際に手に持つ杖。選んだ杖が手元になければ（墓石の中など）無の杖。
-func staff_slot() -> Slot:
-	return _staff if effective(_staff) > 0 else Slot.STAFF_NONE
+	gain("ball_1")
+	gain("staff_none_1")  # 最初の杖は無の杖
 
 ## 武器のランクで足されるつよさ。持っていない（0）とランク1は0。
 static func rank_attack(rank: int) -> int:
 	return maxi(0, rank - 1) * ATTACK_PER_RANK
 
-func gain(slot: Slot, rank: int) -> void:
-	var r: Array = _owned.get(slot, [])
-	if r.has(rank):
-		return
-	r.append(rank)
-	r.sort()
-	_owned[slot] = r
-	if not _equipped.has(slot):
-		_equipped[slot] = rank  # その種類で初めて手に入れたものは、すぐ装備する
-
-func has(slot: Slot, rank: int) -> bool:
-	return _owned.get(slot, []).has(rank)
-
-func ranks(slot: Slot) -> Array:
-	return _owned.get(slot, []).duplicate()
-
-func equip(slot: Slot, rank: int) -> bool:
-	if not has(slot, rank):
+## 品物を手に入れる。知らない品物と、もう持っている品物は false。その種類で初めてのものは、すぐ装備する。
+func gain(id: String) -> bool:
+	if not ItemCatalog.exists(id) or _owned.has(id):
 		return false
-	_equipped[slot] = rank
+	_owned.append(id)
+	var s := ItemCatalog.slot(id)
+	if not _equipped.has(s):
+		_equipped[s] = id
 	return true
 
-## 選んでいるランク（好み）。持っているかは問わない。
-func chosen(slot: Slot) -> int:
-	return _equipped.get(slot, 0)
+func has(id: String) -> bool:
+	return _owned.has(id)
 
-## 実際に使うランク。選んだものが手元になければ（墓石の中など）、持っている一番低いランク。何もなければ0。
-func effective(slot: Slot) -> int:
-	var r: Array = _owned.get(slot, [])
-	if r.is_empty():
-		return 0
+## その種類の持っている品物（ランクの低い順）。
+func items(slot: Slot) -> Array:
+	var out: Array = []
+	for id in _owned:
+		if ItemCatalog.slot(id) == slot:
+			out.append(id)
+	out.sort_custom(func(a, b): return ItemCatalog.rank(a) < ItemCatalog.rank(b) \
+			or (ItemCatalog.rank(a) == ItemCatalog.rank(b) and ItemCatalog.order(a) < ItemCatalog.order(b)))
+	return out
+
+func equip(id: String) -> bool:
+	if not has(id):
+		return false
+	_equipped[ItemCatalog.slot(id)] = id
+	return true
+
+## 選んでいる品物（好み）。持っているかは問わない。
+func chosen(slot: Slot) -> String:
+	return _equipped.get(slot, "")
+
+## 実際に使う品物。選んだものが手元になければ（墓石の中など）、持っている一番低いランクのもの。何もなければ空。
+func current(slot: Slot) -> String:
 	var c := chosen(slot)
-	return c if r.has(c) else r[0]
+	if has(c):
+		return c
+	var list := items(slot)
+	return list[0] if not list.is_empty() else ""
+
+## 実際に使う品物のランク。何もなければ0。
+func effective(slot: Slot) -> int:
+	return ItemCatalog.rank(current(slot))
 
 ## 装備している防具で足される最大いのち。
 func armor_hp() -> int:
@@ -91,30 +87,20 @@ func armor_hp() -> int:
 		total += effective(slot) * HP_PER_ARMOR_RANK
 	return total
 
-## 死んだとき：ランク1以外を取り出して返す（墓石に入れる分）。Slot → Array[int]。
-func take_for_grave() -> Dictionary:
-	var taken := {}
-	for slot in _owned.keys():
-		var keep: Array = []
-		var out: Array = []
-		for rank in _owned[slot]:
-			if rank == MIN_RANK:
-				keep.append(rank)
-			else:
-				out.append(rank)
-		if not out.is_empty():
-			taken[slot] = out
-		if keep.is_empty():
-			_owned.erase(slot)
-		else:
-			_owned[slot] = keep
+## 死んだとき：ランク1以外を取り出して返す（墓石に入れる分。id の配列）。
+func take_for_grave() -> Array:
+	var taken: Array = []
+	for id in _owned.duplicate():
+		if ItemCatalog.rank(id) > MIN_RANK:
+			taken.append(id)
+			_owned.erase(id)
 	return taken
 
 ## 墓石から取り返したものを戻す。
-func restore(taken: Dictionary) -> void:
-	for slot in taken.keys():
-		for rank in taken[slot]:
-			var c := chosen(slot)
-			gain(slot, rank)
-			if c != 0:
-				_equipped[slot] = c  # gain で好みが変わらないように
+func restore(taken: Array) -> void:
+	for id in taken:
+		var s := ItemCatalog.slot(id)
+		var c := chosen(s)
+		gain(id)
+		if c != "":
+			_equipped[s] = c  # gain で好みが変わらないように

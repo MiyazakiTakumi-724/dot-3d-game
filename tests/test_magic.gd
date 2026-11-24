@@ -1,24 +1,6 @@
 extends GutTest
-## 魔法（2026-11-24 決定）：装備する杖で使える魔法が決まる。杖のランク1は1つ、2は2つ、3以上は3つ。
-## 無の杖はランク1だけで、無の弾の1つ。ステータスの「魔法」で、同時に使える数（1〜3）が決まる。
-
-func test_none_staff_has_one_spell():
-	assert_eq(Magic.staff_spells(Equipment.Slot.STAFF_NONE, 1), [Magic.Spell.NULL_BOLT])
-
-func test_fire_staff_spells_grow_with_rank():
-	var s := Equipment.Slot.STAFF_FIRE
-	assert_eq(Magic.staff_spells(s, 1), [Magic.Spell.FIREBALL])
-	assert_eq(Magic.staff_spells(s, 2), [Magic.Spell.FIREBALL, Magic.Spell.FIRE_PILLAR])
-	assert_eq(Magic.staff_spells(s, 3).size(), 3)
-	assert_eq(Magic.staff_spells(s, 6).size(), 3)
-	assert_eq(Magic.staff_spells(s, 0), [])
-
-## 杖に魔法が3つあっても、ステータスで使える数までしか使えない
-func test_usable_limited_by_spell_slots():
-	var s := Equipment.Slot.STAFF_FIRE
-	assert_eq(Magic.usable(s, 3, 1), [Magic.Spell.FIREBALL])
-	assert_eq(Magic.usable(s, 3, 2).size(), 2)
-	assert_eq(Magic.usable(s, 1, 3), [Magic.Spell.FIREBALL])
+## 魔法（2026-11-24 決定）：装備する杖で使える魔法が決まる（杖ごとの魔法は ItemCatalog）。
+## ステータスの「魔法」で、同時に使える数（1〜3）が決まる。
 
 ## 炎の雨は、高い所から使うほど広い
 func test_rain_radius_grows_with_height():

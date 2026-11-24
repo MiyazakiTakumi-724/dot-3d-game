@@ -11,7 +11,7 @@ const WEAPON_SLOT := {
 	Item.IRON_BALL: Equipment.Slot.BALL,
 	Item.SWORD: Equipment.Slot.SWORD,
 	Item.BOW: Equipment.Slot.BOW,
-	Item.STAFF: Equipment.Slot.STAFF_NONE,
+	Item.STAFF: Equipment.Slot.STAFF,
 }
 
 var selected: Item = Item.IRON_BALL
