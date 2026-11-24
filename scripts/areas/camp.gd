@@ -4,7 +4,7 @@ extends RefCounted
 const ID := "camp"
 const TITLE := "野営地"
 const ORIGIN := Vector2i(0, 0)
-const START := Vector2i(12, 12)
+const START := Vector2i(12, 11)
 const HEIGHTS := [
 	"111111111111111111111111",
 	"111111111111111111111111",

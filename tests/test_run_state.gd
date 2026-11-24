@@ -3,7 +3,7 @@ extends GutTest
 var rs: RunState
 
 func before_each():
-	rs = RunState.new("area_02", Vector2i(1, 1))
+	rs = RunState.new("hills", Vector2i(1, 1))
 
 func _fill():
 	rs.inventory.money = 40
@@ -14,7 +14,7 @@ func _fill():
 
 func test_death_moves_belongings_to_grave():
 	_fill()
-	var g := rs.on_death("area_02", Vector2i(9, 4))
+	var g := rs.on_death("hills", Vector2i(9, 4))
 	assert_eq(g.cell, Vector2i(9, 4))
 	assert_eq([g.money, g.materials, g.heals, g.has_strong_ball], [20, 3, 2, true])
 	var inv := rs.inventory
@@ -22,13 +22,13 @@ func test_death_moves_belongings_to_grave():
 
 func test_odd_money_keeps_larger_half():
 	rs.inventory.money = 25
-	var g := rs.on_death("area_02", Vector2i(2, 2))
+	var g := rs.on_death("hills", Vector2i(2, 2))
 	assert_eq(g.money, 12)
 	assert_eq(rs.inventory.money, 13)
 
 func test_break_grave_returns_everything():
 	_fill()
-	rs.on_death("area_02", Vector2i(9, 4))
+	rs.on_death("hills", Vector2i(9, 4))
 	rs.break_grave()
 	var inv := rs.inventory
 	assert_eq([inv.money, inv.materials, inv.heals, inv.has_strong_ball, inv.exp], [40, 3, 2, true, 5])
@@ -36,9 +36,9 @@ func test_break_grave_returns_everything():
 
 func test_second_death_erases_old_grave():
 	_fill()
-	rs.on_death("area_02", Vector2i(9, 4))          # 墓石に 20, 手元 20
+	rs.on_death("hills", Vector2i(9, 4))          # 墓石に 20, 手元 20
 	rs.inventory.materials = 1
-	var g2 := rs.on_death("area_02", Vector2i(3, 3)) # 墓石に 10, 手元 10
+	var g2 := rs.on_death("hills", Vector2i(3, 3)) # 墓石に 10, 手元 10
 	assert_eq(rs.grave, g2)
 	assert_eq([g2.money, g2.materials, g2.has_strong_ball], [10, 1, false])
 	rs.break_grave()
@@ -47,9 +47,9 @@ func test_second_death_erases_old_grave():
 
 func test_empty_death_still_replaces_old_grave():
 	_fill()
-	rs.on_death("area_02", Vector2i(9, 4))
+	rs.on_death("hills", Vector2i(9, 4))
 	rs.inventory.money = 0
-	var g2 := rs.on_death("area_02", Vector2i(3, 3))
+	var g2 := rs.on_death("hills", Vector2i(3, 3))
 	assert_eq(rs.grave, g2)
 	assert_eq([g2.money, g2.materials, g2.heals, g2.has_strong_ball], [0, 0, 0, false])
 
@@ -73,12 +73,12 @@ func test_pickups_only_once():
 
 func test_pickups_stay_picked_after_death():
 	rs.collect("a:7", RunState.PickupKind.HEAL, 1)
-	rs.on_death("area_02", Vector2i(2, 2))
+	rs.on_death("hills", Vector2i(2, 2))
 	assert_true(rs.is_picked("a:7"))
 
 func test_doors_stay_open_after_death():
 	rs.open_door("d0")
-	rs.on_death("area_02", Vector2i(2, 2))
+	rs.on_death("hills", Vector2i(2, 2))
 	assert_true(rs.is_door_open("d0"))
 	assert_false(rs.is_door_open("d1"))
 
@@ -91,9 +91,9 @@ func test_heal_use():
 	assert_false(rs.inventory.try_use_heal(1, 3))
 
 func test_near_checkpoint():
-	assert_true(rs.is_near_checkpoint("area_02", Vector2i(1, 1)))
-	assert_true(rs.is_near_checkpoint("area_02", Vector2i(2, 2)))
-	assert_false(rs.is_near_checkpoint("area_02", Vector2i(3, 1)))
+	assert_true(rs.is_near_checkpoint("hills", Vector2i(1, 1)))
+	assert_true(rs.is_near_checkpoint("hills", Vector2i(2, 2)))
+	assert_false(rs.is_near_checkpoint("hills", Vector2i(3, 1)))
 
 func test_ball_is_strong_needs_both():
 	var inv := rs.inventory
@@ -107,7 +107,7 @@ func test_ball_is_strong_needs_both():
 func test_equip_survives_death_and_returns_with_grave():
 	rs.inventory.has_strong_ball = true
 	rs.inventory.equipped_strong = true
-	rs.on_death("area_02", Vector2i(4, 4))
+	rs.on_death("hills", Vector2i(4, 4))
 	assert_false(rs.inventory.ball_is_strong())
 	rs.break_grave()
 	assert_true(rs.inventory.ball_is_strong())

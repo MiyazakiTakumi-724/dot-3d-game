@@ -337,7 +337,7 @@ def make_camp():
         if (x in (0, 1, 22, 23) or y in (0, 1, 18, 19)) and (x, y) not in g.reserved:
             g.O[y][x] = g.rng.choice('TPTB')
     scatter(g, [('F', 3), ('T', 1), ('B', 1)], 0.10, 5)
-    g.start = (12, 12)
+    g.start = (12, 11)
     return g
 
 # ---------------------------------------------------------------- 岩場（行き止まり。素材と回復がある）

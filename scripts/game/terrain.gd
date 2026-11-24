@@ -250,8 +250,30 @@ static func lower_sides(map: HeightMap, cell: Vector2i) -> int:
 			bits |= 1 << i
 	return bits
 
-## 出口の地面に置く、平たい矢印（北向き）。
-static func arrow_model() -> VoxelModel:
+## 出口の地面に置く、平たい矢印。dir は向き（北＝(0,-1)、東＝(1,0) など）。
+static func arrow_model(dir: Vector2i = Vector2i(0, -1)) -> VoxelModel:
+	var north := _arrow_north()
+	if dir == Vector2i(0, -1):
+		return north
+	var m := VoxelModel.new()
+	m.size = north.size
+	for y in 12:
+		for x in 12:
+			var c := north.get_voxel(Vector3i(x, y, 0))
+			if c.a == 0.0:
+				continue
+			var p := Vector3i(x, y, 0)
+			match dir:
+				Vector2i(1, 0):
+					p = Vector3i(11 - y, x, 0)
+				Vector2i(0, 1):
+					p = Vector3i(11 - x, 11 - y, 0)
+				Vector2i(-1, 0):
+					p = Vector3i(y, 11 - x, 0)
+			m.set_voxel(p, c)
+	return m
+
+static func _arrow_north() -> VoxelModel:
 	var m := VoxelModel.new()
 	m.size = Vector3i(12, 12, 1)
 	var c := Color("ffe27a")
