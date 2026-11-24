@@ -558,6 +558,45 @@ def finish(g):
         print('  広い平地がある:', g.name, flat)
     return hub
 
+# ---------------------------------------------------------------- 隠しもの
+# 最初のカメラの向き（北が画面の上）では、すぐ手前（南）の崖か木の陰になって見えない宝箱。
+# カメラを回すと見える。たどり着けるマスのうち、出口から離れていて、北側は開けている所を選ぶ。
+HIDDEN = {'camp': ('HEAL', 2), 'rocks': ('MONEY', 30), 'hills': ('MATERIAL', 3), 'forest': ('HEAL', 2)}
+
+def hidden_spots(g, hub):
+    reach = bfs(g, hub)
+    exits = [c for e in g.exits for c in exit_cells(g.name, *e[1:4])]
+    taken = {(x, y) for x, y, _, _ in g.pickups} | {(x, y) for x, y, _, _ in g.enemies}
+    out = []
+    for (x, y) in reach:
+        if (x, y) in g.reserved or (x, y) in taken or g.O[y][x] != '.' or not g.inside(x, y + 1) or not g.inside(x, y - 1):
+            continue
+        if min(abs(x - ex) + abs(y - ey) for ex, ey in exits) < 6:
+            continue
+        h = g.H[y][x]
+        front_h, front_o = g.H[y + 1][x], g.O[y + 1][x]
+        cliff = front_h >= h + 2
+        tree = front_o in 'TP' and front_h >= h
+        back_open = g.O[y - 1][x] not in WALLS and g.H[y - 1][x] <= h + 1
+        if (cliff or tree) and back_open:
+            out.append((x, y))
+    return sorted(out)
+
+def place_hidden(g, hub):
+    spots = hidden_spots(g, hub)
+    if not spots:
+        print('  隠しものを置く所がない:', g.name)
+        return
+    reach = bfs(g, hub)
+    # 崖の陰を優先し、その中でたき火・入口から一番遠い所
+    def score(c):
+        x, y = c
+        return (g.H[y + 1][x] >= g.H[y][x] + 2, reach[c])
+    x, y = max(spots, key=score)
+    kind, amount = HIDDEN[g.name]
+    pickup(g, x, y, kind, amount)
+    print('  隠しもの:', g.name, (x, y), kind, '崖' if g.H[y + 1][x] >= g.H[y][x] + 2 else '木')
+
 def dist(g, a, b):
     return bfs(g, a).get(b)
 
@@ -590,6 +629,8 @@ def main():
     gs = {'camp': make_camp(), 'rocks': make_rocks(), 'hills': make_hills(), 'forest': make_forest()}
     match_seams(gs)
     hubs = {k: finish(g) for k, g in gs.items()}
+    for k, g in gs.items():
+        place_hidden(g, hubs[k])
     camp, hills, forest = gs['camp'], gs['hills'], gs['forest']
     # 経路の長さ（マス）：たき火 → 丘陵 → 奥の森の強い鉄球
     def mid_exit(area, edge, a, b, inward=1):

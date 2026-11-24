@@ -100,4 +100,5 @@ const PICKUPS := [
 	[Vector2i(45, 16), RunState.PickupKind.HEAL, 1],
 	[Vector2i(24, 3), RunState.PickupKind.MONEY, 10],
 	[Vector2i(13, 4), RunState.PickupKind.MATERIAL, 1],
+	[Vector2i(23, 3), RunState.PickupKind.MATERIAL, 3],
 ]
