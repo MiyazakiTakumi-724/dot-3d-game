@@ -53,6 +53,19 @@ func height_px() -> float:
 	var apex := 8.0 + from.distance_to(to) * 0.25
 	return lerpf(from_px, to_px, k) + apex * 4.0 * k * (1.0 - k)
 
+## 今の傾き：横に1px進むあいだに上がる高さ（px）。上向きなら正。矢の絵を傾けるのに使う。
+func slope() -> float:
+	var d := from.distance_to(to)
+	if d <= 0.0:
+		return 0.0
+	var k := progress()
+	var apex := 8.0 + d * 0.25
+	return (to_px - from_px) / d + apex * 4.0 * (1.0 - 2.0 * k) / d
+
+## 横に進む向き（長さ1）。
+func direction() -> Vector2:
+	return (to - from).normalized()
+
 ## 落ちた点（地面の高さ land_h）が、other_pos に立つ高さ other_h のものに当たるか。
 static func hits(land_pos: Vector2, land_h: int, other_pos: Vector2, other_h: int) -> bool:
 	return land_h == other_h and land_pos.distance_to(other_pos) < HIT_RADIUS

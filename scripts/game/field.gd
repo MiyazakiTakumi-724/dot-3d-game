@@ -70,6 +70,7 @@ var rng := RandomNumberGenerator.new()
 ## 魔法の弾の照準（狙う高さに浮かぶ輪）。地面の影は aim_marker
 var aim_reticle: StackSprite
 var _shots: Array = []  # 飛んでいる矢 [Arrow, StackSprite, ダメージ]
+const STUCK_ARROW_SECONDS := 0.8  ## 落ちた矢を地面に刺さったまま見せる時間
 var _arrow_blink := 0.0
 ## まだ作っていない、ほかのエリアのモデルの名前（遊んでいる間に少しずつ作る）
 var _warm_queue: Array[String] = []
@@ -531,7 +532,9 @@ func _fire_arrow(kind: Arrow.Kind, r: float, target: Vector2) -> void:
 	s.draw_bias = 3
 	s.shadow_radius = 1.5
 	s.always_redraw = true
-	s.set_model(VoxelModel.box(Vector3i(2, 2, 2), Color("9be36b") if kind == Arrow.Kind.POISON else Color("e8d9b0")))
+	s.voxel_scale = Props.VOXEL_SCALE
+	s.outline_color = Player.OUTLINE_COLOR
+	s.turn = a.direction().angle() - PI / 2  # 模型の前（+y）を飛ぶ向きへ
 	_area_root.add_child(s)
 	_shots.append([a, s, dmg])
 	_place_shot(a, s)
@@ -539,12 +542,30 @@ func _fire_arrow(kind: Arrow.Kind, r: float, target: Vector2) -> void:
 func shots_in_flight() -> int:
 	return _shots.size()
 
+## 飛んでいる矢を、今の位置・高さ・傾きに合わせる（傾きの段が変わったときだけ模型を替える）。
+## 矢の真ん中が、矢の高さに来るように置く。
 func _place_shot(a: Arrow, s: StackSprite) -> void:
-	var hp := a.height_px()
+	var m := Props.arrow_model(a.kind, atan(a.slope()))
+	if not s.has_meta("model") or s.get_meta("model") != m:
+		s.set_meta("model", m)
+		s.set_model(m)
+	var hp := a.height_px() - Props.ARROW_BOX.z / 2.0 * Props.VOXEL_SCALE
 	s.world_pos = a.pos()
 	s.base_height = int(floor(hp / StackSprite.LEVEL_PX))
 	s.lift_px = hp - s.base_height * StackSprite.LEVEL_PX
 	s.refresh()
+
+## 落ちた矢は、少しの間地面に刺さったまま見せる。
+func _stick_arrow(a: Arrow) -> void:
+	var c := HeightMap.world_to_cell(a.to)
+	if not map.in_bounds(c) or map.is_water(c) or map.is_pit(c) or map.is_wall(c):
+		return
+	var m := Props.arrow_model(a.kind, -Props.PITCH_MAX)
+	var s := _effect_sprite(m, a.to, map.get_height(c), -Props.ARROW_BOX.z * 0.25 * Props.VOXEL_SCALE, STUCK_ARROW_SECONDS)
+	s.voxel_scale = Props.VOXEL_SCALE
+	s.outline_color = Player.OUTLINE_COLOR
+	s.turn = a.direction().angle() - PI / 2
+	s.set_meta("steady", true)
 
 ## 飛んでいる矢を進め、落ちた所の敵（同じ高さ）に当てる。墓石にも当たる。
 func _step_shots(delta: float) -> void:
@@ -557,6 +578,7 @@ func _step_shots(delta: float) -> void:
 			continue
 		s.queue_free()
 		_shots.remove_at(i)
+		_stick_arrow(a)
 		_arrow_landed(a, dmg)
 
 func _arrow_landed(a: Arrow, dmg: int) -> void:
@@ -841,7 +863,8 @@ func _step_effects(delta: float) -> void:
 				s.queue_free()
 			_effects.remove_at(i)
 			continue
-		s.modulate.a = clampf(_effects[i][1] * 4.0, 0.0, 1.0) * (0.85 + 0.15 * sin(_arrow_blink * 20.0))
+		var flicker := 1.0 if s.has_meta("steady") else 0.85 + 0.15 * sin(_arrow_blink * 20.0)  # 炎はゆらめく
+		s.modulate.a = clampf(_effects[i][1] * 4.0, 0.0, 1.0) * flicker
 
 ## 小さな炎（下が赤、上が黄色）。
 static func _flame_model() -> VoxelModel:

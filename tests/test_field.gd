@@ -523,6 +523,25 @@ func test_release_uses_one_arrow():
 	assert_eq(f.run.inventory.arrow_count(Arrow.Kind.NORMAL), 1)
 	assert_eq(f.shots_in_flight(), 1)
 
+## 飛んでいる矢は矢の形で、飛ぶ向きへ向き、傾きに合った模型になる。落ちると少しの間、刺さったまま見える
+func test_arrow_drawn_as_arrow_and_sticks():
+	f.run.inventory.equipment.gain("bow_1")
+	f.run.inventory.add_arrows(Arrow.Kind.NORMAL, 1)
+	f.hotbar.select_slot(3, f.run.inventory.equipment)
+	assert_true(f.use_item())
+	assert_true(f.release_bow())
+	var a: Arrow = f._shots[0][0]
+	var s: StackSprite = f._shots[0][1]
+	assert_same(s._layers, Props.arrow_model(Arrow.Kind.NORMAL, atan(a.slope())).textures())
+	assert_almost_eq(s.turn, a.direction().angle() - PI / 2, 0.001)
+	var before: int = f._effects.size()
+	for i in 40:
+		f._step_shots(0.05)
+	assert_eq(f.shots_in_flight(), 0)
+	var c := HeightMap.world_to_cell(a.to)
+	var sticks: bool = f.map.in_bounds(c) and not f.map.is_wall(c) and not f.map.is_water(c) and not f.map.is_pit(c)
+	assert_eq(f._effects.size(), before + (1 if sticks else 0))
+
 func test_no_arrows_no_charge():
 	f.run.inventory.equipment.gain("bow_1")
 	f.hotbar.select_slot(3, f.run.inventory.equipment)

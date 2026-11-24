@@ -9,6 +9,7 @@ var world_pos: Vector2 = Vector2.ZERO
 var base_height: int = 0
 var lift_px: float = 0.0  ## 段とは別に浮かせる量（落下中の鉄球など）
 var draw_bias: int = 0  ## 同じ奥行きのとき、大きい方を後に描く
+var turn := 0.0  ## 模型の向き（ワールドでの回転、ラジアン）。模型の前（+y）を向けたい方へ回すのに使う
 ## true なら立っているマスの中心で奥行きを決める（動くもの用）。
 ## マスの奥側に立っても、足元の床より後に描かれるようにするため。
 var sort_by_cell := false
@@ -110,7 +111,7 @@ func _draw() -> void:
 		return
 	_drawn_angle = camera.angle
 	_draw_shadow()
-	_draw_stack(-camera.angle)
+	_draw_stack(turn - camera.angle)
 	_draw_rim()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 

@@ -54,6 +54,17 @@ func test_arrow_flies_over_walls_in_an_arc():
 	assert_true(a.update(a.duration))
 	assert_eq(a.pos(), Vector2(80, 0))
 
+## 矢の傾き（横に1px進むあいだに上がる高さ）：飛び始めは上向き、真ん中で水平、落ちるときは下向き。向きは進む向き
+func test_arrow_slope_follows_the_arc():
+	var a := Arrow.new()
+	a.launch(Vector2(0, 0), 0.0, Vector2(80, 0), 0.0)
+	assert_gt(a.slope(), 0.0)
+	a.update(a.duration * 0.5)
+	assert_almost_eq(a.slope(), 0.0, 0.001)
+	a.update(a.duration * 0.4)
+	assert_lt(a.slope(), 0.0)
+	assert_eq(a.direction(), Vector2.RIGHT)
+
 func test_arrow_hits_only_same_height_near_landing():
 	assert_true(Arrow.hits(Vector2(10, 10), 2, Vector2(14, 10), 2))
 	assert_false(Arrow.hits(Vector2(10, 10), 2, Vector2(14, 10), 1))

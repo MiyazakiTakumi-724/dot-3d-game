@@ -39,9 +39,6 @@ const GLASS_SHINE := Color("ffe6f1")
 const BALL := Color("6b6f78")
 const STRONG_BALL := Color("7a2230")
 const NONE := Color(0, 0, 0, 0)
-## 影は青紫へ、光は暖かい白へ寄せる（色相をずらして、暗い所も濁らないように）
-const SHADOW := Color("2b1d47")
-const LIGHT := Color("fff3d6")
 
 ## デザインの案。hair_kind：soft（ふわっと）・spiky（ツンツン）。gear：頭の装備（circlet 額当て・wing_helm 羽根かぶと・hood フード）。
 ## cape・scarf・vest は NONE ならなし。
@@ -464,47 +461,6 @@ static func _potion(m: VoxelModel) -> void:
 
 # ---------------------------------------------------------------- 影
 
-## 光の向き（上から、少し前と左から）
-const LIGHT_DIR := Vector3(-0.3, 0.45, 1.0)
-
-## 影をつける。まわりの空いている向きから面の向きを出し、光の当たり方で4段階に塗る（明るい・ふつう・影・濃い影）。
-## 影は青紫へ、明るい所は暖かい白へ寄せる。輪切りのふちごとに縞が出ないよう、ボクセル1つの上下だけでなく、まわり全部で向きを決める。
+## 影をつける（VoxelShade。小物や地形と同じ付け方）。
 static func _shade(src: VoxelModel) -> VoxelModel:
-	var sx := src.size.x
-	var sy := src.size.y
-	var sz := src.size.z
-	var occ := PackedByteArray()
-	occ.resize(sx * sy * sz)
-	var vox := src.voxels()
-	for p: Vector3i in vox:
-		if vox[p].a > 0.0:
-			occ[(p.z * sy + p.y) * sx + p.x] = 1
-	var light := LIGHT_DIR.normalized()
-	var m := VoxelModel.new()
-	m.size = src.size
-	for p: Vector3i in vox:
-		var c: Color = vox[p]
-		if c.a <= 0.0:
-			continue
-		var n := Vector3.ZERO
-		for dz in [-1, 0, 1]:
-			for dy in [-1, 0, 1]:
-				for dx in [-1, 0, 1]:
-					var q := p + Vector3i(dx, dy, dz)
-					var empty := q.x < 0 or q.y < 0 or q.z < 0 or q.x >= sx or q.y >= sy or q.z >= sz \
-						or occ[(q.z * sy + q.y) * sx + q.x] == 0
-					if empty:
-						n += Vector3(dx, dy, dz)
-		var out := c.lerp(SHADOW, 0.2)
-		if n != Vector3.ZERO:
-			var k := n.normalized().dot(light)
-			if k > 0.72:
-				out = c.lerp(LIGHT, 0.35)
-			elif k > 0.3:
-				out = c.lerp(LIGHT, 0.08)
-			elif k > -0.15:
-				out = c.lerp(SHADOW, 0.2)
-			else:
-				out = c.lerp(SHADOW, 0.38)
-		m.set_voxel(p, out)
-	return m
+	return VoxelShade.apply(src)
