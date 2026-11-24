@@ -335,6 +335,8 @@ func _process(delta: float) -> void:
 	if bow.charging and (hotbar.selected != Hotbar.Item.BOW or menu.is_open() or area_state.result != AreaState.Result.PLAYING):
 		bow.cancel()
 	player.charge = bow.rate() if bow.charging else -1.0
+	player.set_look(held_look(), run.inventory.equipment.current(Equipment.Slot.ARMOR))
+	ball.stowed = hotbar.selected != Hotbar.Item.IRON_BALL
 	if not _warm_queue.is_empty() and not is_switching():
 		Terrain.warm(_warm_queue, WARM_BUDGET_MS)
 	if is_switching():
@@ -600,6 +602,15 @@ func spin_slash() -> bool:
 			e.walker.take_damage(dmg)
 			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
 	return true
+
+## 主人公が手に持って見せる物（HeroModel）。剣・弓・杖は品物の id、回復は "heal"、鉄球は ""（頭の上に乗せる）。
+func held_look() -> String:
+	match hotbar.selected:
+		Hotbar.Item.SWORD, Hotbar.Item.BOW, Hotbar.Item.STAFF:
+			return run.inventory.equipment.current(Hotbar.WEAPON_SLOT[hotbar.selected])
+		Hotbar.Item.HEAL:
+			return "heal"
+	return ""
 
 ## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
 func _hold_to_swing() -> void:
@@ -1236,7 +1247,7 @@ func ui_message() -> String:
 ## `-- --screenshot=path.png` で数フレーム後に画面を保存して終了する（確認用）。
 ## `--area=hills` でエリア、`--player=x,y` で位置、`--angle=0.8` でカメラ角度。`--fps` で平均FPSを出す。
 ## `--offset=dx,dy` でプレイヤーをマスの中心からずらす。`--ball=dx,dy` で鉄球をプレイヤーからずらして地面に置く。
-## `--inventory` でインベントリを開いた画面（`--inventory=stats` でステータスのページ、`--inventory=staff` で試しの杖を持って杖の欄）。`--exp=30` で経験値を足す。
+## `--gear` で試しの武器と防具を持ち、`--hold=2` で手に持つ物を選ぶ。`--inventory` でインベントリを開いた画面（`--inventory=stats` でステータスのページ、`--inventory=staff` で試しの杖を持って杖の欄）。`--exp=30` で経験値を足す。
 func _maybe_screenshot() -> void:
 	var path := ""
 	var measure_fps := false
@@ -1271,6 +1282,12 @@ func _maybe_screenshot() -> void:
 					run.inventory.equipment.gain(id)
 				menu.selected_slot = Equipment.Slot.STAFF
 			get_tree().create_timer(0.05).timeout.connect(open_inventory)
+		elif a == "--gear":
+			for id in ["sword_1", "bow_1", "staff_fire_3", "armor_1"]:
+				run.inventory.equipment.gain(id)
+			apply_stats()
+		elif a.begins_with("--hold="):
+			hotbar.select_slot(int(a.trim_prefix("--hold=")), run.inventory.equipment)
 		elif a.begins_with("--exp="):
 			run.stats.add_exp(int(a.trim_prefix("--exp=")))
 			apply_stats()

@@ -26,7 +26,11 @@ var _invulnerable := 0.0
 var can_crouch := false
 var crouching := false
 const CROUCH_SPEED := 0.5
-const CROUCH_HIDE_LAYERS := 4  ## しゃがむと上の輪切りをこれだけ描かない
+const CROUCH_HIDE_LAYERS := 4  ## しゃがむと下の輪切り（足）をこれだけ描かず、体を下げる
+const OUTLINE_COLOR := Color(0.09, 0.07, 0.12)  ## 体のまわりのふち（草の上でも見分けやすく）
+## 今の姿（手に持つ物と防具）。set_look で変える
+var held_look := ""
+var armor_look := ""
 ## 回転斬りの見た目
 var _spin_t := 0.0
 ## 弓のチャージ率（0.3〜1.0）。溜めていなければ負。頭の上にバーを出す
@@ -50,16 +54,16 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	sort_by_cell = true
 	always_redraw = true  # 向きが変わる
 	shadow_radius = 4.0
-	set_model(body_model())
+	set_model(HeroModel.build(held_look, armor_look))
 	_sync()
 
-## 主人公の形。インベントリ画面の姿にも使う。
-static func body_model() -> VoxelModel:
-	var m := VoxelModel.box(Vector3i(6, 6, 10), Color("3b6dd8"))
-	for y in 2:  # 顔の向きが分かるように前側に目印
-		for x in 2:
-			m.set_voxel(Vector3i(2 + x, 5, 7 + y), Color("f4e1c1"))
-	return m
+## 姿を変える（手に持つ物の品物 id と防具の id。HeroModel.build）。同じなら何もしない。
+func set_look(held: String, armor: String) -> void:
+	if held == held_look and armor == armor_look:
+		return
+	held_look = held
+	armor_look = armor
+	set_model(HeroModel.build(held, armor))
 
 ## amount のダメージを受ける。無敵の間は受けない。受けたら true。
 func take_hit(amount := 1) -> bool:
@@ -157,10 +161,17 @@ func _draw() -> void:
 	# 向いている方向の目印が回るよう、モデルの「前」(+y) を facing に合わせる
 	var face_angle := mover.facing.angle() - PI / 2
 	_draw_shadow()
-	var n := _layers.size() - (CROUCH_HIDE_LAYERS if crouching else 0)
-	for i in n:
+	var skip := CROUCH_HIDE_LAYERS if crouching else 0
+	var rot := face_angle - camera.angle
+	# 先に全部の輪切りを上下左右へ1pxずらして暗い色で描き、ふちにする
+	for i in range(skip, _layers.size()):
 		var t := _layers[i]
-		draw_set_transform(Vector2(0, -i), face_angle - camera.angle, Vector2.ONE)
+		for off in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			draw_set_transform(Vector2(0, skip - i) + off, rot, Vector2.ONE)
+			draw_texture(t, -t.get_size() * 0.5, OUTLINE_COLOR)
+	for i in range(skip, _layers.size()):
+		var t := _layers[i]
+		draw_set_transform(Vector2(0, skip - i), rot, Vector2.ONE)
 		draw_texture(t, -t.get_size() * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if _swing_t > 0.0:
@@ -171,7 +182,7 @@ func _draw() -> void:
 	if _spin_t > 0.0:
 		draw_arc(Vector2(0, -4), 16.0, 0.0, TAU, 20, Color(1, 1, 1, 0.9), 2.0)
 	if charge >= 0.0:
-		var y := -_layers.size() - 24.0  # 頭の上の鉄球よりさらに上
+		var y := -_layers.size() - 4.0  # 頭の上（弓を持っている間は、鉄球は頭に乗せていない）
 		var k := (charge - Bow.MIN_RATE) / (1.0 - Bow.MIN_RATE)
 		draw_rect(Rect2(-7, y, 14, 3), Color(0.05, 0.05, 0.08))
 		draw_rect(Rect2(-6, y + 1, 12.0 * k, 1), Color("ffd23f") if k >= 1.0 else Color("e8d9b0"))

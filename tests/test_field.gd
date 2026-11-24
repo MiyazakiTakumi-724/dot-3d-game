@@ -753,3 +753,30 @@ func test_easy_mode_from_settings_page():
 	assert_true(f.settings.easy_mode)
 	f.hurt_player(4)
 	assert_eq(f.player.hp, 8)
+
+## 主人公の姿は、手に持つ物と防具で変わる。鉄球は、手に持つ物に選んでいる間だけ頭の上に見える
+func test_hero_look_follows_held_item():
+	var eq: Equipment = f.run.inventory.equipment
+	f._process(0.016)
+	assert_eq(f.player.held_look, "")
+	assert_false(f.ball.stowed)
+	assert_true(f.hotbar.select_slot(4, eq))
+	f._process(0.016)
+	assert_eq(f.player.held_look, "staff_none_1")
+	assert_true(f.ball.stowed)
+	eq.gain("sword_1")
+	eq.gain("armor_1")
+	assert_true(f.hotbar.select_slot(2, eq))
+	f._process(0.016)
+	assert_eq([f.player.held_look, f.player.armor_look], ["sword_1", "armor_1"])
+	assert_same(f.player._layers, HeroModel.build("sword_1", "armor_1").textures())
+
+## インベントリの姿は、選んでいる枠の品物を持つ
+func test_portrait_holds_selected_slot_item():
+	f.run.inventory.equipment.gain("staff_fire_3")
+	f.run.inventory.equipment.equip("staff_fire_3")
+	f.open_inventory()
+	f.menu.select_slot(Equipment.Slot.STAFF)
+	assert_eq(f.menu.portrait_look(), ["staff_fire_3", ""])
+	f.menu.select_slot(Equipment.Slot.BALL)
+	assert_eq(f.menu.portrait_look(), ["", ""])

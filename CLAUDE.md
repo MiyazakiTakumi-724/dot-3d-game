@@ -19,7 +19,7 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 
 地図は手で書かずに、`tools/area_maps/gen.py` で作る（大陸の上の置き方と出口・高さ・崖・木の列・敵・拾いもの・隠しもの。使い方はそこの README）。`scripts/areas/*.gd` は生成物なので、直すときは gen.py を直して作り直す。出口の両側は高さを高い方にそろえ、生け垣の列は経路づくりで削らない。`tests/test_areas_layout.gd` が、出口のつながり・経路の長さ（強い鉄球まで90秒以上、門からの帰り30秒以内）・くぼみ・平地の広さなどを確かめる。
 
-テストはGUTで338件、すべて通る（20秒くらい）。
+テストはGUTで345件、すべて通る（20秒くらい）。
 
 ゲームシステム（design.md 7・11・17章）を試作3の上に入れた（2026-11-24）：レベル・経験値・振り分けポイントと技能、17章のダメージ式（体力は数値、敵にもレベル）、
 インベントリ画面（装備・ステータス・設定）、剣・弓と矢・杖と魔法（マナ）、防具、簡単モード。武器と矢・防具は、試すために野営地の宝箱に置いてある（本来はボスの落とし物とお店）。
@@ -40,7 +40,7 @@ WASD・矢印：移動／左クリック：手に持つアイテムを使う（�
 
 - `run_tests.sh` は、`godot` コマンドにPATHが通っている前提。Windowsでは Godot の実行ファイルに置き換えるか、エディタのGUTパネルから実行する。
 - ゲームの実行は、Godotエディタで `project.godot` を開いてF5を押す。
-- 画面の確認：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--inventory=staff` で試しの杖を持って杖の欄、`--exp=30` で経験値を足す。`--fps` で平均FPSも出す。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
+- 画面の確認：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--inventory=staff` で試しの杖を持って杖の欄、`--gear` で試しの武器と防具を持ち `--hold=2` で手に持つ物を選ぶ、`--exp=30` で経験値を足す。`--fps` で平均FPSも出す。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
 
 ## 構成
 
@@ -92,6 +92,8 @@ scripts/game/    ノード（ルールのクラスを持って描画するだけ
   inventory_menu.gd  Tab で開くインベントリ画面（開いても世界は止まらない）。装備のページ（回る主人公の姿と枠、装備する品物と撃つ矢を選ぶ。choose(id)）、
                      ステータスのページ（ポイントを振る、次の技能まであと何ポイント。覚えると skill_learned）、設定のページ（難易度）
   damage_popup.gd    当たったときに出るダメージの数字
+  hero_model.gd      主人公の姿（コードで組んだボクセルのちびキャラ、14×14×18）。build(手に持つ品物 id, 防具 id) で、持つ物と防具が姿に出る。同じ組み合わせは使い回す。
+                     player.gd の set_look で変え、暗いふちを付けて描く。field.gd の held_look が手に持つ物を決める。鉄球は手に持つ物に選んでいる間だけ頭の上（Ball.stowed）
 fonts/           PixelMplus（M+ FONT LICENSE。商用利用・再配布が自由）とライセンスの文。*.import はぼかさない設定なので git に入れている
 scripts/areas/   4エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）
 scripts/game/field.gd エリアを入れ替えるメインシーンの中身（enter_area・切り替え・死と再開・門・UI）

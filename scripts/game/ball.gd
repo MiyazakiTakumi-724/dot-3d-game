@@ -1,9 +1,12 @@
 class_name Ball
 extends StackSprite
-## 鉄球の見た目。持っている間は頭の上に乗せて描く。強い鉄球は赤黒く描く。
+## 鉄球の見た目。持っていて手に持つ物に選んでいる間は、頭の上に乗せて描く（stowed の間は描かない）。強い鉄球は赤黒く描く。
 ## 落とす・拾う操作は各ステージが読む（試作1は X/Z、試作2は左クリックと歩いて拾う）。
 
-const HELD_LIFT_PX := 14.0
+const HELD_LIFT_PX := 18.0  ## 主人公（HeroModel、18段）の頭の上
+
+## true の間は、持っていても描かない（ほかの物を手に持っているとき）
+var stowed := false
 
 var rules_ball := IronBall.new()
 var player: Player
@@ -36,6 +39,7 @@ func _process(delta: float) -> void:
 	if shadow != shadow_radius:
 		shadow_radius = shadow
 		queue_redraw()
+	force_hidden = stowed and rules_ball.state == IronBall.State.HELD
 	if rules_ball.state == IronBall.State.HELD:
 		world_pos = player.mover.pos
 		base_height = player.mover.height
