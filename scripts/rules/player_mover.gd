@@ -11,6 +11,9 @@ var facing: Vector2 = Vector2.DOWN
 var fell := false
 ## 最後に立っていた奈落以外のマス。奈落で死んだときの墓石の場所に使う。
 var last_safe_cell: Vector2i
+## 直前の move でマップの外へ歩こうとして止まった向き（外向き、1軸だけ）。なければ ZERO。
+## エリアの端の出口を外へ歩いたかを調べるのに使う。
+var edge_push: Vector2i = Vector2i.ZERO
 
 func _init(height_map: HeightMap, movement_rules: MovementRules) -> void:
 	map = height_map
@@ -24,6 +27,7 @@ func place(c: Vector2i) -> void:
 	last_safe_cell = c
 
 func move(world_delta: Vector2) -> void:
+	edge_push = Vector2i.ZERO
 	if fell or world_delta == Vector2.ZERO:
 		return
 	facing = world_delta.normalized()
@@ -43,6 +47,12 @@ func cell() -> Vector2i:
 func _try(new_pos: Vector2) -> bool:
 	var to := HeightMap.world_to_cell(new_pos)
 	if to != cell():
+		if not map.in_bounds(to):
+			if to.x < 0 or to.x >= map.size.x:
+				edge_push = Vector2i(signi(to.x - cell().x), 0)
+			else:
+				edge_push = Vector2i(0, signi(to.y - cell().y))
+			return false
 		if map.is_wall(to) or map.is_water(to):
 			return false
 		if map.is_pit(to):

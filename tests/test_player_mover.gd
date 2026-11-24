@@ -100,3 +100,27 @@ func test_cannot_walk_into_water():
 	for i in 20:
 		p.move(Vector2(2, 0))
 	assert_eq(p.cell(), Vector2i(1, 1))
+
+func test_edge_push_when_walking_out_of_map():
+	var m := HeightMap.new(Vector2i(4, 4))
+	var p := PlayerMover.new(m, MovementRules.new())
+	p.place(Vector2i(3, 1))
+	p.move(Vector2(10, 0))
+	assert_eq(p.edge_push, Vector2i(1, 0))
+	p.move(Vector2(-1, 0))
+	assert_eq(p.edge_push, Vector2i.ZERO)
+
+func test_edge_push_diagonal_keeps_outward_axis():
+	var m := HeightMap.new(Vector2i(4, 4))
+	var p := PlayerMover.new(m, MovementRules.new())
+	p.place(Vector2i(1, 0))
+	p.move(Vector2(3, -10))
+	assert_eq(p.edge_push, Vector2i(0, -1))
+
+func test_no_edge_push_at_inner_wall():
+	var m := HeightMap.new(Vector2i(4, 4))
+	m.set_wall(Vector2i(2, 1), true)
+	var p := PlayerMover.new(m, MovementRules.new())
+	p.place(Vector2i(1, 1))
+	p.move(Vector2(10, 0))
+	assert_eq(p.edge_push, Vector2i.ZERO)
