@@ -28,6 +28,7 @@ var crouching := false
 const CROUCH_SPEED := 0.5
 const CROUCH_HIDE_LAYERS := 8  ## しゃがむと下の輪切り（足）をこれだけ描かず、体を下げる（主人公は細かく描くので、ゲームの座標で4px）
 const OUTLINE_COLOR := Color(0.09, 0.07, 0.12)  ## 体のまわりのふち（草の上でも見分けやすく）
+const HEAL_SPARKLE := Color("ffd6e8")  ## 薬を飲んだときに上るきらめき
 ## 今の姿（手に持つ物と防具）。set_look で変える
 var held_look := ""
 var armor_look := ""
@@ -42,6 +43,7 @@ var _spin_t := 0.0
 var charge := -1.0
 var _swing_t := 0.0
 var _swing_fall := false
+var _swing_thrust := false
 ## 飛び降りたときに、少しの間だけ上に浮かせて「落ちていく」ように見せる量（px）
 var _drop_lift := 0.0
 var _last_height := 0
@@ -72,10 +74,17 @@ func set_look(held: String, armor: String) -> void:
 	armor_look = armor
 	_apply_model()
 
-## 今の持ち物と動きの姿勢に合う姿にする（鉄球を放した姿は、何も持たない姿から作る）。
+## 今の持ち物と動きの姿勢に合う姿にする。何も持たない姿（鉄球を放す・よじ登る・門を押す・倒れる）は持つ物をしまい、
+## 薬を飲む姿はいつも薬を持つ。持つ物に合わない動きの姿（剣を持たずに振るなど）は立ち姿にする。
 func _apply_model() -> void:
 	var pose := anim.pose()
-	var held := "" if pose == "release" else held_look
+	var held := held_look
+	if pose in HeroModel.ITEMLESS_POSES:
+		held = ""
+	elif pose == "drink":
+		held = "heal"
+	elif pose != "" and not pose.begins_with("step") and not pose in HeroModel.item_poses(held):
+		pose = ""
 	var m := HeroModel.build(held, armor_look, pose)
 	if m != _shown_model:
 		_shown_model = m
@@ -87,17 +96,19 @@ func take_hit(amount := 1) -> bool:
 		return false
 	hp = maxi(0, hp - amount)
 	_invulnerable = INVULNERABLE_SECONDS
+	anim.play_hurt()
 	hp_changed.emit(hp)
 	return true
 
 func is_invulnerable() -> bool:
 	return _invulnerable > 0.0
 
-## 剣を振った見た目（向いている方に弧を描き、体をひねる）。
-func swing(fall: bool) -> void:
+## 剣を振った見た目（向いている方に弧を描き、体をひねる）。thrust（技能「突き」）なら、前へ踏み込んでまっすぐ突く筋を描く。
+func swing(fall: bool, thrust := false) -> void:
 	_swing_t = SWING_SHOW
 	_swing_fall = fall
-	anim.play_swing(SWING_SHOW)
+	_swing_thrust = thrust
+	anim.play_swing(SWING_SHOW, thrust)
 
 ## 回転斬りの見た目（まわりに輪を描き、体を1回転させる）。
 func spin() -> void:
@@ -106,7 +117,7 @@ func spin() -> void:
 
 func clear_invulnerable() -> void:
 	_invulnerable = 0.0
-	self_modulate.a = 1.0
+	self_modulate = Color.WHITE
 
 ## 画面上のカーソルに一番近い隣のマス（8方向）を向く。マスは高さも含めて画面に置いて比べるので、
 ## 高台から下のマスを指しても斜めにずれない。カーソルが自分のマスの上にあるときは向きを変えない。
@@ -138,10 +149,14 @@ func _sort_map() -> HeightMap:
 	return mover.map if mover != null else null
 
 func _process(delta: float) -> void:
+	var alpha := 1.0
 	if _invulnerable > 0.0:
 		_invulnerable = maxf(0.0, _invulnerable - delta)
 		# 0.1秒ごとに薄くして点滅させる
-		self_modulate.a = 0.35 if int(_invulnerable * 10.0) % 2 == 1 else 1.0
+		alpha = 0.35 if int(_invulnerable * 10.0) % 2 == 1 else 1.0
+	# ダメージを受けた直後は赤く光る（1より大きい赤で明るく、ほかの色は弱める）
+	var f := anim.hurt_flash()
+	self_modulate = Color(1.0 + 0.8 * f, 1.0 - 0.45 * f, 1.0 - 0.45 * f, alpha)
 	_swing_t = maxf(0.0, _swing_t - delta)
 	_spin_t = maxf(0.0, _spin_t - delta)
 	crouching = can_crouch and hp > 0 and controllable and (Input.is_physical_key_pressed(KEY_C) or Input.is_physical_key_pressed(KEY_CTRL))
@@ -158,6 +173,8 @@ func _process(delta: float) -> void:
 		if aim_screen != null:
 			aim_at_screen(aim_screen)
 	var moved := mover.pos.distance_to(before)
+	anim.set_charge(charge)
+	anim.set_climb(mover.climb_progress() if hp > 0 else 0.0)
 	anim.update(delta, moved if moved < TELEPORT_PX else 0.0)
 	_apply_model()
 	_update_drop_lift(delta)
@@ -187,9 +204,23 @@ func _draw() -> void:
 	var face_angle := mover.facing.angle() - PI / 2
 	_draw_shadow()
 	var skip := maxi(CROUCH_HIDE_LAYERS if crouching else 0, anim.dip_layers())
-	_draw_stack(face_angle - camera.angle + anim.twist(), skip, anim.stretch(), Vector2(0, anim.bob()))
+	var rot := face_angle - camera.angle + anim.twist()
+	var screen_face := mover.facing.rotated(-camera.angle)
+	if anim.pose() == "down":
+		# 倒れた姿は、画面の上でいつも横に寝かせる（縦に寝かせると立っているのと見分けにくい）。足は向いていた側
+		rot = -PI / 2 if screen_face.x >= 0.0 else PI / 2
+	# 体を下げる（歩く）・上げる（よじ登る）・前後にずらす（突き・弓の反動・のけぞり）。本当の画面の1pxにそろえる
+	var offset := Vector2(0, anim.bob() - anim.climb_lift()) + screen_face * anim.forward_px()
+	offset = (offset * StackCamera.PIXEL_SCALE).round() / StackCamera.PIXEL_SCALE
+	_draw_stack(rot, skip, anim.stretch(), offset)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if _swing_t > 0.0:
+	_draw_action_effects(rot, skip, offset)
+	if _swing_t > 0.0 and _swing_thrust:
+		# 突き：向いている方へまっすぐ伸びる筋
+		var k := 1.0 - _swing_t / SWING_SHOW
+		var from := Vector2(0, -5) + screen_face * 6.0
+		draw_line(from, from + screen_face * (6.0 + 14.0 * k), Color("ffb347") if _swing_fall else Color(1, 1, 1, 0.9), 2.0 if _swing_fall else 1.5)
+	elif _swing_t > 0.0:
 		# 向いている方（画面の上での向き）に、体の真ん中の高さで弧を描く。落下斬りは橙で太く
 		var a := mover.facing.rotated(-camera.angle).angle()
 		var col := Color("ffb347") if _swing_fall else Color(1, 1, 1, 0.9)
@@ -201,3 +232,26 @@ func _draw() -> void:
 		var k := (charge - Bow.MIN_RATE) / (1.0 - Bow.MIN_RATE)
 		draw_rect(Rect2(-7, y, 14, 3), Color(0.05, 0.05, 0.08))
 		draw_rect(Rect2(-6, y + 1, 12.0 * k, 1), Color("ffd23f") if k >= 1.0 else Color("e8d9b0"))
+
+## 模型の点 p（ボクセルの位置）が、今描いている姿でどこに来るか（このノードの中の位置）。
+func _model_point(p: Vector3, rot: float, skip: int, offset: Vector2) -> Vector2:
+	var half := Vector2(_shown_model.size.x, _shown_model.size.y) * 0.5
+	var flat := (Vector2(p.x + 0.5, p.y + 0.5) - half) * voxel_scale
+	return flat.rotated(rot) + Vector2(0, (skip - p.z) * voxel_scale * anim.stretch()) + offset
+
+## 動きに合わせた光：杖の先の玉が光る（魔法を使った）、薬のきらめきが上る（回復した）。
+func _draw_action_effects(rot: float, skip: int, offset: Vector2) -> void:
+	var f := anim.cast_flash()
+	if f > 0.0 and anim.pose() == "cast":
+		var at := _model_point(HeroModel.CAST_ORB, rot, skip, offset)
+		var orb := HeroModel.orb_color(held_look)
+		draw_circle(at, 2.0 + 2.5 * f, Color(orb, 0.5 * f))
+		draw_circle(at, 1.0 + 1.0 * f, Color(1, 1, 1, 0.8 * f))
+	var k := anim.drink_progress()
+	if k >= 0.0:
+		var c := Color(HEAL_SPARKLE, 1.0 - k)
+		for i in 3:
+			var p := Vector2(-5.0 + 5.0 * i, -6.0 - 12.0 * fmod(k + 0.33 * i, 1.0)).round()
+			var d := 0.5  # 本当の画面の1px
+			draw_rect(Rect2(p - Vector2(d * 1.5, d * 0.5), Vector2(d * 3.0, d)), c)
+			draw_rect(Rect2(p - Vector2(d * 0.5, d * 1.5), Vector2(d, d * 3.0)), c)

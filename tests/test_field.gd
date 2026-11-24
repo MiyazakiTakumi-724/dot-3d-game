@@ -844,3 +844,24 @@ func test_portrait_holds_selected_slot_item():
 	assert_eq(f.menu.portrait_look(), ["staff_fire_3", ""])
 	f.menu.select_slot(Equipment.Slot.BALL)
 	assert_eq(f.menu.portrait_look(), ["ball_1", ""])
+
+## 動きの姿：薬を飲む・杖をふるう・ダメージ・倒れる・再開で、主人公の姿が変わる
+func test_actions_set_hero_poses():
+	f.run.inventory.heals = 1
+	f.player.set_hp(2)
+	assert_true(f.use_heal())
+	assert_eq(f.player.anim.pose(), "drink")
+	f.player.anim.update(HeroAnim.DRINK_TIME, 0.0)
+	assert_true(f.hotbar.select_slot(4, f.run.inventory.equipment))
+	assert_true(f.cast_spell(Vector2(200, 90)))
+	assert_eq(f.player.anim.pose(), "cast")
+	f.player.set_look(f.held_look(), "")
+	assert_same(f.player._layers, HeroModel.build(f.held_look(), "", "cast").textures())
+	assert_true(f.hurt_player(1))
+	assert_gt(f.player.anim.hurt_flash(), 0.0)
+	f.kill_player(false)
+	f.player.anim.update(HeroAnim.KNEEL_TIME, 0.0)
+	f.player._apply_model()
+	assert_same(f.player._layers, HeroModel.build("", f.player.armor_look, "down").textures())
+	f.respawn()
+	assert_eq(f.player.anim.pose(), "")

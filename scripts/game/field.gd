@@ -460,7 +460,7 @@ func swing_sword() -> bool:
 	var fall := mv.recent_drop(Sword.FALL_WINDOW)
 	var strong_fall := st.skills_in(PlayerStats.Stat.SWORD) >= 1
 	var thrust := st.skills_in(PlayerStats.Stat.SWORD) >= 2  # 技能「突き」
-	player.swing(fall > 0)
+	player.swing(fall > 0, thrust)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, thrust):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
@@ -511,6 +511,8 @@ func release_bow() -> bool:
 			target += side
 		_fire_arrow(k, r, target)
 		fired = true
+	if fired:
+		player.anim.play_loose()
 	return fired
 
 func _fire_arrow(kind: Arrow.Kind, r: float, target: Vector2) -> void:
@@ -703,6 +705,7 @@ func cast_spell(screen = null) -> bool:
 		return false
 	if not magic.try_cast(spell, mana):
 		return false
+	player.anim.play_cast()
 	var aim := magic_aim_at(screen if screen != null else get_local_mouse_position())
 	match spell:
 		Magic.Spell.NULL_BOLT, Magic.Spell.FIREBALL:
@@ -929,6 +932,7 @@ func _on_skill_learned(skill: String) -> void:
 	notice("技能「%s」を覚えた！\n%s" % [skill, how.get(skill, "")], 4.0)
 
 func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
+	player.anim.play_pickup()  # かがんで拾う
 	if kind in [RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.STAFF_FIRE, RunState.PickupKind.ARMOR]:
 		warm_hero_looks()
 	match kind:
@@ -951,6 +955,7 @@ func use_heal() -> bool:
 	if not run.inventory.try_use_heal(player.hp, player.max_hp):
 		return false
 	player.set_hp(mini(player.max_hp, player.hp + Inventory.HEAL_AMOUNT))
+	player.anim.play_drink()
 	return true
 
 func open_inventory() -> bool:
@@ -1010,6 +1015,10 @@ func kill_player(fell: bool) -> void:
 	map.set_blocker(c, HeightMap.Blocker.GRAVE)
 	_grave_node = _marker(c, _grave_model(), 2)
 	player.controllable = false
+	if fell:
+		player.anim.play_fall()  # 両手を上げて落ちていく
+	else:
+		player.anim.play_die()  # ひざをついてから横たわる
 
 ## 野営地のたき火から再開する。敵は復活しない（倒した敵は時間で戻る）。
 func respawn() -> void:
@@ -1017,6 +1026,7 @@ func respawn() -> void:
 	_sync_ball_rank()  # ランク2以上の鉄球は墓石に入っているので、ランク1に戻る
 	player.set_hp(player.max_hp)
 	player.clear_invulnerable()
+	player.anim.revive()
 	player.lift_px = 0.0
 	player.modulate.a = 1.0
 	player.controllable = true
@@ -1032,6 +1042,7 @@ func try_open_door() -> bool:
 	if ex == null:
 		return false
 	run.open_door(ex.door_id)
+	player.anim.play_push()
 	for c in ex.cells(area.size()):
 		map.set_blocker(c, HeightMap.Blocker.NONE)
 	for s in _gate_nodes.get(ex.door_id, []):

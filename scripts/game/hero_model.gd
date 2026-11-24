@@ -5,6 +5,8 @@ extends RefCounted
 ## 前は +y、上は +z。体の真ん中が模型の真ん中（SIZE の半分）に来る。左右の x は 27 − x で写す。
 ## build(手に持つ品物の id, 防具の id, 姿勢) で作る。持つ物：鉄球・剣・弓・杖は品物の id、回復は "heal"、何も持たないときは ""。
 ## 姿勢（HeroAnim.pose）：""（立ち）・step_l / step_r（歩く。立ち姿の足と腕をずらして作るので軽い）・release（鉄球を放した、両手を前に出した姿）。
+## 持つ物ごとの姿（item_poses）：剣 slash（振る）・thrust（突く）、弓 draw（引く）・draw_full（引ききる）、杖 cast（ふるう）、回復 drink（飲む）。
+## 何も持たない姿（ITEMLESS_POSES）：release・climb（よじ登る、奈落に落ちる）・push（門を押す）・down（倒れて横たわる。大きさが違う）。
 ## デザインは STYLES の中から style で選ぶ（2026-11-25 にユーザーへ見せた案。選ばれたものを残す）。
 
 const SIZE := Vector3i(28, 28, 38)
@@ -18,6 +20,19 @@ const BALL_BOX := 12  ## 地面の鉄球の模型の大きさ（偶数）
 ## 歩くときに前後へずらす足（x の範囲）と腕。どちらも x の小さい側が先
 const LEG_X := [Vector2i(9, 12), Vector2i(15, 18)]
 const ARM_X := [Vector2i(5, 7), Vector2i(20, 22)]
+## 動きの姿で、腕を描き直すときの肩の位置（左・右）
+const SHOULDER_L := Vector3(6.0, 13.5, 16.5)
+const SHOULDER_R := Vector3(21.0, 13.5, 16.5)
+## 弓を引いた姿の矢じりの先・杖をふるった姿の玉・薬を飲む姿のびん・よじ登る姿の左手（テストと光の位置に使う）
+const NOCKED_TIP := Vector3i(13, 27, 15)
+const CAST_ORB := Vector3(22.5, 24.0, 32.5)
+const CAST_TIP := Vector3i(20, 24, 32)
+const DRINK_POTION := Vector3i(16, 22, 22)
+const CLIMB_HAND := Vector3i(3, 18, 29)
+## 何も持たない姿で描く姿勢（手に持つ物はしまう）
+const ITEMLESS_POSES := ["release", "climb", "push", "down"]
+## 腕を描き直す姿勢
+const POSED_ARMS := ["slash", "thrust", "draw", "draw_full", "cast", "drink", "climb", "push"]
 
 const SKIN := Color("f7d3b0")
 const CHEEK := Color("f29a9a")
@@ -32,6 +47,8 @@ const ARMOR_COLOR := Color("aab6c6")
 const STEEL := Color("dfe7f0")
 const WOOD := Color("a26b3c")
 const STRING := Color("f1e6c8")
+const SHAFT := Color("b07a46")
+const FEATHER := Color("f4f1ea")
 const NONE_ORB := Color("c8b6ff")
 const FIRE_ORB := Color("ff7a2e")
 const POTION := Color("ff6fa8")
@@ -67,28 +84,50 @@ static func build(held: String, armor: String, pose := "") -> VoxelModel:
 	if not _cache.has(key):
 		if pose == "step_l" or pose == "step_r":
 			_cache[key] = _step(build(held, armor), held, pose == "step_l")
+		elif pose == "down":
+			_cache[key] = _shade(_lay_down(raw("", armor)))
 		else:
 			_cache[key] = _shade(raw(held, armor, pose))
 	return _cache[key]
 
-## 持ちかえたときに止まらないよう、持つ物それぞれの立ち姿と歩く姿、鉄球を放した姿を先に作っておく（輪切りの画像も）。
+## 持ちかえたときに止まらないよう、持つ物それぞれの立ち姿・歩く姿・動きの姿と、何も持たない姿を先に作っておく（輪切りの画像も）。
 static func warm(helds: Array, armor: String) -> void:
 	for h: String in helds:
-		for pose in ["", "step_l", "step_r"]:
+		for pose in ["", "step_l", "step_r"] + item_poses(h):
 			build(h, armor, pose).textures()
-	build("", armor, "release").textures()
+	for pose in ITEMLESS_POSES:
+		build("", armor, pose).textures()
+
+## 持つ物ごとの動きの姿。
+static func item_poses(held: String) -> Array:
+	if held == "heal":
+		return ["drink"]
+	if not ItemCatalog.exists(held):
+		return []
+	match ItemCatalog.slot(held):
+		Equipment.Slot.SWORD:
+			return ["slash", "thrust"]
+		Equipment.Slot.BOW:
+			return ["draw", "draw_full"]
+		Equipment.Slot.STAFF:
+			return ["cast"]
+	return []
 
 ## 影をつける前の姿。
 static func raw(held: String, armor: String, pose := "") -> VoxelModel:
 	var s: Dictionary = STYLES[style]
 	var m := VoxelModel.new()
 	m.size = SIZE
-	_body(m, s)
+	var posed := pose in POSED_ARMS
+	_body(m, s, not posed)
 	_head(m, s)
 	if s["shoulder"]:
 		_shoulders(m, SILVER)
 	if armor != "":
 		_armor(m)
+	if posed:
+		_pose(m, s, held, pose)
+		return m
 	match ItemCatalog.slot(held) if ItemCatalog.exists(held) else -1:
 		Equipment.Slot.BALL:
 			_iron_ball(m, s, STRONG_BALL if ItemCatalog.rank(held) >= 2 else BALL)
@@ -195,7 +234,8 @@ static func _top_z(m: VoxelModel, x: int, y: int) -> int:
 const HEAD_CENTER := Vector3(13.5, 13.5, 26.0)
 const HEAD_RADIUS := Vector3(8.0, 7.2, 7.6)
 
-static func _body(m: VoxelModel, s: Dictionary) -> void:
+## arms が false なら腕を描かない（動きの姿で、腕を別に描くとき）。
+static func _body(m: VoxelModel, s: Dictionary, arms := true) -> void:
 	var tunic: Color = s["tunic"]
 	var trim: Color = s["trim"]
 	# マントは体より先に置いて、体で前をふさぐ
@@ -232,12 +272,9 @@ static func _body(m: VoxelModel, s: Dictionary) -> void:
 	_fill(m, Vector3i(12, 18, 11), Vector3i(15, 18, 12), GOLD)
 	_fill(m, Vector3i(13, 18, 11), Vector3i(14, 18, 12), BELT)
 	# 腕（そで）と手
-	_both(m, Vector3i(5, 12, 11), Vector3i(7, 15, 17), tunic)
-	_both(m, Vector3i(5, 12, 8), Vector3i(7, 15, 10), SKIN)
-	for z in [8, 17]:
-		for y in [12, 15]:
-			_clear(m, Vector3i(5, y, z))
-			_clear(m, Vector3i(22, y, z))
+	if arms:
+		_rest_arm(m, 0, tunic)
+		_rest_arm(m, 1, tunic)
 	# 首まわり：マフラー（長いはしが後ろへなびく）か、服のえり
 	var scarf: Color = s["scarf"]
 	if scarf.a > 0.0:
@@ -400,6 +437,133 @@ static func _release_arms(m: VoxelModel, s: Dictionary) -> void:
 	_both(m, Vector3i(4, 14, 11), Vector3i(6, 17, 13), s["tunic"])
 	_both(m, Vector3i(2, 17, 10), Vector3i(4, 20, 13), SKIN)
 	_both(m, Vector3i(2, 20, 12), Vector3i(2, 20, 13), SKIN)  # 開いた指
+
+## 下ろした腕（立ち姿の腕）。side 0 は左（x の小さい側）、1 は右。
+static func _rest_arm(m: VoxelModel, side: int, tunic: Color) -> void:
+	var x0: int = ARM_X[side].x
+	_fill(m, Vector3i(x0, 12, 11), Vector3i(x0 + 2, 15, 17), tunic)
+	_fill(m, Vector3i(x0, 12, 8), Vector3i(x0 + 2, 15, 10), SKIN)
+	var outer := 5 if side == 0 else 22
+	for z in [8, 17]:
+		for y in [12, 15]:
+			_clear(m, Vector3i(outer, y, z))
+
+## 肩から手まで伸ばした腕（そでは服の色、先の手ははだの色）。
+static func _arm(m: VoxelModel, shoulder: Vector3, hand: Vector3, tunic: Color) -> void:
+	var n := maxi(2, ceili(shoulder.distance_to(hand) * 3.0))
+	for i in n + 1:
+		var t := float(i) / n
+		if t > 0.72:
+			break
+		var p := shoulder.lerp(hand, t)
+		for dz in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				for dx in [-1, 0, 1]:
+					if absi(dx) + absi(dy) + absi(dz) <= 2:
+						m.set_voxel(Vector3i(p.round()) + Vector3i(dx, dy, dz), tunic)
+	_ellipsoid(m, hand, Vector3.ONE * 1.6, SKIN)
+
+## a から b までの棒（太さ w。剣の刃・杖・弦・矢）。
+static func _rod(m: VoxelModel, a: Vector3, b: Vector3, c: Color, w := 2) -> void:
+	var n := maxi(1, ceili(a.distance_to(b) * 3.0))
+	var half := (w - 1) * 0.5
+	for i in n + 1:
+		var p := a.lerp(b, float(i) / n)
+		var lo := Vector3i((p - Vector3.ONE * half).round())
+		_fill(m, lo, lo + Vector3i.ONE * (w - 1), c)
+
+## 動きの姿：腕を描き直し、持つ物をその姿の位置に描く。
+static func _pose(m: VoxelModel, s: Dictionary, held: String, pose: String) -> void:
+	var tunic: Color = s["tunic"]
+	match pose:
+		"slash":
+			# 剣を持つ右腕を前の外へ振り出し、左腕は後ろへ
+			_arm(m, SHOULDER_L, Vector3(4.0, 10.0, 12.5), tunic)
+			_arm(m, SHOULDER_R, Vector3(22.5, 18.0, 14.0), tunic)
+			var d := Vector3(0.75, 1.0, 0.0).normalized()
+			var h := Vector3(22.5, 18.0, 14.0)
+			_rod(m, h - d * 2.0, h + d * 0.5, BELT)
+			var g := h + d * 1.5
+			var side := Vector3(-d.y, d.x, 0.0)
+			_rod(m, g - side * 2.5, g + side * 2.5, GOLD)
+			_rod(m, h + d * 2.5, h + d * 9.5, STEEL)
+		"thrust":
+			# 剣をまっすぐ前へ突き出す。左腕は後ろへ
+			_arm(m, SHOULDER_L, Vector3(4.5, 9.5, 12.5), tunic)
+			_arm(m, SHOULDER_R, Vector3(20.0, 19.5, 14.0), tunic)
+			_rod(m, Vector3(20.5, 17.5, 13.5), Vector3(20.5, 20.5, 13.5), BELT)
+			_fill(m, Vector3i(18, 21, 13), Vector3i(23, 21, 14), GOLD)
+			_rod(m, Vector3(20.5, 22.0, 13.5), Vector3(20.5, 27.0, 13.5), STEEL)
+		"draw", "draw_full":
+			_draw_bow(m, tunic, pose == "draw_full")
+		"cast":
+			_cast(m, tunic, orb_color(held))
+		"drink":
+			_drink(m, tunic)
+		"climb":
+			# 両手を肩より上へ（崖のふちをつかむ・落ちていく）
+			_arm(m, SHOULDER_L, Vector3(3.5, 18.0, 29.0), tunic)
+			_arm(m, SHOULDER_R, Vector3(23.5, 18.0, 29.0), tunic)
+		"push":
+			# 両手を前へまっすぐ出して押す
+			_arm(m, SHOULDER_L, Vector3(8.5, 22.0, 15.0), tunic)
+			_arm(m, SHOULDER_R, Vector3(18.5, 22.0, 15.0), tunic)
+
+## 弓を引く：弓を前に構えて矢を番え、右手で弦を胸もとへ引く（full なら引ききる）。上から見えるよう、矢は弓の上に乗せる。
+static func _draw_bow(m: VoxelModel, tunic: Color, full: bool) -> void:
+	var nock := 18.0 if full else 20.5
+	var ends := []
+	for k in 37:
+		var a := deg_to_rad(-62.0 + 124.0 * k / 36.0)
+		var p := Vector2(13.5 + 11.0 * sin(a), 17.5 + 7.0 * cos(a))
+		var c := Vector2i(roundi(p.x), roundi(p.y))
+		_fill(m, Vector3i(c.x, c.y, 13), Vector3i(c.x, c.y, 14), WOOD)
+		if k == 0 or k == 36:
+			ends.append(Vector3(c.x, c.y, 14))
+	_fill(m, Vector3i(13, 24, 13), Vector3i(14, 25, 14), BELT)  # 握り
+	var notch := Vector3(13.5, nock, 14.0)
+	_rod(m, ends[0], notch, STRING, 1)
+	_rod(m, ends[1], notch, STRING, 1)
+	_arm(m, SHOULDER_L, Vector3(11.0, 23.5, 13.5), tunic)
+	_arm(m, SHOULDER_R, Vector3(16.0, nock, 14.5), tunic)
+	# 矢：羽根・矢柄・矢じり
+	_fill(m, Vector3i(13, int(nock), 15), Vector3i(14, 25, 15), SHAFT)
+	_fill(m, Vector3i(12, int(nock), 15), Vector3i(15, int(nock) + 1, 15), FEATHER)
+	_fill(m, Vector3i(13, 26, 15), Vector3i(14, 27, 15), STEEL)
+
+## 杖をふるう：右手で杖を前へ倒して高く掲げ、左手を横へ開く。
+static func _cast(m: VoxelModel, tunic: Color, orb: Color) -> void:
+	_arm(m, SHOULDER_L, Vector3(4.0, 17.5, 17.0), tunic)
+	_arm(m, SHOULDER_R, Vector3(22.0, 20.0, 20.0), tunic)
+	_rod(m, Vector3(22.5, 15.5, 9.0), Vector3(22.5, 23.2, 28.5), WOOD)
+	for y in range(22, 26):
+		for x in range(21, 25):
+			if x == 21 or x == 24 or y == 22 or y == 25:
+				_fill(m, Vector3i(x, y, 29), Vector3i(x, y, 30), GOLD)
+	_ellipsoid(m, CAST_ORB, Vector3.ONE * 2.6, orb)
+	_fill(m, Vector3i(22, 23, 33), Vector3i(23, 24, 34), orb.lightened(0.45))
+
+## 薬を飲む：右手でびんを口もとへ。左手は下ろしたまま。
+static func _drink(m: VoxelModel, tunic: Color) -> void:
+	_rest_arm(m, 0, tunic)
+	_arm(m, SHOULDER_R, Vector3(17.5, 20.0, 20.0), tunic)
+	_ellipsoid(m, Vector3(16.0, 21.5, 22.5), Vector3(2.4, 2.4, 2.2), POTION)
+	_rod(m, Vector3(14.5, 19.5, 21.5), Vector3(14.0, 19.0, 21.0), GLASS_SHINE, 1)
+	m.set_voxel(Vector3i(17, 21, 24), GLASS_SHINE)
+
+## 倒れた姿：立ち姿を後ろへ倒して、あおむけに横たわらせる（頭が後ろ、顔が上、足が前）。
+static func _lay_down(src: VoxelModel) -> VoxelModel:
+	var y_min := SIZE.y
+	var vox := src.voxels()
+	for p: Vector3i in vox:
+		if vox[p].a > 0.0:
+			y_min = mini(y_min, p.y)
+	var m := VoxelModel.new()
+	m.size = Vector3i(SIZE.x, SIZE.z, SIZE.y - y_min)
+	for p: Vector3i in vox:
+		if vox[p].a > 0.0:
+			m.set_voxel(Vector3i(p.x, SIZE.z - 1 - p.z, p.y - y_min), vox[p])
+	return m
 
 ## 歩く姿：立ち姿を写して、片方の足を前へ、もう片方を後ろへずらす（くつは2つ、ズボンは1つ）。
 ## 何も持っていなければ、腕を足と逆にふる（手は2つ、そでは1つ）。left_forward は x の小さい側の足が前。

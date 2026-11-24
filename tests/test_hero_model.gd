@@ -122,3 +122,28 @@ func test_armor_shows_on_body():
 func test_same_look_is_cached():
 	assert_same(HeroModel.build("bow_1", "armor_1"), HeroModel.build("bow_1", "armor_1"))
 	assert_ne(HeroModel.build("bow_1", ""), HeroModel.build("bow_1", "armor_1"))
+
+## 動きの姿：持つ物ごとの姿（剣を振る・突く、弓を引く、杖をふるう、薬を飲む）は、立ち姿と違い、大きさは同じ
+func test_item_poses_differ_from_stand():
+	var cases := {"sword_1": ["slash", "thrust"], "bow_1": ["draw", "draw_full"], "staff_none_1": ["cast"], "heal": ["drink"]}
+	for held in cases:
+		assert_eq(HeroModel.item_poses(held), cases[held])
+		for pose in cases[held]:
+			var m := HeroModel.raw(held, "", pose)
+			assert_eq(m.size, HeroModel.SIZE, pose)
+			assert_ne(m.voxels(), HeroModel.raw(held, "").voxels(), pose)
+
+## 弓を引くと、矢を番えている（矢じりが前に出る）。杖をふるうと玉が前の上へ。薬は口もとへ
+func test_pose_details():
+	assert_eq(HeroModel.raw("bow_1", "", "draw").get_voxel(HeroModel.NOCKED_TIP), HeroModel.STEEL)
+	assert_eq(HeroModel.raw("bow_1", "").get_voxel(HeroModel.NOCKED_TIP).a, 0.0)
+	assert_eq(HeroModel.raw("staff_fire_3", "", "cast").get_voxel(HeroModel.CAST_TIP), HeroModel.FIRE_ORB)
+	assert_eq(HeroModel.raw("heal", "", "drink").get_voxel(HeroModel.DRINK_POTION), HeroModel.POTION)
+
+## よじ登る姿は両手が肩より上。倒れた姿は横たわっている（前後に長く、低い）
+func test_climb_and_down():
+	var climb := HeroModel.raw("", "", "climb")
+	assert_eq(climb.get_voxel(HeroModel.CLIMB_HAND), HeroModel.SKIN)
+	var down := HeroModel.build("", "", "down")
+	assert_gt(down.size.y, down.size.z)
+	assert_lt(down.size.z, HeroModel.SIZE.z)
