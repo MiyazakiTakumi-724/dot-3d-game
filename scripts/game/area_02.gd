@@ -433,8 +433,7 @@ func use_heal() -> bool:
 func _spawn_enemies() -> void:
 	for e in ENEMIES:
 		var enemy := Enemy.new()
-		enemy.setup(map, e[0], e[1], player, camera, Enemy.SHOOT_INTERVAL, ENEMY_HP)
-		enemy.can_shoot = false
+		enemy.setup(map, e[0], e[1], player, camera, EnemyKind.Kind.WEAK)
 		enemy.shot.connect(_on_enemy_shot)
 		enemy.walker.died.connect(run.on_enemy_killed)
 		_world.add_child(enemy)

@@ -59,7 +59,8 @@ func _ready() -> void:
 
 	for e in ENEMIES:
 		var enemy := Enemy.new()
-		enemy.setup(map, e[0], e[1], player, camera, e[2])
+		enemy.setup(map, e[0], e[1], player, camera, EnemyKind.Kind.SHOOTER, e[2])
+		enemy.walker.hp = EnemyWalker.MAX_HP  # 試作1の敵は体力3のまま
 		enemy.shot.connect(_on_enemy_shot)
 		enemy.walker.died.connect(_on_enemy_died)
 		_world.add_child(enemy)
