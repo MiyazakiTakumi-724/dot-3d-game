@@ -72,6 +72,8 @@ func _build_equip_page() -> void:
 	_portrait.camera = _portrait_cam
 	_portrait.always_redraw = true
 	_portrait.shadow_radius = 4.0
+	_portrait.voxel_scale = HeroModel.VOXEL_SCALE
+	_portrait.outline_color = Player.OUTLINE_COLOR
 	_portrait.set_model(HeroModel.build("", ""))
 	holder.add_child(_portrait)
 	# 左に武器、右に防具の枠

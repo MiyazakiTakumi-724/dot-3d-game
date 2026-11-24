@@ -771,6 +771,13 @@ func test_hero_look_follows_held_item():
 	assert_eq([f.player.held_look, f.player.armor_look], ["sword_1", "armor_1"])
 	assert_same(f.player._layers, HeroModel.build("sword_1", "armor_1").textures())
 
+## 本当の画面は640×360で、ゲームの座標（320×180）を2倍にして描く。主人公はボクセル1つを本当の画面の1pxで、ふちを付けて描く
+func test_pixel_scale_and_fine_hero():
+	assert_eq(f.scale, Vector2.ONE * StackCamera.PIXEL_SCALE)
+	assert_eq(f.player.voxel_scale, 1.0 / StackCamera.PIXEL_SCALE)
+	assert_gt(f.player.outline_color.a, 0.0)
+	assert_eq(f.menu.scale, Vector2.ONE * StackCamera.PIXEL_SCALE)
+
 ## インベントリの姿は、選んでいる枠の品物を持つ
 func test_portrait_holds_selected_slot_item():
 	f.run.inventory.equipment.gain("staff_fire_3")

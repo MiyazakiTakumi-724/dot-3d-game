@@ -18,6 +18,11 @@ var sort_by_cell := false
 var sort_map: HeightMap
 var sort_radius := 5.0
 var _layers: Array[ImageTexture] = []
+## 輪切り1枚（ボクセル1つ）の大きさ（ゲームの座標のpx）。細かく描く物（主人公）は 1 / StackCamera.PIXEL_SCALE にして、
+## ボクセル1つを本当の画面の1pxで描く。
+var voxel_scale := 1.0
+## a が0より大きければ、形のまわりにこの色のふち（本当の画面の1px）を描く
+var outline_color := Color(0, 0, 0, 0)
 ## true の間は描かない。visible は画面外かどうかで毎フレーム書き換えるので、隠したいときはこちらを使う。
 var force_hidden := false
 ## true なら毎フレーム描き直す（向きが変わるプレイヤーや敵など）。
@@ -87,7 +92,7 @@ func refresh() -> void:
 func _on_screen() -> bool:
 	var m := VISIBLE_MARGIN
 	return position.x > -m and position.x < 320.0 + m \
-		and position.y + m > 0.0 and position.y - _layers.size() - m < 180.0
+		and position.y + m > 0.0 and position.y - _layers.size() * voxel_scale - m < 180.0
 
 ## 足元の影。横長の楕円（ドット絵らしく、少ない色の半透明の黒）。
 func _draw_shadow() -> void:
@@ -105,12 +110,25 @@ func _draw() -> void:
 		return
 	_drawn_angle = camera.angle
 	_draw_shadow()
-	for i in _layers.size():
-		var t := _layers[i]
-		draw_set_transform(Vector2(0, -i), -camera.angle, Vector2.ONE)
-		draw_texture(t, -t.get_size() * 0.5)
+	_draw_stack(-camera.angle)
 	_draw_rim()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## 輪切りを下から重ねて描く。rot は画面の上での回転、skip は描かない下の輪切りの数（その分だけ下げて描く）。
+## outline_color があれば、先に全部の輪切りを上下左右へ本当の画面の1pxずらして描き、ふちにする。
+func _draw_stack(rot: float, skip := 0) -> void:
+	var s := Vector2.ONE * voxel_scale
+	if outline_color.a > 0.0:
+		var d := 1.0 / StackCamera.PIXEL_SCALE
+		for i in range(skip, _layers.size()):
+			var t := _layers[i]
+			for off in [Vector2(-d, 0), Vector2(d, 0), Vector2(0, -d), Vector2(0, d)]:
+				draw_set_transform(Vector2(0, (skip - i) * voxel_scale) + off, rot, s)
+				draw_texture(t, -t.get_size() * 0.5, outline_color)
+	for i in range(skip, _layers.size()):
+		var t := _layers[i]
+		draw_set_transform(Vector2(0, (skip - i) * voxel_scale), rot, s)
+		draw_texture(t, -t.get_size() * 0.5)
 
 ## 上の面のふちの明るい線（地面の柱だけ）。
 func _draw_rim() -> void:

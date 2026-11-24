@@ -3,7 +3,7 @@ extends StackSprite
 ## 鉄球の見た目。持っていて手に持つ物に選んでいる間は、頭の上に乗せて描く（stowed の間は描かない）。強い鉄球は赤黒く描く。
 ## 落とす・拾う操作は各ステージが読む（試作1は X/Z、試作2は左クリックと歩いて拾う）。
 
-const HELD_LIFT_PX := 18.0  ## 主人公（HeroModel、18段）の頭の上
+const HELD_LIFT_PX := 19.0  ## 主人公（HeroModel、ゲームの座標で19px）の頭の上
 
 ## true の間は、持っていても描かない（ほかの物を手に持っているとき）
 var stowed := false

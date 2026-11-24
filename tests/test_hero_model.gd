@@ -40,9 +40,9 @@ func test_same_size_for_all_looks():
 func test_sword_points_forward():
 	assert_gt(_front_most(HeroModel.build("sword_1", "")), _front_most(HeroModel.build("", "")))
 
-## 杖は頭の横に、頭のてっぺんの高さまで立っていて、先の玉の色が杖の種類で違う
+## 杖は頭の横に立っていて、先の玉の色が杖の種類で違う
 func test_staff_stands_up_with_colored_orb():
-	var tip := Vector3i(11, 8, 16)
+	var tip := HeroModel.STAFF_TIP
 	assert_eq(HeroModel.raw("", "").get_voxel(tip).a, 0.0)
 	assert_eq(HeroModel.raw("staff_none_1", "").get_voxel(tip), HeroModel.NONE_ORB)
 	assert_eq(HeroModel.raw("staff_fire_3", "").get_voxel(tip), HeroModel.FIRE_ORB)

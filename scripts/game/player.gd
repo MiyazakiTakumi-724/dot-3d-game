@@ -26,7 +26,7 @@ var _invulnerable := 0.0
 var can_crouch := false
 var crouching := false
 const CROUCH_SPEED := 0.5
-const CROUCH_HIDE_LAYERS := 4  ## しゃがむと下の輪切り（足）をこれだけ描かず、体を下げる
+const CROUCH_HIDE_LAYERS := 8  ## しゃがむと下の輪切り（足）をこれだけ描かず、体を下げる（主人公は細かく描くので、ゲームの座標で4px）
 const OUTLINE_COLOR := Color(0.09, 0.07, 0.12)  ## 体のまわりのふち（草の上でも見分けやすく）
 ## 今の姿（手に持つ物と防具）。set_look で変える
 var held_look := ""
@@ -54,6 +54,8 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	sort_by_cell = true
 	always_redraw = true  # 向きが変わる
 	shadow_radius = 4.0
+	voxel_scale = HeroModel.VOXEL_SCALE
+	outline_color = OUTLINE_COLOR
 	set_model(HeroModel.build(held_look, armor_look))
 	_sync()
 
@@ -161,18 +163,7 @@ func _draw() -> void:
 	# 向いている方向の目印が回るよう、モデルの「前」(+y) を facing に合わせる
 	var face_angle := mover.facing.angle() - PI / 2
 	_draw_shadow()
-	var skip := CROUCH_HIDE_LAYERS if crouching else 0
-	var rot := face_angle - camera.angle
-	# 先に全部の輪切りを上下左右へ1pxずらして暗い色で描き、ふちにする
-	for i in range(skip, _layers.size()):
-		var t := _layers[i]
-		for off in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
-			draw_set_transform(Vector2(0, skip - i) + off, rot, Vector2.ONE)
-			draw_texture(t, -t.get_size() * 0.5, OUTLINE_COLOR)
-	for i in range(skip, _layers.size()):
-		var t := _layers[i]
-		draw_set_transform(Vector2(0, skip - i), rot, Vector2.ONE)
-		draw_texture(t, -t.get_size() * 0.5)
+	_draw_stack(face_angle - camera.angle, CROUCH_HIDE_LAYERS if crouching else 0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if _swing_t > 0.0:
 		# 向いている方（画面の上での向き）に、体の真ん中の高さで弧を描く。落下斬りは橙で太く
@@ -182,7 +173,7 @@ func _draw() -> void:
 	if _spin_t > 0.0:
 		draw_arc(Vector2(0, -4), 16.0, 0.0, TAU, 20, Color(1, 1, 1, 0.9), 2.0)
 	if charge >= 0.0:
-		var y := -_layers.size() - 4.0  # 頭の上（弓を持っている間は、鉄球は頭に乗せていない）
+		var y := -_layers.size() * voxel_scale - 4.0  # 頭の上（弓を持っている間は、鉄球は頭に乗せていない）
 		var k := (charge - Bow.MIN_RATE) / (1.0 - Bow.MIN_RATE)
 		draw_rect(Rect2(-7, y, 14, 3), Color(0.05, 0.05, 0.08))
 		draw_rect(Rect2(-6, y + 1, 12.0 * k, 1), Color("ffd23f") if k >= 1.0 else Color("e8d9b0"))

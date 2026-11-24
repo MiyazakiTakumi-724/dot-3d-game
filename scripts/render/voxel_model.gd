@@ -15,6 +15,10 @@ func set_voxel(p: Vector3i, c: Color) -> void:
 		_voxels[p] = c
 		_textures = []  # 使い回している側の配列は空にしない（新しい配列にする）
 
+## 置いてあるボクセル（位置 → 色）。読むだけに使う。
+func voxels() -> Dictionary:
+	return _voxels
+
 ## そのボクセルの色。何もなければ透明。
 func get_voxel(p: Vector3i) -> Color:
 	return _voxels.get(p, Color(0, 0, 0, 0))

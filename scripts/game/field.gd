@@ -125,6 +125,8 @@ func _ready() -> void:
 	menu.stats_changed.connect(apply_stats)
 	menu.skill_learned.connect(_on_skill_learned)
 	add_child(menu)
+	StackCamera.apply_pixel_scale(self)
+	warm_hero_looks()
 	_maybe_screenshot()
 
 ## エリアを作り直す。今のエリアの地形・敵・弾・印を片付け、id のエリアを cell から始める。
@@ -603,6 +605,16 @@ func spin_slash() -> bool:
 			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
 	return true
 
+## 今の装備で持ちかえられる物の姿を、先に作っておく（姿を作るのに1つ50〜80msかかるので、持ちかえたときに止まらないように）。
+func warm_hero_looks() -> void:
+	var eq := run.inventory.equipment
+	var armor := eq.current(Equipment.Slot.ARMOR)
+	HeroModel.build("", armor).textures()
+	HeroModel.build("heal", armor).textures()
+	for slot in [Equipment.Slot.SWORD, Equipment.Slot.BOW, Equipment.Slot.STAFF]:
+		if eq.current(slot) != "":
+			HeroModel.build(eq.current(slot), armor).textures()
+
 ## 主人公が手に持って見せる物（HeroModel）。剣・弓・杖は品物の id、回復は "heal"、鉄球は ""（頭の上に乗せる）。
 func held_look() -> String:
 	match hotbar.selected:
@@ -666,7 +678,7 @@ func cast_spell(screen = null) -> bool:
 		return false
 	if not magic.try_cast(spell, mana):
 		return false
-	var aim := magic_aim_at(screen if screen != null else get_viewport().get_mouse_position())
+	var aim := magic_aim_at(screen if screen != null else get_local_mouse_position())
 	match spell:
 		Magic.Spell.NULL_BOLT, Magic.Spell.FIREBALL:
 			_launch_bolt(spell, aim)
@@ -891,6 +903,8 @@ func _on_skill_learned(skill: String) -> void:
 	notice("技能「%s」を覚えた！\n%s" % [skill, how.get(skill, "")], 4.0)
 
 func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
+	if kind in [RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.STAFF_FIRE, RunState.PickupKind.ARMOR]:
+		warm_hero_looks()
 	match kind:
 		RunState.PickupKind.BOW:
 			notice("弓を手に入れた！\n3：持ちかえ　押して溜め、離して撃つ")
@@ -924,7 +938,7 @@ func close_inventory() -> void:
 
 ## カーソルが指している地面の点。
 func _aim_point() -> Vector2:
-	return camera.pick_ground(get_viewport().get_mouse_position(), map, MAX_HEIGHT)
+	return camera.pick_ground(get_local_mouse_position(), map, MAX_HEIGHT)
 
 ## カーソルの方を向かせ、鉄球が落ちる点に印を出す。
 func _update_aim() -> void:
@@ -938,7 +952,7 @@ func _update_aim() -> void:
 	var spell := current_spell() if playing and hotbar.selected == Hotbar.Item.STAFF else -1
 	if spell == Magic.Spell.NULL_BOLT or spell == Magic.Spell.FIREBALL:
 		# 魔法の弾：狙う高さに輪を浮かべ、その真下の地面に影を出す
-		var aim := magic_aim_at(get_viewport().get_mouse_position())
+		var aim := magic_aim_at(get_local_mouse_position())
 		target = aim["point"]
 		var c := HeightMap.world_to_cell(target)
 		show = map.in_bounds(c)
@@ -948,7 +962,7 @@ func _update_aim() -> void:
 		aim_reticle.lift_px = 4.0
 	elif spell >= 0:
 		# 火柱・炎の雨：届く所までの地面に影を出す
-		target = _spell_point(spell, magic_aim_at(get_viewport().get_mouse_position()))
+		target = _spell_point(spell, magic_aim_at(get_local_mouse_position()))
 		show = map.in_bounds(HeightMap.world_to_cell(target))
 	aim_reticle.force_hidden = not show_reticle
 	if playing and bow.charging:

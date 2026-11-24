@@ -19,7 +19,7 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 
 地図は手で書かずに、`tools/area_maps/gen.py` で作る（大陸の上の置き方と出口・高さ・崖・木の列・敵・拾いもの・隠しもの。使い方はそこの README）。`scripts/areas/*.gd` は生成物なので、直すときは gen.py を直して作り直す。出口の両側は高さを高い方にそろえ、生け垣の列は経路づくりで削らない。`tests/test_areas_layout.gd` が、出口のつながり・経路の長さ（強い鉄球まで90秒以上、門からの帰り30秒以内）・くぼみ・平地の広さなどを確かめる。
 
-テストはGUTで345件、すべて通る（20秒くらい）。
+テストはGUTで346件、すべて通る（20秒くらい）。
 
 ゲームシステム（design.md 7・11・17章）を試作3の上に入れた（2026-11-24）：レベル・経験値・振り分けポイントと技能、17章のダメージ式（体力は数値、敵にもレベル）、
 インベントリ画面（装備・ステータス・設定）、剣・弓と矢・杖と魔法（マナ）、防具、簡単モード。武器と矢・防具は、試すために野営地の宝箱に置いてある（本来はボスの落とし物とお店）。
@@ -40,7 +40,7 @@ WASD・矢印：移動／左クリック：手に持つアイテムを使う（�
 
 - `run_tests.sh` は、`godot` コマンドにPATHが通っている前提。Windowsでは Godot の実行ファイルに置き換えるか、エディタのGUTパネルから実行する。
 - ゲームの実行は、Godotエディタで `project.godot` を開いてF5を押す。
-- 画面の確認：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--inventory=staff` で試しの杖を持って杖の欄、`--gear` で試しの武器と防具を持ち `--hold=2` で手に持つ物を選ぶ、`--exp=30` で経験値を足す。`--fps` で平均FPSも出す。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
+- 画面の確認（画像は640×360）：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--inventory=staff` で試しの杖を持って杖の欄、`--gear` で試しの武器と防具を持ち `--hold=2` で手に持つ物を選ぶ、`--exp=30` で経験値を足す。`--fps` で平均FPSも出す。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
 
 ## 構成
 
@@ -82,7 +82,7 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
 scripts/render/  描画まわり
   voxel_model.gd     ボクセルの形から輪切り画像を作る（今の素材はすべてコードで生成）。テクスチャは textures() で共有する
   stack_camera.gd    カメラの回転、ワールド座標から画面座標への変換、マウス操作。follow() で立っている高さを画面の真ん中にする。pick_ground はカーソルの下の地面の点
-  stack_sprite.gd    輪切りを重ねて描くノード。shadow_radius で足元に影。動くものは sort_by_cell=true にする。画面外のものは描かない（visible を毎フレーム書き換えるので、隠すときは force_hidden を使う）。描き直すのはカメラの角度が変わったときだけ。地面の段のふちの明るい線は rim_sides で上から描く。向きが変わるもの（プレイヤー・敵）は always_redraw=true
+  stack_sprite.gd    輪切りを重ねて描くノード（_draw_stack）。voxel_scale は輪切り1枚の大きさ、outline_color でまわりにふち。shadow_radius で足元に影。動くものは sort_by_cell=true にする。画面外のものは描かない（visible を毎フレーム書き換えるので、隠すときは force_hidden を使う）。描き直すのはカメラの角度が変わったときだけ。地面の段のふちの明るい線は rim_sides で上から描く。向きが変わるもの（プレイヤー・敵）は always_redraw=true
 scripts/game/    ノード（ルールのクラスを持って描画するだけの薄い層）とステージ
   terrain.gd         文字の地図の読み込みと地形の描画（ステージ共通）。1層の地図（試作1）と2層の地図（高さの層と物の層、箱庭）。
                      記号はファイルの先頭に書いてある。各マスは「隣が低くて見える所までの柱」として描く（column_bottom）。
@@ -92,7 +92,8 @@ scripts/game/    ノード（ルールのクラスを持って描画するだけ
   inventory_menu.gd  Tab で開くインベントリ画面（開いても世界は止まらない）。装備のページ（回る主人公の姿と枠、装備する品物と撃つ矢を選ぶ。choose(id)）、
                      ステータスのページ（ポイントを振る、次の技能まであと何ポイント。覚えると skill_learned）、設定のページ（難易度）
   damage_popup.gd    当たったときに出るダメージの数字
-  hero_model.gd      主人公の姿（コードで組んだボクセルのちびキャラ、14×14×18）。build(手に持つ品物 id, 防具 id) で、持つ物と防具が姿に出る。同じ組み合わせは使い回す。
+  hero_model.gd      主人公の姿（コードで組んだボクセルのちびキャラ、2倍の細かさで28×28×38、ゲームの座標では14×14×19）。build(手に持つ品物 id, 防具 id) で、持つ物と防具が姿に出る。
+                     影はまわりの空き方から面の向きを出して4段階（影は青紫、光は暖かい白に寄せる）。1つ作るのに50〜80msかかるので、同じ組み合わせは使い回し、field.gd の warm_hero_looks で先に作る。
                      player.gd の set_look で変え、暗いふちを付けて描く。field.gd の held_look が手に持つ物を決める。鉄球は手に持つ物に選んでいる間だけ頭の上（Ball.stowed）
 fonts/           PixelMplus（M+ FONT LICENSE。商用利用・再配布が自由）とライセンスの文。*.import はぼかさない設定なので git に入れている
 scripts/areas/   4エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）
@@ -106,7 +107,8 @@ addons/gut/      GUT 9.5.0（同梱。Godot 4.5向けだが、gut_loader.gd の1
 ## 決まりごと
 
 - 新しいゲームのルールは `scripts/rules/` に RefCounted クラスとして書き、先にGUTで失敗するテストを書いてから実装する（TDD）。
-- 座標系：1マス＝16px、1段＝輪切り8枚＝画面で8px。描画解像度は320×180で、拡大は整数倍のみ。
+- 座標系：1マス＝16px、1段＝輪切り8枚＝画面で8px。ゲームの座標（画面の座標）は320×180。本当の画面は640×360で、シーンの根と CanvasLayer を2倍にして描く（`StackCamera.PIXEL_SCALE`・`apply_pixel_scale`）。ウィンドウへの拡大は整数倍のみ。
+  細かく描く物（今は主人公だけ）は2倍の細かさで作り、`StackSprite.voxel_scale = 0.5` でボクセル1つを本当の画面の1pxで描く。マウスの位置は `get_local_mouse_position()`（ゲームの座標）で読む。
 - カメラ：`world_to_screen` は -angle で回し、`screen_dir_to_world` は +angle で回す。符号をそろえること。
 - 描画順：`z_index` は奥行き（カメラ基準で回したときのy）×8＋draw_bias で決める。動くものは足元の円がかかるマスのうち、同じ高さのマスの一番手前の中心で判定する（`StackSprite.sort_depth`。そうしないと、マスの奥側に立ったとき足元が床に隠れたり、手前のふちに立ったとき手前の床がかぶったりする。低いマスを数えると、崖の上の鉄球が下に立つキャラにかぶる）。木や岩は同じ奥行きならキャラより後（`Terrain.DECO_BIAS`）。
 - コメントとコミットメッセージは日本語。

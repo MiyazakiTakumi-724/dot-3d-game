@@ -4,6 +4,16 @@ extends Node2D
 ## Q / E、またはマウスの右ボタンを押したまま左右に動かして回す（左クリックはアイテムを使うボタン）。
 
 const SCREEN_CENTER := Vector2(160, 90)
+## 本当の画面（640×360）は、ゲームの画面の座標（320×180）の2倍の細かさ。シーンの根と CanvasLayer をこの倍率で大きくする。
+## 細かい物（主人公など）は、ボクセル1つを本当の画面の1pxで描く（StackSprite.voxel_scale = 1 / PIXEL_SCALE）。
+const PIXEL_SCALE := 2
+
+## シーンの根 root と、その子の CanvasLayer を PIXEL_SCALE 倍にする（ゲームの座標は 320×180 のまま）。
+static func apply_pixel_scale(root: Node2D) -> void:
+	root.scale = Vector2.ONE * PIXEL_SCALE
+	for c in root.get_children():
+		if c is CanvasLayer:
+			c.scale = Vector2.ONE * PIXEL_SCALE
 const TURN_SPEED := PI / 2  # 1秒で90°
 const MOUSE_SENSITIVITY := 0.012  # 画面1pxあたりの回転量（ラジアン）
 
@@ -25,7 +35,7 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
-			angle = wrapf(angle + event.relative.x * MOUSE_SENSITIVITY, -PI, PI)
+			angle = wrapf(angle + event.relative.x / PIXEL_SCALE * MOUSE_SENSITIVITY, -PI, PI)
 
 ## world を真ん中に、高さ height_px をなめらかに追いかける（段を登ったときに画面が跳ねないように）。
 func follow(world: Vector2, height_px: float, delta: float) -> void:

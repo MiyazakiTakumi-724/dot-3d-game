@@ -67,6 +67,7 @@ func _ready() -> void:
 		enemies.append(enemy)
 	state = StageState.new(enemies.size())
 	_build_ui()
+	StackCamera.apply_pixel_scale(self)
 	_maybe_screenshot()
 
 func _build_map() -> void:
