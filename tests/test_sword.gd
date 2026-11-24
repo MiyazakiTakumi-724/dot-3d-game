@@ -35,3 +35,18 @@ func test_rank2_reaches_up():
 	assert_false(Sword.reaches_up(1, false))
 	assert_true(Sword.reaches_up(2, false))
 	assert_true(Sword.reaches_up(1, true))
+
+## 回転斬り：周りの敵をまとめて斬る（後ろにも当たる）
+func test_spin_hits_all_around():
+	assert_true(Sword.hits_around(Vector2.ZERO, 2, Vector2(-16, 0), 2))
+	assert_true(Sword.hits_around(Vector2.ZERO, 2, Vector2(0, 18), 1))
+	assert_false(Sword.hits_around(Vector2.ZERO, 2, Vector2(0, 30), 2))
+	assert_false(Sword.hits_around(Vector2.ZERO, 2, Vector2(0, 10), 3))
+
+func test_spin_has_longer_interval():
+	var s := Sword.new()
+	assert_true(s.try_spin())
+	s.update(Sword.INTERVAL + 0.01)
+	assert_false(s.try_swing())
+	s.update(Sword.SPIN_INTERVAL)
+	assert_true(s.try_swing())

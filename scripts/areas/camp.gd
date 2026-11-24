@@ -64,4 +64,5 @@ const PICKUPS := [
 	[Vector2i(9, 12), RunState.PickupKind.POISON_ARROWS, 10],
 	[Vector2i(12, 6), RunState.PickupKind.GUN, 1],
 	[Vector2i(14, 6), RunState.PickupKind.AMMO, 40],
+	[Vector2i(8, 10), RunState.PickupKind.ARMOR_SET, 1],
 ]

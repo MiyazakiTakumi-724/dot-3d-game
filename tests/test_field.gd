@@ -309,7 +309,7 @@ func test_player_hp_from_stats():
 	assert_eq(f.player.hp, 7)
 
 func test_easy_mode_halves_damage():
-	f.easy_mode = true
+	f.settings.easy_mode = true
 	f.hurt_player(4)
 	assert_eq(f.player.hp, 8)
 
@@ -558,3 +558,57 @@ func test_enemy_drop_ammo_and_pick():
 	f.spawn_drop(c, RunState.PickupKind.AMMO, 5)
 	_walk_out(_exit("camp", "hills"))
 	assert_eq(f.drops_left(), 0)
+
+## 技能（体の動き）：しゃがみ・受け身・よじ登りが、ポイントを振ると使えるようになる
+func test_move_skills_apply():
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
+	f.open_inventory()
+	watch_signals(f.menu)
+	for i in 9:
+		f.menu.allocate(PlayerStats.Stat.MOVE)
+	assert_signal_emit_count(f.menu, "skill_learned", 3)
+	assert_true(f.player.can_crouch)
+	assert_eq(f.rules.max_drop, 4)
+	assert_true(f.player.mover.slow_climb)
+	assert_string_contains(f.ui_message(), "よじ登り")
+
+## しゃがむと、撃つ敵の弾が当たらない
+func test_crouch_dodges_bullets():
+	var b := Bullet.new()
+	b.pos = f.player.mover.pos
+	b.height = f.player.mover.height
+	b.vel = Vector2(1, 0)
+	b.damage = 3
+	f.player.crouching = true
+	f._bullets.append([b, StackSprite.new()])
+	f._step_bullets(0.016)
+	assert_eq(f.player.hp, f.player.max_hp)
+
+## 防具一式を拾うと最大体力が増え、死ぬとランク1は残る
+func test_armor_set_from_camp():
+	_get_camp_pickup(RunState.PickupKind.ARMOR_SET)
+	assert_eq(f.player.max_hp, 10 + 3 * Equipment.HP_PER_ARMOR_RANK)
+
+## 回転斬り：剣の技能を3つ覚えると、Space で後ろの敵にも当たる
+func test_spin_slash_needs_skill():
+	f.run.inventory.equipment.gain(Equipment.Slot.SWORD, 1)
+	f.hotbar.select_slot(2, f.run.inventory.equipment)
+	assert_false(f.spin_slash())
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
+	for i in 9:
+		f.run.stats.allocate(PlayerStats.Stat.SWORD)
+	var m := HeightMap.new(Vector2i(8, 3))
+	_use_map(m, Vector2i(3, 1))
+	var e := _solo_enemy(m, Vector2i(2, 1))
+	f.player.mover.facing = Vector2.RIGHT
+	var hp: int = e.walker.hp
+	assert_true(f.spin_slash())
+	assert_lt(e.walker.hp, hp)
+
+func test_easy_mode_from_settings_page():
+	f.open_inventory()
+	f.menu.show_page(InventoryMenu.Page.SETTINGS)
+	f.menu.set_easy(true)
+	assert_true(f.settings.easy_mode)
+	f.hurt_player(4)
+	assert_eq(f.player.hp, 8)

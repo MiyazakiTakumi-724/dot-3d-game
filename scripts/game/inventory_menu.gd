@@ -6,10 +6,12 @@ extends CanvasLayer
 ## 「ステータス」のページ：レベルアップでもらったポイントを、6つの項目に振る。3ポイントごとに技能を覚える。
 
 signal close_requested
-## ポイントを振った（体力の最大や足の速さを反映してもらう）
+## ポイントを振った・防具を替えた（体力の最大や足の速さを反映してもらう）
 signal stats_changed
+## 技能を覚えた（技能の名前）
+signal skill_learned(skill: String)
 
-enum Page { EQUIP, STATS }
+enum Page { EQUIP, STATS, SETTINGS }
 
 const PANEL_POS := Vector2(8, 6)
 const PANEL_SIZE := Vector2(304, 168)
@@ -23,6 +25,7 @@ const TRAITS := {
 }
 
 var run: RunState
+var settings: GameSettings
 var page: Page = Page.EQUIP
 var selected_slot: Equipment.Slot = Equipment.Slot.BALL
 var _panel: ColorRect
@@ -38,8 +41,9 @@ var _stat_rows := {}  # Stat → [points Label, + Button, effect Label, skill La
 var _portrait_cam: StackCamera
 var _portrait: StackSprite
 
-func setup(r: RunState) -> void:
+func setup(r: RunState, s: GameSettings = null) -> void:
 	run = r
+	settings = s if s != null else GameSettings.new()
 	layer = 10
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_panel = ColorRect.new()
@@ -49,10 +53,12 @@ func setup(r: RunState) -> void:
 	add_child(_panel)
 	_page_buttons[Page.EQUIP] = _button(_panel, "装備", Vector2(4, 3), func(): show_page(Page.EQUIP))
 	_page_buttons[Page.STATS] = _button(_panel, "ステータス", Vector2(42, 3), func(): show_page(Page.STATS))
+	_page_buttons[Page.SETTINGS] = _button(_panel, "設定", Vector2(160, 3), func(): show_page(Page.SETTINGS))
 	var hint := _label(_panel, "Tab：閉じる", Vector2(244, 6))
 	hint.modulate.a = 0.7
 	_build_equip_page()
 	_build_stats_page()
+	_build_settings_page()
 	_panel.hide()
 
 func _build_equip_page() -> void:
@@ -98,8 +104,23 @@ func _build_stats_page() -> void:
 		var pts := _label(_stats_root, "", Vector2(62, y + 3))
 		var plus := _button(_stats_root, "＋", Vector2(80, y), func(): allocate(stat))
 		var effect := _label(_stats_root, "", Vector2(104, y + 3))
-		var skill := _label(_stats_root, "", Vector2(186, y + 3))
+		var skill := _label(_stats_root, "", Vector2(190, y + 3))
 		_stat_rows[stat] = [pts, plus, effect, skill]
+
+var _settings_root: Control
+var _difficulty_buttons := {}
+
+func _build_settings_page() -> void:
+	_settings_root = _page_root()
+	_label(_settings_root, "難易度", Vector2(6, 30))
+	_difficulty_buttons[false] = _button(_settings_root, "", Vector2(60, 27), func(): set_easy(false))
+	_difficulty_buttons[true] = _button(_settings_root, "", Vector2(124, 27), func(): set_easy(true))
+	var note := _label(_settings_root, "簡単：敵から受けるダメージだけが半分になる。\nほかのルールは普通と同じ。", Vector2(6, 52))
+	note.modulate.a = 0.75
+
+func set_easy(v: bool) -> void:
+	settings.easy_mode = v
+	refresh()
 
 func _page_root() -> Control:
 	var c := Control.new()
@@ -130,6 +151,7 @@ func select_slot(slot: Equipment.Slot) -> void:
 func choose(rank: int) -> bool:
 	if not run.inventory.equipment.equip(selected_slot, rank):
 		return false
+	stats_changed.emit()  # 防具なら最大体力が変わる
 	refresh()
 	return true
 
@@ -149,13 +171,18 @@ func _add_arrow_choices() -> void:
 		var mark := "●" if inv.arrow_kind == kind else "○"
 		var text := "%s %s ×%d" % [mark, Arrow.NAMES[kind], inv.arrow_count(kind)]
 		if not Arrow.usable(kind, run.stats.skills_in(PlayerStats.Stat.BOW)):
-			text += "（技能で使える）"
+			text += " 要技能"
 		var b := _button(_rank_box, text, Vector2.ZERO, func(): choose_arrow(kind))
 		b.disabled = not Arrow.usable(kind, run.stats.skills_in(PlayerStats.Stat.BOW))
 
 func allocate(stat: PlayerStats.Stat) -> bool:
+	var before := run.stats.skills_in(stat)
 	if not run.stats.allocate(stat):
 		return false
+	var names: Array = PlayerStats.SKILLS.get(stat, [])
+	var now := run.stats.skills_in(stat)
+	if now > before and now <= names.size():
+		skill_learned.emit(names[now - 1])
 	stats_changed.emit()
 	refresh()
 	return true
@@ -171,14 +198,20 @@ static func weapon_label(slot: Equipment.Slot, rank: int) -> String:
 func refresh() -> void:
 	_equip_root.visible = page == Page.EQUIP
 	_stats_root.visible = page == Page.STATS
+	_settings_root.visible = page == Page.SETTINGS
 	var pts := run.stats.points
 	_page_buttons[Page.STATS].text = "ステータス" + ("（%d）" % pts if pts > 0 else "")
 	for p in _page_buttons:
 		_page_buttons[p].modulate = Color.WHITE if p == page else Color(1, 1, 1, 0.55)
-	if page == Page.EQUIP:
-		_refresh_equip()
-	else:
-		_refresh_stats()
+	match page:
+		Page.EQUIP:
+			_refresh_equip()
+		Page.STATS:
+			_refresh_stats()
+		Page.SETTINGS:
+			for easy in _difficulty_buttons:
+				var on: bool = settings.easy_mode == easy
+				_difficulty_buttons[easy].text = ("● " if on else "○ ") + ("簡単" if easy else "普通")
 
 func _refresh_equip() -> void:
 	var eq := run.inventory.equipment
@@ -200,6 +233,8 @@ func _refresh_equip() -> void:
 	for rank in ranks:
 		var mark := "●" if rank == eq.effective(selected_slot) else "○"
 		var text := "%s ランク%d　攻撃＋%d" % [mark, rank, Equipment.rank_attack(rank)]
+		if Equipment.ARMOR.has(selected_slot):
+			text = "%s ランク%d　体力＋%d" % [mark, rank, rank * Equipment.HP_PER_ARMOR_RANK]
 		var t: String = TRAITS.get(selected_slot, {}).get(rank, "")
 		if t != "":
 			text += "\n　" + t
@@ -216,7 +251,7 @@ func _refresh_equip() -> void:
 
 func _refresh_stats() -> void:
 	var st := run.stats
-	_stats_header.text = "Lv%d　経験 %d/%d　ポイント %d　（3ポイントごとに技能）" % [st.level, st.exp_in_level(), st.exp_level_span(), st.points]
+	_stats_header.text = "Lv%d　経験 %d/%d　ポイント %d　（3ポイントで技能を1つ）" % [st.level, st.exp_in_level(), st.exp_level_span(), st.points]
 	for stat in _stat_rows:
 		var row: Array = _stat_rows[stat]
 		var n := st.points_in(stat)
@@ -246,7 +281,7 @@ func _skill_text(stat: PlayerStats.Stat) -> String:
 	if learned >= names.size():
 		return "技能をすべて覚えた"
 	var left := PlayerStats.POINTS_PER_SKILL - st.points_in(stat) % PlayerStats.POINTS_PER_SKILL
-	return "次：%s（あと%d）" % [names[learned], left]
+	return "%sまで%d" % [names[learned], left]
 
 func _process(delta: float) -> void:
 	if is_open() and page == Page.EQUIP:

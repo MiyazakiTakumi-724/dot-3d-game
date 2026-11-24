@@ -22,6 +22,13 @@ var aim_screen = null
 
 var _invulnerable := 0.0
 ## 剣を振った跡を見せる残り時間と、落下斬りか
+## 技能「しゃがみ」を覚えていれば、C か左Ctrlを押している間しゃがむ（遅くなり、撃つ敵の弾をよけられる）
+var can_crouch := false
+var crouching := false
+const CROUCH_SPEED := 0.5
+const CROUCH_HIDE_LAYERS := 4  ## しゃがむと上の輪切りをこれだけ描かない
+## 回転斬りの見た目
+var _spin_t := 0.0
 ## 弓のチャージ率（0.3〜1.0）。溜めていなければ負。頭の上にバーを出す
 var charge := -1.0
 var _swing_t := 0.0
@@ -71,6 +78,9 @@ func swing(fall: bool) -> void:
 	_swing_t = SWING_SHOW
 	_swing_fall = fall
 
+func spin() -> void:
+	_spin_t = SWING_SHOW * 2.0
+
 func clear_invulnerable() -> void:
 	_invulnerable = 0.0
 	self_modulate.a = 1.0
@@ -110,6 +120,8 @@ func _process(delta: float) -> void:
 		# 0.1秒ごとに薄くして点滅させる
 		self_modulate.a = 0.35 if int(_invulnerable * 10.0) % 2 == 1 else 1.0
 	_swing_t = maxf(0.0, _swing_t - delta)
+	_spin_t = maxf(0.0, _spin_t - delta)
+	crouching = can_crouch and hp > 0 and controllable and (Input.is_physical_key_pressed(KEY_C) or Input.is_physical_key_pressed(KEY_CTRL))
 	if hp > 0 and controllable:
 		var dir := Vector2.ZERO
 		if Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A): dir.x -= 1
@@ -117,7 +129,8 @@ func _process(delta: float) -> void:
 		if Input.is_physical_key_pressed(KEY_UP) or Input.is_physical_key_pressed(KEY_W): dir.y -= 1
 		if Input.is_physical_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_S): dir.y += 1
 		if dir != Vector2.ZERO:
-			mover.move(camera.screen_dir_to_world(dir.normalized()) * SPEED * speed_mult * delta)
+			var spd := SPEED * speed_mult * (CROUCH_SPEED if crouching else 1.0)
+			mover.move(camera.screen_dir_to_world(dir.normalized()) * spd * delta, delta)
 		if aim_screen != null:
 			aim_at_screen(aim_screen)
 	_update_drop_lift(delta)
@@ -144,7 +157,8 @@ func _draw() -> void:
 	# 向いている方向の目印が回るよう、モデルの「前」(+y) を facing に合わせる
 	var face_angle := mover.facing.angle() - PI / 2
 	_draw_shadow()
-	for i in _layers.size():
+	var n := _layers.size() - (CROUCH_HIDE_LAYERS if crouching else 0)
+	for i in n:
 		var t := _layers[i]
 		draw_set_transform(Vector2(0, -i), face_angle - camera.angle, Vector2.ONE)
 		draw_texture(t, -t.get_size() * 0.5)
@@ -154,6 +168,8 @@ func _draw() -> void:
 		var a := mover.facing.rotated(-camera.angle).angle()
 		var col := Color("ffb347") if _swing_fall else Color(1, 1, 1, 0.9)
 		draw_arc(Vector2(0, -5), 14.0, a - Sword.HALF_ARC, a + Sword.HALF_ARC, 9, col, 3.0 if _swing_fall else 2.0)
+	if _spin_t > 0.0:
+		draw_arc(Vector2(0, -4), 16.0, 0.0, TAU, 20, Color(1, 1, 1, 0.9), 2.0)
 	if charge >= 0.0:
 		var y := -_layers.size() - 24.0  # 頭の上の鉄球よりさらに上
 		var k := (charge - Bow.MIN_RATE) / (1.0 - Bow.MIN_RATE)

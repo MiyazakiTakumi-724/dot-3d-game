@@ -9,6 +9,7 @@ const REACH := 22.0  ## 体の中心から届く距離（px）
 const HALF_ARC := PI / 3.0  ## 正面から左右にこの角度まで
 const CLOSE := 6.0  ## これより近いものは、向きに関係なく当たる
 const FALL_WINDOW := 0.35  ## 飛び降りてからこの秒数のうちに振ると落下斬り
+const SPIN_INTERVAL := 0.8  ## 回転斬り（技能）の後、次に振れるまで【提案】
 
 var cooldown := 0.0
 
@@ -21,6 +22,20 @@ func try_swing() -> bool:
 		return false
 	cooldown = INTERVAL
 	return true
+
+## 回転斬り（技能）。振れれば true。
+func try_spin() -> bool:
+	if cooldown > 0.0:
+		return false
+	cooldown = SPIN_INTERVAL
+	return true
+
+## 回転斬り：向きに関係なく、周りの REACH の中に当たる（高さの決まりは普通の一振りと同じ）。
+static func hits_around(origin: Vector2, h: int, target: Vector2, target_h: int, reach_up := false) -> bool:
+	var dh := target_h - h
+	if dh < -1 or dh > (1 if reach_up else 0):
+		return false
+	return origin.distance_to(target) <= REACH
 
 ## 1段上へ届くか：ランク2以上の剣か、技能「斬り上げ」を覚えている。
 static func reaches_up(rank: int, has_upswing: bool) -> bool:

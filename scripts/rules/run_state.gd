@@ -4,7 +4,7 @@ extends RefCounted
 ## 死んでも変わらないもの：拾い済みのもの、開けた扉、レベル・経験値・振り分け（stats）、お金の半分。
 
 ## 武器（SWORD など）の amount はランク
-enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL, SWORD, BOW, ARROWS, POISON_ARROWS, GUN, AMMO }
+enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL, SWORD, BOW, ARROWS, POISON_ARROWS, GUN, AMMO, ARMOR_SET }
 
 const ENEMY_MONEY := 10
 
@@ -95,6 +95,9 @@ func take_drop(kind: PickupKind, amount: int) -> void:
 			inventory.equipment.gain(Equipment.Slot.GUN, amount)
 		PickupKind.AMMO:
 			inventory.ammo += amount
+		PickupKind.ARMOR_SET:
+			for slot in Equipment.ARMOR:
+				inventory.equipment.gain(slot, amount)
 
 func is_picked(id: String) -> bool:
 	return _picked.has(id)

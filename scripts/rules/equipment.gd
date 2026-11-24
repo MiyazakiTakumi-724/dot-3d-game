@@ -22,6 +22,9 @@ const MIN_RANK := 1
 ## ランクが1上がるごとに足される攻撃力【提案】（ランク2の鉄球＝前の「強い鉄球」で＋2）
 const ATTACK_PER_RANK := 2
 
+## 防具のランク1つにつき足される最大体力【提案】（部位と守りの値は未定。design.md 16章）
+const HP_PER_ARMOR_RANK := 2
+
 var _owned := {}  # Slot → Array[int]（小さい順）
 var _equipped := {}  # Slot → int
 
@@ -65,6 +68,13 @@ func effective(slot: Slot) -> int:
 		return 0
 	var c := chosen(slot)
 	return c if r.has(c) else r[0]
+
+## 装備している防具で足される最大体力。
+func armor_hp() -> int:
+	var total := 0
+	for slot in ARMOR:
+		total += effective(slot) * HP_PER_ARMOR_RANK
+	return total
 
 ## 死んだとき：ランク1以外を取り出して返す（墓石に入れる分）。Slot → Array[int]。
 func take_for_grave() -> Dictionary:

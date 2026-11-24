@@ -13,8 +13,8 @@ const FALL_SINK_PX := 40.0  ## 奈落に落ちる演出で沈む量（0.5秒で�
 const GRAVE_HINT_SECONDS := 6.0
 const MAX_HEIGHT := 8
 const LEVEL_UP_SECONDS := 3.0
-## 簡単モード（受けるダメージが半分。design.md 13章）。設定画面はまだない
-var easy_mode := false
+## 設定（簡単モードなど）。インベントリ画面の「設定」のページで変える
+var settings := GameSettings.new()
 
 var world: WorldMap
 var area: AreaDef
@@ -121,9 +121,10 @@ func _ready() -> void:
 
 	_build_ui()
 	menu = InventoryMenu.new()
-	menu.setup(run)
+	menu.setup(run, settings)
 	menu.close_requested.connect(close_inventory)
 	menu.stats_changed.connect(apply_stats)
+	menu.skill_learned.connect(_on_skill_learned)
 	add_child(menu)
 	_maybe_screenshot()
 
@@ -253,15 +254,20 @@ func _on_melee_hit(e: Enemy) -> void:
 
 ## 敵の攻撃（攻撃力 enemy_attack）を受ける。無敵の間は受けない。受けたら true。
 func hurt_player(enemy_attack: int) -> bool:
-	var dmg := Damage.enemy_hit(enemy_attack, easy_mode)
+	var dmg := Damage.enemy_hit(enemy_attack, settings.easy_mode)
 	if not player.take_hit(dmg):
 		return false
 	_popup(player.mover.pos, player.mover.height, dmg, Color("ff6b6b"))
 	return true
 
-## ステータス（レベル・振り分け）を体力の最大と足の速さに反映する。最大が増えた分は今の体力も増える。
+## ステータス（レベル・振り分け・技能）と防具を、体力の最大・足の速さ・段差の決まりに反映する。
+## 最大が増えた分は今の体力も増える。毎フレーム呼んでよい（防具が墓石に入ったときなども、これで合う）。
 func apply_stats() -> void:
-	var new_max := run.stats.max_hp()
+	var move_skills := run.stats.skills_in(PlayerStats.Stat.MOVE)
+	player.can_crouch = move_skills >= 1
+	rules.max_drop = 3 + (1 if move_skills >= 2 else 0)  # 受け身
+	player.mover.slow_climb = move_skills >= 3  # よじ登り
+	var new_max := run.stats.max_hp(run.inventory.equipment.armor_hp())
 	if new_max > player.max_hp:
 		player.hp += new_max - player.max_hp
 	player.max_hp = new_max
@@ -383,6 +389,7 @@ func _play_step() -> void:
 			_on_picked(d[1], d[2])
 	ball.rules_ball.try_pick_up(player.mover)
 	_sync_ball_rank()
+	apply_stats()
 	var ex := world.exit_through(area.id, c, player.mover.edge_push)
 	if ex != null and (ex.door_id == "" or run.is_door_open(ex.door_id)):
 		_start_switch(world.arrival(area.id, ex, c))
@@ -409,6 +416,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				try_open_door()
 			KEY_TAB:
 				open_inventory()
+			KEY_SPACE:
+				spin_slash()
 			_:
 				return
 		get_viewport().set_input_as_handled()
@@ -567,6 +576,24 @@ func _step_poison(delta: float) -> void:
 			if d > 0:
 				_popup(e.walker.pos, e.walker.height, d, Color("9be36b"))
 
+## 回転斬り（剣の3つ目の技能、Space）。周りの敵をまとめて斬る。式は普通の一振りと同じ。
+func spin_slash() -> bool:
+	if area_state.result != AreaState.Result.PLAYING or is_switching() or not player.controllable:
+		return false
+	var st := run.stats
+	if hotbar.selected != Hotbar.Item.SWORD or st.skills_in(PlayerStats.Stat.SWORD) < 3:
+		return false
+	if run.inventory.equipment.effective(Equipment.Slot.SWORD) == 0 or not sword.try_spin():
+		return false
+	var mv := player.mover
+	var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0)
+	player.spin()
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, true):
+			e.walker.take_damage(dmg)
+			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
+	return true
+
 ## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
 func _hold_to_swing() -> void:
 	var held := hotbar.selected == Hotbar.Item.SWORD or hotbar.selected == Hotbar.Item.GUN
@@ -663,12 +690,27 @@ func spawn_drop(cell: Vector2i, kind: RunState.PickupKind, amount: int) -> void:
 func drops_left() -> int:
 	return _drops.size()
 
+## 技能を覚えたときの知らせ。使い方があるものは、そのキーも出す。
+func _on_skill_learned(skill: String) -> void:
+	var how := {
+		"しゃがみ": "C か 左Ctrl：しゃがむ（撃つ敵の弾をよける）",
+		"回転斬り": "剣を持って Space：回転斬り",
+		"よじ登り": "2段の段差に向かって歩き続けると登れる",
+		"受け身": "4段まで飛び降りられる",
+		"矢の種類": "Tab：弓の枠で毒矢を選べる",
+		"斬り上げ": "剣が1段上の敵にも届く",
+		"跳弾": "エアガンの弾が壁で1回はね返る",
+	}
+	notice("技能「%s」を覚えた！\n%s" % [skill, how.get(skill, "")], 4.0)
+
 func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
 	match kind:
 		RunState.PickupKind.BOW:
 			notice("弓を手に入れた！\n3：持ちかえ　押して溜め、離して撃つ")
 		RunState.PickupKind.GUN:
 			notice("エアガンを手に入れた！\n4：持ちかえ　ホイール：撃つ高さ")
+		RunState.PickupKind.ARMOR_SET:
+			notice("防具一式を手に入れた！\n最大体力が増えた")
 		RunState.PickupKind.AMMO:
 			notice("弾 ×%d" % amount, 1.5)
 		RunState.PickupKind.ARROWS:
@@ -801,7 +843,8 @@ func _step_bullets(delta: float) -> void:
 		var s: StackSprite = _bullets[i][1]
 		b.step(delta, map)
 		var playing := area_state.result == AreaState.Result.PLAYING
-		if playing and player.hp > 0 and b.hits(player.mover.pos, player.mover.height, BULLET_HIT_RADIUS):
+		# しゃがんでいると、撃つ敵の弾は頭の上を通り過ぎる（技能「しゃがみ」）
+		if playing and player.hp > 0 and not player.crouching and b.hits(player.mover.pos, player.mover.height, BULLET_HIT_RADIUS):
 			b.alive = false
 			hurt_player(b.damage)
 		if not b.alive or not map.in_bounds(HeightMap.world_to_cell(b.pos)):
@@ -910,7 +953,7 @@ func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
 			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
 		RunState.PickupKind.HEAL:
 			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
-		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.GUN:
+		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.GUN, RunState.PickupKind.ARMOR_SET:
 			return _chest_model()
 		RunState.PickupKind.AMMO:
 			return VoxelModel.box(Vector3i(4, 3, 3), Color("6f8fa8"))
@@ -1036,6 +1079,8 @@ func _maybe_screenshot() -> void:
 		elif a.begins_with("--inventory"):
 			if a == "--inventory=stats":
 				menu.page = InventoryMenu.Page.STATS
+			elif a == "--inventory=settings":
+				menu.page = InventoryMenu.Page.SETTINGS
 			get_tree().create_timer(0.05).timeout.connect(open_inventory)
 		elif a.begins_with("--exp="):
 			run.stats.add_exp(int(a.trim_prefix("--exp=")))

@@ -17,6 +17,11 @@ var edge_push: Vector2i = Vector2i.ZERO
 ## 最後に飛び降りた（下の段へ移った）段数と、それからの秒数。落下斬りに使う
 var last_drop := 0
 var since_drop := INF
+## 技能「よじ登り」：2段の段差を、押し続けると CLIMB_SECONDS で登れる
+var slow_climb := false
+const CLIMB_SECONDS := 0.6
+var _climb_time := 0.0
+var _climb_pushed := false
 
 func _init(height_map: HeightMap, movement_rules: MovementRules) -> void:
 	map = height_map
@@ -31,16 +36,44 @@ func place(c: Vector2i) -> void:
 	last_drop = 0
 	since_drop = INF
 
-func move(world_delta: Vector2) -> void:
+## world_delta だけ動く。delta（秒）はよじ登りで押し続けた時間を数えるのに使う。
+func move(world_delta: Vector2, delta := 0.0) -> void:
 	edge_push = Vector2i.ZERO
+	_climb_pushed = false
 	if fell or world_delta == Vector2.ZERO:
+		_climb_time = 0.0
 		return
 	facing = world_delta.normalized()
-	if _try(pos + world_delta):
-		return
-	# 斜めに壁へ当たったときは、動ける方の軸だけ動かして壁沿いに滑らせる
-	if not _try(pos + Vector2(world_delta.x, 0)):
-		_try(pos + Vector2(0, world_delta.y))
+	if not _try(pos + world_delta):
+		# 斜めに壁へ当たったときは、動ける方の軸だけ動かして壁沿いに滑らせる
+		if not _try(pos + Vector2(world_delta.x, 0)):
+			_try(pos + Vector2(0, world_delta.y))
+	if _climb_pushed:
+		_climb_time += delta
+		if _climb_time >= CLIMB_SECONDS:
+			_climb_time = 0.0
+			_climb_up(world_delta)
+	else:
+		_climb_time = 0.0
+
+## よじ登りの進み具合（0〜1）。見た目用。
+func climb_progress() -> float:
+	return _climb_time / CLIMB_SECONDS
+
+## 押していた2段上のマスへ登る。マスの境目を少し越えた所に立つ。
+func _climb_up(world_delta: Vector2) -> void:
+	var dir := world_delta.normalized()
+	var p := pos
+	for i in HeightMap.CELL_PX:
+		p += dir
+		var c := HeightMap.world_to_cell(p)
+		if c != cell():
+			if not map.in_bounds(c) or map.is_wall(c) or map.is_water(c) or map.is_pit(c):
+				return
+			height = map.get_height(c)
+			last_safe_cell = c
+			pos = p + dir
+			return
 
 func tick(delta: float) -> void:
 	since_drop += delta
@@ -74,6 +107,8 @@ func _try(new_pos: Vector2) -> bool:
 			return true
 		var to_h := map.get_height(to)
 		if not rules.can_step(height, to_h):
+			if slow_climb and to_h - height == rules.max_climb + 1:
+				_climb_pushed = true
 			return false
 		if to_h < height:
 			last_drop = height - to_h

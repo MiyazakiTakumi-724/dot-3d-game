@@ -149,3 +149,35 @@ func test_climbing_is_not_a_drop():
 	p.move(Vector2(16, 0))
 	assert_eq(p.height, 1)
 	assert_eq(p.recent_drop(0.35), 0)
+
+## 技能「よじ登り」：2段の段差を、押し続けて0.6秒で登れる
+func test_slow_climb_two_levels():
+	var m := HeightMap.new(Vector2i(4, 1))
+	m.set_height(Vector2i(1, 0), 2)
+	var p := PlayerMover.new(m, MovementRules.new())
+	p.place(Vector2i(0, 0))
+	for i in 10:
+		p.move(Vector2(1, 0), 0.1)
+	assert_eq(p.height, 0)  # 技能がなければ登れない
+	p.slow_climb = true
+	for i in 5:
+		p.move(Vector2(1, 0), 0.1)
+	assert_eq(p.height, 0)
+	assert_gt(p.climb_progress(), 0.5)
+	for i in 3:
+		p.move(Vector2(1, 0), 0.1)
+	assert_eq(p.height, 2)
+	assert_eq(p.cell(), Vector2i(1, 0))
+
+func test_slow_climb_resets_when_letting_go():
+	var m := HeightMap.new(Vector2i(4, 1))
+	m.set_height(Vector2i(1, 0), 2)
+	var p := PlayerMover.new(m, MovementRules.new())
+	p.slow_climb = true
+	p.place(Vector2i(0, 0))
+	for i in 4:
+		p.move(Vector2(1, 0), 0.1)
+	p.move(Vector2(-1, 0), 0.1)
+	for i in 4:
+		p.move(Vector2(1, 0), 0.1)
+	assert_eq(p.height, 0)
