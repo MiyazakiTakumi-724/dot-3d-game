@@ -24,6 +24,9 @@ var _layers: Array[ImageTexture] = []
 var voxel_scale := 1.0
 ## a が0より大きければ、形のまわりにこの色のふち（本当の画面の1px）を描く
 var outline_color := Color(0, 0, 0, 0)
+## 輪切りの間の高さ（ゲームの座標のpx）。負なら voxel_scale と同じ（ボクセルが立方体）。
+## 地形は横を細かく（voxel_scale 0.5）、輪切りの間はゲームの座標の1pxにして、描く枚数を増やさない
+var layer_px := -1.0
 ## true の間は描かない。visible は画面外かどうかで毎フレーム書き換えるので、隠したいときはこちらを使う。
 var force_hidden := false
 ## true なら毎フレーム描き直す（向きが変わるプレイヤーや敵など）。
@@ -93,7 +96,7 @@ func refresh() -> void:
 func _on_screen() -> bool:
 	var m := VISIBLE_MARGIN
 	return position.x > -m and position.x < 320.0 + m \
-		and position.y + m > 0.0 and position.y - _layers.size() * voxel_scale - m < 180.0
+		and position.y + m > 0.0 and position.y - _layers.size() * layer_step() - m < 180.0
 
 ## 足元の影。横長の楕円（ドット絵らしく、少ない色の半透明の黒）。
 func _draw_shadow() -> void:
@@ -132,9 +135,13 @@ func _draw_stack(rot: float, skip := 0, stretch := 1.0, offset := Vector2.ZERO) 
 		draw_set_transform(_layer_pos(i, skip, stretch) + offset, rot, s)
 		draw_texture(t, -t.get_size() * 0.5)
 
+## 輪切り1枚ぶんの高さ（ゲームの座標のpx）。
+func layer_step() -> float:
+	return layer_px if layer_px > 0.0 else voxel_scale
+
 ## i 枚目の輪切りを描く位置（本当の画面のpxにそろえる。詰めたときに半端な位置でにじまないように）。
 func _layer_pos(i: int, skip: int, stretch: float) -> Vector2:
-	var y := (skip - i) * voxel_scale * stretch
+	var y := (skip - i) * layer_step() * stretch
 	return Vector2(0, roundf(y * StackCamera.PIXEL_SCALE) / StackCamera.PIXEL_SCALE)
 
 ## 上の面のふちの明るい線（地面の柱だけ）。
@@ -142,11 +149,12 @@ func _draw_rim() -> void:
 	if rim_sides == 0:
 		return
 	draw_set_transform(Vector2(0, -rim_layer), -camera.angle, Vector2.ONE)
+	var w := 1.0 / StackCamera.PIXEL_SCALE  # 本当の画面の1px
 	if rim_sides & 1:
-		draw_rect(Rect2(-8, -8, 16, 1), rim_color)
+		draw_rect(Rect2(-8, -8, 16, w), rim_color)
 	if rim_sides & 2:
-		draw_rect(Rect2(7, -8, 1, 16), rim_color)
+		draw_rect(Rect2(8 - w, -8, w, 16), rim_color)
 	if rim_sides & 4:
-		draw_rect(Rect2(-8, 7, 16, 1), rim_color)
+		draw_rect(Rect2(-8, 8 - w, 16, w), rim_color)
 	if rim_sides & 8:
-		draw_rect(Rect2(-8, -8, 1, 16), rim_color)
+		draw_rect(Rect2(-8, -8, w, 16), rim_color)

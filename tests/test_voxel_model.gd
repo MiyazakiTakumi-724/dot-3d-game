@@ -48,3 +48,15 @@ func test_move_box_shifts_only_inside():
 	assert_eq(m.get_voxel(Vector3i(0, 0, 0)).a, 0.0)
 	assert_eq(m.get_voxel(Vector3i(0, 2, 0)), Color.RED)
 	assert_eq(m.get_voxel(Vector3i(3, 0, 0)), Color.BLUE)
+
+## 輪切りの画像から直接作った模型も、色を読める（範囲の外は透明）
+func test_model_from_images():
+	var a := Image.create(4, 2, false, Image.FORMAT_RGBA8)
+	var b := Image.create(4, 2, false, Image.FORMAT_RGBA8)
+	b.set_pixel(1, 1, Color.RED)
+	var m := VoxelModel.from_images([a, b])
+	assert_eq(m.size, Vector3i(4, 2, 2))
+	assert_eq(m.get_voxel(Vector3i(1, 1, 1)), Color.RED)
+	assert_eq(m.get_voxel(Vector3i(1, 1, 0)).a, 0.0)
+	assert_eq(m.get_voxel(Vector3i(9, 1, 1)).a, 0.0)
+	assert_eq(m.textures().size(), 2)

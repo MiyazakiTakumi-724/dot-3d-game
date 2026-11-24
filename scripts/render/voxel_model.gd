@@ -9,6 +9,15 @@ var size: Vector3i:
 		_textures = []
 var _voxels: Dictionary = {}  # Vector3i -> Color
 var _textures: Array[ImageTexture] = []
+## 輪切りの画像から直接作ったとき（地形の柱など。ボクセルを1つずつ置くより何倍も速い）の画像
+var _images: Array[Image] = []
+
+## 下から順の輪切りの画像から作る（大きさは画像の大きさと枚数）。
+static func from_images(images: Array[Image]) -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(images[0].get_width(), images[0].get_height(), images.size())
+	m._images = images
+	return m
 
 func set_voxel(p: Vector3i, c: Color) -> void:
 	if p.x >= 0 and p.y >= 0 and p.z >= 0 and p.x < size.x and p.y < size.y and p.z < size.z:
@@ -42,6 +51,10 @@ func move_box(from: Vector3i, to: Vector3i, offset: Vector3i) -> void:
 
 ## そのボクセルの色。何もなければ透明。
 func get_voxel(p: Vector3i) -> Color:
+	if not _images.is_empty():
+		if p.x < 0 or p.y < 0 or p.z < 0 or p.x >= size.x or p.y >= size.y or p.z >= size.z:
+			return Color(0, 0, 0, 0)
+		return _images[p.z].get_pixel(p.x, p.y)
 	return _voxels.get(p, Color(0, 0, 0, 0))
 
 ## 輪切りの画像をテクスチャにしたもの。同じモデルを使うスプライト同士で共有する（作り直しは形が変わったときだけ）。
@@ -52,6 +65,8 @@ func textures() -> Array[ImageTexture]:
 	return _textures
 
 func slices() -> Array[Image]:
+	if not _images.is_empty():
+		return _images
 	var out: Array[Image] = []
 	for z in size.z:
 		var img := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)

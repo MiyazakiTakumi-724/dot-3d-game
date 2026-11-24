@@ -192,7 +192,7 @@ static func is_cached(key: String) -> bool:
 static func warm(keys: Array[String], budget_ms: float) -> void:
 	var start := Time.get_ticks_usec()
 	while not keys.is_empty() and (Time.get_ticks_usec() - start) < budget_ms * 1000.0:
-		_cached(keys.pop_back())
+		_cached(keys.pop_back()).textures()
 
 ## 暗いグラデーションの背景を一番奥に置く（島が浮いて見えるように）。
 static func add_background(parent: Node) -> void:
@@ -240,6 +240,8 @@ static func _place(parent: Node2D, camera: StackCamera, cell: Vector2i, h: int, 
 	s.world_pos = HeightMap.cell_center(cell)
 	s.base_height = h
 	s.draw_bias = bias
+	s.voxel_scale = 1.0 / FINE
+	s.layer_px = 1.0
 	s.set_model(m)
 	parent.add_child(s)
 	return s
@@ -290,229 +292,356 @@ static func lower_sides(map: HeightMap, cell: Vector2i) -> int:
 			bits |= 1 << i
 	return bits
 
+## 地形の細かさ。1マスを 32×32 の輪切りで描き、ボクセル1つを本当の画面の1pxにする（主人公や小物と同じ細かさ）。
+## 輪切りの間はゲームの座標の1pxのまま（描く枚数を増やさない）。側面は外側の2つの輪が見えるので、
+## 外側（d=0）を下半分、内側（d=1）を上半分として塗ると、正面から見た崖も本当の画面の1pxで描ける。
+const FINE := 2
+const TEX := 16 * FINE
+## 側面の向き（0 北・1 東・2 南・3 西）ごとの影の濃さ（VoxelShade.SHADOW へ寄せる割合）。
+## 光は南西の上から来る（主人公や小物の影と同じ向き）
+const SIDE_SHADE := [0.36, 0.28, 0.1, 0.18]
+## 上の面に、ほんの少し光の色を足す
+const TOP_LIGHT := 0.06
+
+## 外側の2つの輪の上の点（x, y, 輪の深さ d, 向き face, 辺に沿った位置 along）。正方形 [lo, hi) のふち。
+static func _ring(lo: int, hi: int) -> Array:
+	var out := []
+	for d in 2:
+		var a := lo + d
+		var b := hi - 1 - d
+		for t in range(a, b + 1):
+			out.append([t, b, d, 2, t])  # 南
+			out.append([t, a, d, 0, t])  # 北
+		for t in range(a + 1, b):
+			out.append([a, t, d, 3, t])  # 西
+			out.append([b, t, d, 1, t])  # 東
+	return out
+
+static var _rings := {}
+
+static func _ring_cached(lo: int, hi: int) -> Array:
+	var k := lo * 1000 + hi
+	if not _rings.has(k):
+		_rings[k] = _ring(lo, hi)
+	return _rings[k]
+
+## 側面の色に向きの影を付ける。
+static func _side(c: Color, face: int) -> Color:
+	return c.lerp(VoxelShade.SHADOW, SIDE_SHADE[face])
+
 ## 地面の柱。depth は柱の高さ（段）、bottom は柱の下の端の段（土の縞を隣とそろえるのに使う）。
-## 上の面は草（マスごとに色を少しずらし、草むらか花を足す）。側面は上から草のふち→土の縞→
+## 上の面は草（マスごとに色を少しずらし、草の葉と草むらか花を足す）。側面は上から草のふち→土の縞→
 ## 0より下は暗い土と岩。島のふちの柱は、下の端が少しすぼまってでこぼこになる。
-## 側面は1段ごとに暗い帯を入れて、何段ぶんの崖かを数えられるようにする。
+## 側面は1段ごとに暗い線を入れて、何段ぶんの崖かを数えられるようにする。
 ## 段のふちの明るい線はモデルには入れず、StackSprite.rim_sides で描く。
 static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0) -> VoxelModel:
 	var layers := depth * StackSprite.LEVEL_PX + 1
 	var grass: Color = top_color(h)
 	grass = [grass, grass.lightened(0.05), grass.darkened(0.05)][v] as Color
-	var m := VoxelModel.new()
-	m.size = Vector3i(16, 16, layers + 2)
 	var base_px := bottom * StackSprite.LEVEL_PX
+	var images: Array[Image] = []
 	for z in layers:
 		var abs_px := base_px + z  # 0 が高さ0の地面
 		var from_top := layers - 1 - z
-		# 島の下の端は、すぼめてでこぼこにする
-		var inset := 0
-		if bottom < 0 and z < 10:
-			inset = (10 - z) / 3 + (1 if (v + z) % 4 == 0 else 0)
-		for yy in range(inset, 16 - inset):
-			for xx in range(inset, 16 - inset):
-				var c: Color
-				if from_top == 0:
-					c = grass
-				elif from_top <= 2 and (from_top == 1 or (xx * 3 + yy * 5) % 4 != 0):
-					c = grass.darkened(0.12 * from_top)  # 崖のふちに草が少し垂れる
-				elif abs_px >= 0:
-					c = DIRT_COLORS[(abs_px / 3) % 2]
-					c = c.darkened(clampf(from_top * 0.006, 0.0, 0.2))  # 下ほど少し暗く
-					if _hash3(xx, yy, abs_px, 23) == 0:
-						c = STONE_COLOR
-					elif _hash3(xx, yy, abs_px / 5, 31) == 0:
-						c = Color("6e4a2c")  # 根や割れ目
-				else:
-					var deep := clampi(-abs_px / 12, 0, DEEP_COLORS.size() - 1)
-					c = DEEP_COLORS[deep]
-					if _hash3(xx, yy, abs_px / 3, 7) == 0:
-						c = STONE_COLOR.darkened(0.1 * deep)
-				if from_top > 2 and abs_px > 0 and abs_px % StackSprite.LEVEL_PX == 0:
-					c = c.darkened(0.18)  # 1段ごとの帯
-				m.set_voxel(Vector3i(xx, yy, z), c)
-	var top := layers
+		var img := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
+		if from_top == 0:
+			_grass_top(img, grass, v, h)
+		else:
+			# 島の下の端は、すぼめてでこぼこにする
+			var inset := 0
+			if bottom < 0 and z < 10:
+				inset = ((10 - z) / 3 + (1 if (v + z) % 4 == 0 else 0)) * FINE
+			img.fill_rect(Rect2i(inset, inset, TEX - 2 * inset, TEX - 2 * inset), _side(_cliff_color(grass, abs_px * FINE + 1, from_top * FINE - 1, 0, 2, v), 2))
+			for r in _ring_cached(inset, TEX - inset):
+				var vf: int = abs_px * FINE + r[2]
+				var c := _cliff_color(grass, vf, from_top * FINE - r[2], r[4] + r[3] * 37, r[3], v)
+				img.set_pixel(r[0], r[1], _side(c, r[3]))
+		images.append(img)
+	# 上の面の上に、草むらか花を立てる（2枚）
+	var tuft_a := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
+	var tuft_b := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
 	if flowers:
 		var petals := [Color("f6f1e4"), Color("ffd84a"), Color("ff8fb3"), Color("b9a6ff")]
-		for i in 6:
-			var px := (2 + i * 5 + v * 3) % 14 + 1
-			var py := (3 + i * 7 + v * 4) % 14 + 1
-			m.set_voxel(Vector3i(px, py, top), grass.darkened(0.2))
-			m.set_voxel(Vector3i(px, py, top + 1), petals[(i + v) % petals.size()])
+		for i in 7:
+			var px := (3 + i * 9 + v * 7) % 27 + 2
+			var py := (5 + i * 13 + v * 5) % 27 + 2
+			var pc: Color = petals[(i + v) % petals.size()]
+			tuft_a.set_pixel(px, py, grass.darkened(0.25))
+			for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				tuft_b.set_pixel(px + d.x, py + d.y, pc if d != Vector2i.ZERO else Color("ffe27a"))
 	elif v != 2:
-		var tuft := grass.darkened(0.22)
-		for i in 3:
-			var px := (3 + i * 5 + v * 4) % 14 + 1
-			var py := (2 + i * 7 + v * 5) % 14 + 1
-			m.set_voxel(Vector3i(px, py, top), tuft)
-			m.set_voxel(Vector3i(px + 1, py, top), tuft)
-			m.set_voxel(Vector3i(px, py, top + 1), tuft.lightened(0.12))
-	return m
+		var tuft := grass.darkened(0.2)
+		for i in 4:
+			var px := (5 + i * 9 + v * 8) % 27 + 2
+			var py := (3 + i * 13 + v * 10) % 27 + 2
+			for dx in [-1, 0, 1, 2]:
+				tuft_a.set_pixel(px + dx, py, tuft)
+			tuft_b.set_pixel(px - 1, py, tuft.lightened(0.1))
+			tuft_b.set_pixel(px + 1, py, tuft.lightened(0.18))
+			tuft_b.set_pixel(px + 2, py, tuft.lightened(0.1))
+	images.append(tuft_a)
+	images.append(tuft_b)
+	return VoxelModel.from_images(images)
+
+## 上の面の草：まだらの色・草の葉・小さな石。
+static func _grass_top(img: Image, grass: Color, v: int, h: int) -> void:
+	var light := grass
+	img.fill(light)
+	for y in TEX:
+		for x in TEX:
+			var k := _hash3(x / 2 + v * 17, y / 2 + h * 5, 3, 11)
+			if k == 0:
+				img.set_pixel(x, y, light.lightened(0.06))
+			elif k == 1:
+				img.set_pixel(x, y, light.darkened(0.06))
+	# 草の葉（暗い根もとと、明るい先）
+	for i in 14:
+		var px := (i * 7 + v * 11 + h * 3) % 30 + 1
+		var py := (i * 11 + v * 5 + h * 7) % 29 + 2
+		img.set_pixel(px, py, light.darkened(0.16))
+		img.set_pixel(px, py - 1, light.lightened(0.1))
+	if v == 1:
+		img.set_pixel(9, 21, STONE_COLOR.lightened(0.2))
+		img.set_pixel(10, 21, STONE_COLOR)
+
+## 崖の側面の1点の色。vf は高さ（本当の画面のpx、0 が高さ0の地面）、from_top は上の面からの深さ（同じ単位）、
+## along は辺に沿った位置（ばらつき用）。
+static func _cliff_color(grass: Color, vf: int, from_top: int, along: int, face: int, v: int) -> Color:
+	var c: Color
+	if from_top <= 3 or (from_top <= 6 and _hash3(along, v, face, 3) != 0):
+		c = grass.darkened(0.05 * from_top)  # 崖のふちに草が少し垂れる
+	elif vf >= 0:
+		c = DIRT_COLORS[(vf / 6) % 2]
+		c = c.darkened(clampf(from_top * 0.003, 0.0, 0.2))  # 下ほど少し暗く
+		if _hash3(along / 2, vf / 2, face, 19) == 0:
+			c = STONE_COLOR
+		elif _hash3(along, vf / 9, face, 29) == 0:
+			c = Color("6e4a2c")  # 根や割れ目
+	else:
+		var deep := clampi(-vf / 24, 0, DEEP_COLORS.size() - 1)
+		c = DEEP_COLORS[deep]
+		if _hash3(along / 2, vf / 3, face, 7) == 0:
+			c = STONE_COLOR.darkened(0.1 * deep)
+	if from_top > 6 and vf > 0 and vf % (StackSprite.LEVEL_PX * FINE) == 0:
+		c = c.darkened(0.2)  # 1段ごとの線
+	return c
 
 ## 水の柱。上の面は水面（地面より WATER_DROP_PX 低い）、側面は滝（縦の筋）。
 ## foam：上の段から滝が落ちてくる所なので、水面に白い泡を出す。
 ## falls_off：島のふちから落ちる滝なので、下の方ほど薄くする。
 static func water_model(h: int, depth: int, v: int, foam: bool = false, falls_off: bool = false) -> VoxelModel:
 	var layers := depth * StackSprite.LEVEL_PX - WATER_DROP_PX + 1
-	var m := VoxelModel.new()
-	m.size = Vector3i(16, 16, layers)
+	var images: Array[Image] = []
 	for z in layers:
-		var top := z == layers - 1
-		var fade := 1.0
-		if falls_off and z < 24:
-			fade = 0.25 + 0.75 * float(z) / 24.0
-		for yy in 16:
-			for xx in 16:
-				var c: Color
-				if top:
-					c = WATER_COLOR
-					if _hash3(xx + v * 5, yy, 0, 29) == 0:
-						c = WATER_COLOR.lightened(0.35)  # 水面のきらめき
-					if foam and _hash3(xx, yy + v, 1, 3) == 0:
-						c = FOAM_COLOR
-				else:
-					c = FALL_COLORS[_hash3(xx, yy, v, FALL_COLORS.size())]
-					if z < 3 and not falls_off:
-						c = FOAM_COLOR  # 滝の下のしぶき
+		var img := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
+		if z == layers - 1:
+			img.fill(WATER_COLOR)
+			for y in TEX:
+				for x in TEX:
+					var k := _hash3(x / 3 + v * 5, y, 0, 37)
+					if k == 0:
+						# 水面のきらめき（横に短い光）
+						img.set_pixel(x, y, WATER_COLOR.lightened(0.35))
+						img.set_pixel(mini(x + 1, TEX - 1), y, WATER_COLOR.lightened(0.2))
+					elif k == 1:
+						img.set_pixel(x, y, WATER_COLOR.darkened(0.08))
+					if foam and _hash3(x / 2, y / 2 + v, 1, 3) == 0:
+						img.set_pixel(x, y, FOAM_COLOR)
+		else:
+			var fade := 1.0
+			if falls_off and z < 24:
+				fade = 0.25 + 0.75 * float(z) / 24.0
+			var base := Color(FALL_COLORS[0], fade)
+			if z < 3 and not falls_off:
+				base = FOAM_COLOR  # 滝の下のしぶき
+			img.fill(base)
+			if not (z < 3 and not falls_off):
+				for r in _ring_cached(0, TEX):
+					var c: Color = FALL_COLORS[_hash3(r[4] + r[3] * 37, v, 0, FALL_COLORS.size())]
+					if _hash3(r[4], z * FINE + r[2], r[3], 9) == 0:
+						c = FOAM_COLOR  # 落ちる水のしぶき
 					c.a = fade
-				m.set_voxel(Vector3i(xx, yy, z), c)
-	return m
+					img.set_pixel(r[0], r[1], c)
+		images.append(img)
+	return VoxelModel.from_images(images)
 
 ## 橋：水の柱の上に板を渡す。across_ns なら北と南が水（東西に渡る）なので、手すりを北と南に付ける。
 static func bridge_model(h: int, depth: int, across_ns: bool) -> VoxelModel:
 	var water := water_model(h, depth, 0)
-	var m := VoxelModel.new()
-	var water_layers := water.size.z
 	var plank_z := depth * StackSprite.LEVEL_PX
-	m.size = Vector3i(16, 16, plank_z + 3)
-	for p: Vector3i in water._voxels:
-		m.set_voxel(p, water._voxels[p])
-	for yy in 16:
-		for xx in 16:
+	var images: Array[Image] = []
+	for img in water.slices():
+		images.append(img)
+	while images.size() < plank_z + 3:
+		images.append(Image.create(TEX, TEX, false, Image.FORMAT_RGBA8))
+	var plank_img := images[plank_z]
+	var rail := images[plank_z + 1]
+	var post := images[plank_z + 2]
+	for yy in TEX:
+		for xx in TEX:
 			var along := xx if across_ns else yy  # 板の継ぎ目は渡る向きと直角（板は渡る向きに並ぶ）
-			var plank := Color("a06a3a") if (along / 4) % 2 == 0 else Color("94603a")
-			if along % 4 == 3:
+			var across := yy if across_ns else xx
+			var plank := Color("a06a3a") if (along / 8) % 2 == 0 else Color("94603a")
+			if along % 8 == 7:
 				plank = Color("6e4526")
-			m.set_voxel(Vector3i(xx, yy, plank_z), plank)
-			var edge := (yy == 0 or yy == 15) if across_ns else (xx == 0 or xx == 15)
+			elif (along % 8 == 1) and (across == 4 or across == 27):
+				plank = Color("4a3020")  # くぎ
+			elif _hash3(along / 8, across / 3, 5, 7) == 0:
+				plank = plank.darkened(0.08)  # 木目
+			plank_img.set_pixel(xx, yy, plank.lerp(VoxelShade.LIGHT, TOP_LIGHT))
+			var edge := (across <= 1 or across >= TEX - 2)
 			if edge:
-				m.set_voxel(Vector3i(xx, yy, plank_z + 1), Color("6e4526"))
-				if (xx + yy) % 5 == 0:
-					m.set_voxel(Vector3i(xx, yy, plank_z + 2), Color("5b3a22"))
-	assert(water_layers <= plank_z)
-	return m
+				rail.set_pixel(xx, yy, Color("6e4526"))
+				if along % 10 < 2:
+					post.set_pixel(xx, yy, Color("5b3a22"))
+	return VoxelModel.from_images(images)
 
 ## 岩：灰色の塊で、上は白っぽい。並べると岩山になるように、マスいっぱいの形にする（角は少し丸める）。
+## 8×8 の塊ごとに高さを変えてごつごつさせ、側面は横の地層と、塊の境の割れ目で描く。
 static func rock_model(v: int) -> VoxelModel:
 	var m := VoxelModel.new()
 	var top_h: int = [22, 26, 30][v]
-	m.size = Vector3i(16, 16, top_h + 4)
-	for yy in 16:
-		for xx in 16:
-			if (xx == 0 or xx == 15) and (yy == 0 or yy == 15):
+	m.size = Vector3i(TEX, TEX, top_h + 4)
+	for yy in TEX:
+		for xx in TEX:
+			if (xx <= 1 or xx >= TEX - 2) and (yy <= 1 or yy >= TEX - 2):
 				continue
-			# 4×4 の塊ごとに高さを少し変えて、ごつごつさせる
-			var bump := ((xx / 4) * 7 + (yy / 4) * 13 + v * 5) % 4
+			var bx := xx / 8
+			var by := yy / 8
+			var bump := (bx * 7 + by * 13 + v * 5) % 4
 			var hh: int = top_h + bump
+			var shift := _hash3(bx, by, v, 4)
 			for z in hh:
-				var c := Color("8d8f94")
+				var c := Color("8d8f94") if ((z + shift) / 4) % 2 == 0 else Color("858790")
 				if z == hh - 1:
-					c = Color("e4e7ea") if bump == 3 else Color("b3b7bd")
-				elif (z + xx * 3 + yy) % 9 == 0:
-					c = Color("6f7177")
-				elif (xx / 4 + yy / 4) % 2 == 0:
-					c = Color("84868b")
-				if z < 3 and (xx + yy + z) % 3 == 0:
+					c = Color("e4e7ea") if bump == 3 else Color("b9bdc3")
+				elif z == hh - 2:
+					c = Color("a4a8ae")
+				elif (xx % 8 == 0 or yy % 8 == 0) and _hash3(bx, by, z / 3, 3) == 0:
+					c = Color("6a6c73")  # 塊の境の割れ目
+				if z < 3 and _hash3(xx / 2, yy / 2, z, 3) == 0:
 					c = Color("5f8f45")  # 根元の苔
 				m.set_voxel(Vector3i(xx, yy, z), c)
-	return m
+	return VoxelShade.apply(m)
 
-## 丸い木：マスより少し大きい、こんもりした葉。下は暗く、上は明るい。v で色と形を少し変える。
+## 葉の影：面の向き n と光から4段階。明るい所と暗い所に、ときどき1つだけ違う色を混ぜて葉の細かさを出す。
+static func _leaf_shade(c: Color, n: Vector3, speck: int) -> Color:
+	var k := n.normalized().dot(VoxelShade.LIGHT_DIR.normalized()) if n != Vector3.ZERO else 1.0
+	if k > 0.6:
+		return c.lerp(VoxelShade.LIGHT, 0.42 if speck == 0 else 0.26)
+	elif k > 0.15:
+		return c.lerp(VoxelShade.LIGHT, 0.14) if speck == 0 else c
+	elif k > -0.3:
+		return c.lerp(VoxelShade.SHADOW, 0.22)
+	return c.lerp(VoxelShade.SHADOW, 0.42 if speck != 0 else 0.3)
+
+## 玉（葉のかたまり）をいくつか重ねた葉を置く。clumps は [中心（ゲームの座標のpx。z は輪切りの番号）, 半径] の列。
+## 見える面の向きは、その点がふちに一番近い玉から出す（玉ごとに光が当たり、葉のかたまりに見える）。
+## berry があれば、明るい側にときどき実を付ける。
+static func _clumps(m: VoxelModel, clumps: Array, leaf: Color, z0: int, berry := Color(0, 0, 0, 0)) -> void:
+	# 全部の玉を囲む球の外は調べない（速くするため）
+	var center: Vector3 = clumps[0][0]
+	var reach := 0.0
+	for cl in clumps:
+		reach = maxf(reach, center.distance_to(cl[0]) + cl[1])
+	for z in range(z0, m.size.z):
+		for yy in m.size.y:
+			for xx in m.size.x:
+				var p := Vector3((xx + 0.5) / FINE, (yy + 0.5) / FINE, z + 0.5)
+				if p.distance_to(center) > reach:
+					continue
+				var lim := 1.0 - 0.07 * _hash3(xx / 3, yy / 3, z / 2, 3)
+				var best := -1.0
+				var n := Vector3.ZERO
+				for cl in clumps:
+					var d: Vector3 = p - cl[0]
+					var q: float = d.length() / cl[1]
+					if q <= lim and q > best:
+						best = q
+						n = d
+				if best < 0.0:
+					continue
+				var c := leaf.darkened(0.1) if z < z0 + 2 else leaf
+				c = _leaf_shade(c, n, _hash3(xx, yy, z, 11))
+				if berry.a > 0.0 and best > 0.75 and _hash3(xx / 2, yy / 2, z, 19) == 0:
+					c = berry
+				m.set_voxel(Vector3i(xx, yy, z), c)
+
+## 幹（立てた円柱）。光の側は明るく、反対は暗い。
+static func _trunk(m: VoxelModel, center: Vector2, r: float, z1: int, bark: Color) -> void:
+	for z in z1:
+		for yy in m.size.y:
+			for xx in m.size.x:
+				var d := Vector2((xx + 0.5) / FINE, (yy + 0.5) / FINE) - center
+				if d.length() > r:
+					continue
+				var c := bark if (xx + z * 3) % 7 != 0 else bark.darkened(0.18)  # 木の皮のすじ
+				m.set_voxel(Vector3i(xx, yy, z), VoxelShade.band(c, Vector3(d.x, d.y, 0.0), VoxelShade.LIGHT_DIR.normalized()))
+
+## 丸い木：マスより少し大きい、こんもりした葉。葉のかたまりごとに光が当たる。v で色と形を少し変える。
 static func tree_model(v: int) -> VoxelModel:
 	var m := VoxelModel.new()
-	m.size = Vector3i(20, 20, 30)
-	var trunk := Color("7a4a2a")
-	for z in 10:
-		for yy in range(8, 12):
-			for xx in range(8, 12):
-				m.set_voxel(Vector3i(xx, yy, z), trunk if (xx + z) % 4 != 0 else trunk.darkened(0.15))
+	m.size = Vector3i(40, 40, 30)
+	_trunk(m, Vector2(10, 10), 2.2, 12, Color("7a4a2a"))
 	var leaf: Color = [Color("3f9a3a"), Color("4aa843"), Color("379140")][v]
-	var center := Vector3(9.5, 9.5, 18.0)
-	var r := 9.2 - v * 0.4
-	for z in range(7, 30):
-		for yy in 20:
-			for xx in 20:
-				var d := Vector3(xx, yy, z) - center
-				d.z *= 1.15
-				# でこぼこした輪郭にする
-				var bump := float(_hash3(xx / 3, yy / 3, z / 3, 5)) * 0.35
-				if d.length() > r - bump:
-					continue
-				var c := leaf
-				var t := float(z - 7) / 22.0
-				if t < 0.3:
-					c = leaf.darkened(0.25)
-				elif t > 0.75:
-					c = leaf.lightened(0.2)
-				if _hash3(xx, yy, z, 9) == 0:
-					c = c.lightened(0.15)
-				m.set_voxel(Vector3i(xx, yy, z), c)
+	var c := Vector3(10, 10, 17)
+	var clumps := [[c, 7.2 - v * 0.3], [c + Vector3(0, 0, 6), 5.0]]
+	for i in 6:
+		var a := TAU * i / 6.0 + v * 0.7
+		var off := Vector2.from_angle(a) * (4.6 - v * 0.2)
+		clumps.append([c + Vector3(off.x, off.y, -1.0 + (i % 3) * 1.5), 4.4])
+	_clumps(m, clumps, leaf, 8)
 	return m
 
-## とがった木：段々に細くなる葉。
+## とがった木：段々に細くなる葉の傘を4つ重ねる。傘ごとに上が明るく、下が暗い。
 static func pine_model(v: int) -> VoxelModel:
 	var m := VoxelModel.new()
-	m.size = Vector3i(16, 16, 32)
-	var trunk := Color("6b4026")
-	for z in 8:
-		for yy in range(7, 9):
-			for xx in range(7, 9):
-				m.set_voxel(Vector3i(xx, yy, z), trunk)
+	m.size = Vector3i(TEX, TEX, 32)
+	_trunk(m, Vector2(8, 8), 1.5, 8, Color("6b4026"))
 	var leaf: Color = [Color("2f7a45"), Color("357f3c"), Color("2b6e4a")][v]
 	for z in range(5, 32):
-		# 4段の傘を重ねる。それぞれの段は下が広い
 		var tier := (z - 5) % 7
 		var level := (z - 5) / 7
-		var radius := 7.5 - level * 1.6 - tier * 0.55
-		if radius < 0.8:
-			radius = 0.8
-		for yy in 16:
-			for xx in 16:
-				var d := Vector2(xx - 7.5, yy - 7.5).length()
-				if d > radius:
+		var radius := maxf(0.8, 7.5 - level * 1.6 - tier * 0.55)
+		for yy in TEX:
+			for xx in TEX:
+				var d := Vector2((xx + 0.5) / FINE - 8.0, (yy + 0.5) / FINE - 8.0)
+				var lim := radius - 0.3 * _hash3(xx / 2, yy / 2, z, 3)
+				if d.length() > lim:
 					continue
-				var c := leaf.darkened(0.2) if tier < 2 else leaf
-				if tier >= 5:
-					c = leaf.lightened(0.15)
+				# 傘の面：外向きで、上を向いている（下の2枚は傘の裏で暗い）
+				var n := Vector3(d.x, d.y, 0.0).normalized() + Vector3(0, 0, 1.1 if tier >= 2 else -0.4)
+				var c := _leaf_shade(leaf, n, _hash3(xx, yy, z, 11))
 				m.set_voxel(Vector3i(xx, yy, z), c)
 	return m
 
 ## 茂み：低くて丸い葉のかたまり。v=1 は赤い実が付く。
 static func bush_model(v: int) -> VoxelModel:
 	var m := VoxelModel.new()
-	m.size = Vector3i(16, 16, 11)
+	m.size = Vector3i(TEX, TEX, 11)
 	var leaf := Color("4fae45") if v != 2 else Color("5bb84d")
-	var center := Vector3(7.5, 7.5, 3.0)
-	for z in 11:
-		for yy in 16:
-			for xx in 16:
-				var d := Vector3(xx, yy, z) - center
-				d.z *= 1.4
-				var bump := float(_hash3(xx / 2, yy / 2, z / 2, 4)) * 0.4
-				if d.length() > 7.6 - bump:
-					continue
-				var c := leaf.darkened(0.2) if z < 3 else (leaf.lightened(0.15) if z > 7 else leaf)
-				if v == 1 and _hash3(xx, yy, z, 17) == 0:
-					c = Color("d9463b")
-				m.set_voxel(Vector3i(xx, yy, z), c)
+	var c := Vector3(8, 8, 2.5)
+	var clumps := [[c, 6.0]]
+	for i in 5:
+		var a := TAU * i / 5.0 + v * 1.1
+		var off := Vector2.from_angle(a) * 3.6
+		clumps.append([c + Vector3(off.x, off.y, 1.0 + (i % 2) * 1.5), 3.8])
+	_clumps(m, clumps, leaf, 0, Color("d9463b") if v == 1 else Color(0, 0, 0, 0))
 	return m
 
+## 石の壁（試作1）：れんがを積んだ柱。
 static func wall_model() -> VoxelModel:
-	var m := VoxelModel.new()
-	m.size = Vector3i(14, 14, 20)
+	var n := 14 * FINE
+	var images: Array[Image] = []
 	for z in 20:
-		for yy in 14:
-			for xx in 14:
-				var brick := (z % 5 == 0) or ((xx + (z / 5) * 4) % 7 == 0)
-				m.set_voxel(Vector3i(xx, yy, z), WALL_COLOR.darkened(0.15) if brick else WALL_COLOR)
-	return m
+		var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+		var mortar := z % 5 == 0
+		if z == 19:
+			img.fill(WALL_COLOR.lerp(VoxelShade.LIGHT, 0.12))
+		else:
+			img.fill(WALL_COLOR)
+			for r in _ring_cached(0, n):
+				var brick: bool = mortar or ((r[4] + (z / 5) * 8) % 14 == 0)
+				img.set_pixel(r[0], r[1], _side(WALL_COLOR.darkened(0.15) if brick else WALL_COLOR, r[3]))
+		images.append(img)
+	return VoxelModel.from_images(images)

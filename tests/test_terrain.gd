@@ -147,3 +147,29 @@ func test_side_has_level_bands():
 ## 手前のマスの奥側に立ったキャラが、木の前に出て見えないように。
 func test_decorations_draw_after_units_at_same_depth():
 	assert_gt(Terrain.DECO_BIAS, 3)  # プレイヤー 2・鉄球 3 より大きい
+
+## 地形も主人公と同じ細かさ（1マス32×32の輪切り、ボクセル1つが本当の画面の1px）。輪切りの間はゲームの座標の1pxのままで、描く枚数は増やさない
+func test_terrain_is_fine_but_keeps_layer_count():
+	var m := Terrain.ground_model(2, 2, 0)
+	assert_eq(m.size.x, 16 * Terrain.FINE)
+	assert_eq(m.size.y, 16 * Terrain.FINE)
+	assert_eq(m.size.z, 2 * StackSprite.LEVEL_PX + 1 + 2)  # 柱と、草むらの2枚
+	var map := HeightMap.new(Vector2i(3, 3))
+	map.set_height(Vector2i(1, 1), 1)
+	var cam := StackCamera.new()
+	var root := Node2D.new()
+	Terrain.build(map, cam, root)
+	for c in root.get_children():
+		var s: StackSprite = c
+		assert_eq(s.voxel_scale, 1.0 / Terrain.FINE)
+		assert_eq(s.layer_step(), 1.0)
+	root.free()
+	cam.free()
+
+## 側面は向きで影が付く：光から遠い北の面は、正面の南の面より暗い
+func test_cliff_sides_shaded_by_direction():
+	var m := Terrain.ground_model(3, 3, 0)
+	var n := m.size.x
+	var south := m.get_voxel(Vector3i(n / 2, n - 1, 12))
+	var north := m.get_voxel(Vector3i(n / 2, 0, 12))
+	assert_lt(north.v, south.v)
