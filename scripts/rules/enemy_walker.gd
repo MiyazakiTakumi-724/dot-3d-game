@@ -27,6 +27,7 @@ var climb := 0
 var forbidden := {}
 var _poison_left := 0.0
 var _poison_clock := 0.0
+var _burning := false
 var _chasing := false
 var _chase_target := Vector2.ZERO
 
@@ -98,6 +99,20 @@ func touches(p: Vector2, h: int) -> bool:
 func poison(seconds: float) -> void:
 	if not alive:
 		return
+	_burning = false
+	_start_dot(seconds)
+
+## やけど（火の魔法）。毒と同じく毎秒1ダメージ（同時にはどちらか1つ）。
+func burn(seconds: float) -> void:
+	if not alive:
+		return
+	_burning = true
+	_start_dot(seconds)
+
+func is_burning() -> bool:
+	return is_poisoned() and _burning
+
+func _start_dot(seconds: float) -> void:
 	if _poison_left <= 0.0:
 		_poison_clock = 0.0
 	_poison_left = maxf(_poison_left, seconds)

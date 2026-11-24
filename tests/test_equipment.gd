@@ -64,3 +64,19 @@ func test_armor_adds_hp():
 	assert_eq(eq.armor_hp(), Equipment.HP_PER_ARMOR_RANK * 1)
 	eq.equip(Equipment.Slot.ARMOR, 2)
 	assert_eq(eq.armor_hp(), Equipment.HP_PER_ARMOR_RANK * 2)
+
+## 杖：最初から無の杖（ランク1）を持っている。手に持つ杖は種類で選ぶ
+func test_staffs():
+	assert_eq(eq.effective(Equipment.Slot.STAFF_NONE), 1)
+	assert_eq(eq.staff_slot(), Equipment.Slot.STAFF_NONE)
+	eq.gain(Equipment.Slot.STAFF_FIRE, 3)
+	assert_eq(eq.staff_slot(), Equipment.Slot.STAFF_NONE)  # 拾っただけでは持ち替えない
+	assert_true(eq.choose_staff(Equipment.Slot.STAFF_FIRE))
+	assert_eq(eq.staff_slot(), Equipment.Slot.STAFF_FIRE)
+	assert_false(eq.choose_staff(Equipment.Slot.SWORD))
+	# 炎の杖（ランク3）が墓石に入ると、無の杖に戻る
+	var taken := eq.take_for_grave()
+	assert_eq(taken[Equipment.Slot.STAFF_FIRE], [3])
+	assert_eq(eq.staff_slot(), Equipment.Slot.STAFF_NONE)
+	eq.restore(taken)
+	assert_eq(eq.staff_slot(), Equipment.Slot.STAFF_FIRE)

@@ -96,7 +96,7 @@ func _build_stats_page() -> void:
 	_stats_root = _page_root()
 	_stats_header = _label(_stats_root, "", Vector2(6, 26))
 	var stats := [PlayerStats.Stat.VITALITY, PlayerStats.Stat.ATTACK, PlayerStats.Stat.SWORD,
-		PlayerStats.Stat.BOW, PlayerStats.Stat.GUN, PlayerStats.Stat.MOVE]
+		PlayerStats.Stat.BOW, PlayerStats.Stat.MAGIC, PlayerStats.Stat.MOVE]
 	for i in stats.size():
 		var stat: PlayerStats.Stat = stats[i]
 		var y := 44 + i * 20
@@ -151,6 +151,7 @@ func select_slot(slot: Equipment.Slot) -> void:
 func choose(rank: int) -> bool:
 	if not run.inventory.equipment.equip(selected_slot, rank):
 		return false
+	run.inventory.equipment.choose_staff(selected_slot)  # 杖なら、それを手に持つ
 	stats_changed.emit()  # 防具なら最大いのちが変わる
 	refresh()
 	return true
@@ -231,11 +232,18 @@ func _refresh_equip() -> void:
 		var l := _label(_rank_box, "まだ持っていない", Vector2.ZERO)
 		l.modulate.a = 0.7
 	for rank in ranks:
-		var mark := "●" if rank == eq.effective(selected_slot) else "○"
+		# 杖は、手に持っている種類のものだけ●
+		var held: bool = rank == eq.effective(selected_slot) and (not Equipment.STAFFS.has(selected_slot) or eq.staff_slot() == selected_slot)
+		var mark := "●" if held else "○"
 		var text := "%s ランク%d　つよさ＋%d" % [mark, rank, Equipment.rank_attack(rank)]
 		if Equipment.ARMOR.has(selected_slot):
 			text = "%s ランク%d　いのち＋%d" % [mark, rank, rank * Equipment.HP_PER_ARMOR_RANK]
 		var t: String = TRAITS.get(selected_slot, {}).get(rank, "")
+		if Equipment.STAFFS.has(selected_slot):
+			var names: Array[String] = []
+			for sp in Magic.staff_spells(selected_slot, rank):
+				names.append(Magic.NAMES[sp])
+			t = "・".join(names)
 		if t != "":
 			text += "\n　" + t
 		var r: int = rank
@@ -246,8 +254,8 @@ func _refresh_equip() -> void:
 	if selected_slot == Equipment.Slot.BOW:
 		_add_arrow_choices()
 	var inv := run.inventory
-	_items.text = "回復 ×%d　素材 ×%d\n矢 ×%d　毒矢 ×%d　弾 ×%d\nお金 %d" % [inv.heals, inv.materials,
-		inv.arrow_count(Arrow.Kind.NORMAL), inv.arrow_count(Arrow.Kind.POISON), inv.ammo, inv.money]
+	_items.text = "回復 ×%d　素材 ×%d\n矢 ×%d　毒矢 ×%d\nお金 %d" % [inv.heals, inv.materials,
+		inv.arrow_count(Arrow.Kind.NORMAL), inv.arrow_count(Arrow.Kind.POISON), inv.money]
 
 func _refresh_stats() -> void:
 	var st := run.stats

@@ -29,9 +29,9 @@ static func high_ground(lower_levels: int) -> float:
 static func bow(attack: int, rate: float, mult: float, points: int, lower_levels := 0) -> int:
 	return _floor(attack * rate * mult * (1.0 + points * 0.1) * (1.0 + maxi(0, lower_levels) * 0.5))
 
-## エアガン：攻撃力 × 0.4 ×（1 ＋ エアガンのポイント × 0.1）。高さによる上乗せはない。
-static func gun(attack: int, points: int) -> int:
-	return _floor(attack * 0.4 * (1.0 + points * 0.1))
+## 魔法：つよさ × 魔法の倍率（Magic.POWER）×（1 ＋ 魔法のポイント × 0.1）× 高所の有利。
+static func magic(attack: int, power: float, points: int, lower_levels := 0) -> int:
+	return _floor(attack * power * (1.0 + points * 0.1) * high_ground(lower_levels))
 
 ## 敵の攻撃が主人公に与えるダメージ。簡単モードでは半分。
 static func enemy_hit(enemy_attack: int, easy := false) -> int:

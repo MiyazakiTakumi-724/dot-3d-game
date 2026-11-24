@@ -1,17 +1,17 @@
 class_name Hotbar
 extends RefCounted
 ## 手に持つアイテム。数字キー（1始まり）で選び、左クリックで使う。
-## 1 鉄球、2 剣、3 弓、4 エアガン、5 回復。持っていない武器は選べない。
+## 1 鉄球、2 剣、3 弓、4 杖（魔法）、5 回復。持っていない武器は選べない（杖は最初から無の杖がある）。
 
-enum Item { IRON_BALL, SWORD, BOW, GUN, HEAL }
+enum Item { IRON_BALL, SWORD, BOW, STAFF, HEAL }
 
-const SLOTS := [Item.IRON_BALL, Item.SWORD, Item.BOW, Item.GUN, Item.HEAL]
+const SLOTS := [Item.IRON_BALL, Item.SWORD, Item.BOW, Item.STAFF, Item.HEAL]
 ## 武器のアイテムと、装備（Equipment）の種類の対応
 const WEAPON_SLOT := {
 	Item.IRON_BALL: Equipment.Slot.BALL,
 	Item.SWORD: Equipment.Slot.SWORD,
 	Item.BOW: Equipment.Slot.BOW,
-	Item.GUN: Equipment.Slot.GUN,
+	Item.STAFF: Equipment.Slot.STAFF_NONE,
 }
 
 var selected: Item = Item.IRON_BALL

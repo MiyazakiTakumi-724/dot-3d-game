@@ -62,7 +62,8 @@ func _process(delta: float) -> void:
 		# ためている間は体を明るく光らせる（よけるための合図）
 		self_modulate = Color(1.8, 1.8, 1.8) if melee.is_winding_up() else Color.WHITE
 	if walker.is_poisoned() and not melee.is_winding_up():
-		self_modulate = Color(0.7, 1.3, 0.6)
+		# 毒は緑、やけどは赤っぽく
+		self_modulate = Color(1.4, 0.8, 0.6) if walker.is_burning() else Color(0.7, 1.3, 0.6)
 	elif kind != EnemyKind.Kind.MELEE:
 		self_modulate = Color.WHITE
 	if can_shoot and target.hp > 0:

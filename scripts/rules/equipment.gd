@@ -5,16 +5,19 @@ extends RefCounted
 ## 装備するランクは死んでも好みとして残るので、墓石から取り返すと設定し直さなくても元に戻る。
 ## 鉄球のランク1は最初から持っている。
 
-enum Slot { BALL, SWORD, BOW, GUN, ARMOR }
+enum Slot { BALL, SWORD, BOW, STAFF_NONE, STAFF_FIRE, ARMOR }
 
 const NAMES := {
 	Slot.BALL: "鉄球",
 	Slot.SWORD: "剣",
 	Slot.BOW: "弓",
-	Slot.GUN: "エアガン",
+	Slot.STAFF_NONE: "無の杖",
+	Slot.STAFF_FIRE: "炎の杖",
 	Slot.ARMOR: "防具",
 }
-const WEAPONS := [Slot.BALL, Slot.SWORD, Slot.BOW, Slot.GUN]
+const WEAPONS := [Slot.BALL, Slot.SWORD, Slot.BOW, Slot.STAFF_NONE, Slot.STAFF_FIRE]
+## 杖（種類ごとに別の枠。手に持つのは choose_staff で選んだ1本）
+const STAFFS := [Slot.STAFF_NONE, Slot.STAFF_FIRE]
 ## 防具は頭・体・足に分けず、1つの枠だけ（2026-11-24 まさのりさんの指示）
 const ARMOR := [Slot.ARMOR]
 const MIN_RANK := 1
@@ -26,9 +29,22 @@ const HP_PER_ARMOR_RANK := 4
 
 var _owned := {}  # Slot → Array[int]（小さい順）
 var _equipped := {}  # Slot → int
+var _staff: Slot = Slot.STAFF_NONE  # 手に持つ杖の種類（好み）
 
 func _init() -> void:
 	gain(Slot.BALL, MIN_RANK)
+	gain(Slot.STAFF_NONE, MIN_RANK)  # 最初の杖は無の杖
+
+## 手に持つ杖の種類を選ぶ。持っていない杖や杖でないものは選べない。
+func choose_staff(slot: Slot) -> bool:
+	if not STAFFS.has(slot) or effective(slot) == 0:
+		return false
+	_staff = slot
+	return true
+
+## 実際に手に持つ杖。選んだ杖が手元になければ（墓石の中など）無の杖。
+func staff_slot() -> Slot:
+	return _staff if effective(_staff) > 0 else Slot.STAFF_NONE
 
 ## 武器のランクで足されるつよさ。持っていない（0）とランク1は0。
 static func rank_attack(rank: int) -> int:

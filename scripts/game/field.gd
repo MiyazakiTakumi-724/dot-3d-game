@@ -60,16 +60,15 @@ var _notice_text := ""
 var _notice_time := 0.0
 var sword := Sword.new()
 var bow := Bow.new()
-var gun := AirGun.new()
-## エアガンの撃つ高さを、カーソルの下の地面から何段ずらすか（マウスホイール）
-var aim_offset := 0
-var _pellets: Array = []  # 飛んでいるエアガンの弾 [Pellet, StackSprite, ダメージ]
+var magic := Magic.new()
+var mana := Mana.new()
+var _bolts: Array = []  # 飛んでいる魔法の弾 [Pellet, StackSprite, 魔法, 使った段]
+var _fires: Array = []  # 火の玉の落ちた所の火 [位置, 段, 残り秒, StackSprite]
+var _effects: Array = []  # 少しの間だけ出す絵（火柱・炎の雨）[StackSprite, 残り秒]
 ## 敵の落とし物（このエリアにいる間だけ）[マス, 種類, 数, StackSprite]
 var _drops: Array = []
 var rng := RandomNumberGenerator.new()
-const AMMO_DROP_CHANCE := 0.4  ## 敵が弾を落とす確率【提案】
-const AMMO_DROP_AMOUNT := 5
-## エアガンの照準（狙う高さに浮かぶ輪）。地面の影は aim_marker
+## 魔法の弾の照準（狙う高さに浮かぶ輪）。地面の影は aim_marker
 var aim_reticle: StackSprite
 var _shots: Array = []  # 飛んでいる矢 [Arrow, StackSprite, ダメージ]
 var _arrow_blink := 0.0
@@ -139,7 +138,9 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_enemy_index.clear()
 	_bullets.clear()
 	_shots.clear()
-	_pellets.clear()
+	_bolts.clear()
+	_fires.clear()
+	_effects.clear()
 	_drops.clear()
 	bow.cancel()
 	_pickup_nodes.clear()
@@ -238,8 +239,6 @@ func has_enemy(index: int) -> bool:
 
 func _on_enemy_died(area_id: String, index: int, kind: EnemyKind.Kind, level: int, w: EnemyWalker) -> void:
 	roster.kill(area_id, index)
-	if area_id == area.id and rng.randf() < AMMO_DROP_CHANCE:
-		spawn_drop(w.cell(), RunState.PickupKind.AMMO, AMMO_DROP_AMOUNT)
 	if run.on_enemy_killed(kind, level) > 0:
 		notice("レベル%d になった！\nTab：ポイントを振る" % run.stats.level)
 		apply_stats()
@@ -274,6 +273,7 @@ func apply_stats() -> void:
 	player.max_hp = new_max
 	player.hp = mini(player.hp, new_max)
 	player.speed_mult = run.stats.move_speed_mult()
+	mana.set_max(run.stats.max_mana())
 
 ## 手に持っている武器を足した攻撃力。
 func current_attack() -> int:
@@ -281,8 +281,10 @@ func current_attack() -> int:
 	match hotbar.selected:
 		Hotbar.Item.IRON_BALL:
 			rank = ball_rank
-		Hotbar.Item.SWORD, Hotbar.Item.BOW, Hotbar.Item.GUN:
+		Hotbar.Item.SWORD, Hotbar.Item.BOW:
 			rank = run.inventory.equipment.effective(Hotbar.WEAPON_SLOT[hotbar.selected])
+		Hotbar.Item.STAFF:
+			rank = run.inventory.equipment.effective(run.inventory.equipment.staff_slot())
 	return run.stats.attack(Equipment.rank_attack(rank))
 
 ## 手に持っている鉄球のランクを、装備に合わせる（落としている間は替えない）。
@@ -327,7 +329,9 @@ func _process(delta: float) -> void:
 	roster.tick(delta)
 	sword.update(delta)
 	bow.update(delta)
-	gun.update(delta)
+	magic.update(delta)
+	if area_state.result == AreaState.Result.PLAYING:
+		mana.update(delta)
 	player.mover.tick(delta)
 	if bow.charging and (hotbar.selected != Hotbar.Item.BOW or menu.is_open() or area_state.result != AreaState.Result.PLAYING):
 		bow.cancel()
@@ -341,7 +345,9 @@ func _process(delta: float) -> void:
 			respawn()
 		_step_bullets(delta)
 		_step_shots(delta)
-		_step_pellets(delta)
+		_step_bolts(delta)
+		_step_fires(delta)
+		_step_effects(delta)
 		_step_poison(delta)
 		if area_state.result == AreaState.Result.PLAYING:
 			if player.hp <= 0 or player.mover.fell:
@@ -399,8 +405,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
 		return
 	if event is InputEventMouseButton and event.pressed and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
-		if hotbar.selected == Hotbar.Item.GUN:
-			change_aim_offset(1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
+		if hotbar.selected == Hotbar.Item.STAFF:
+			cycle_spell(1 if event.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if bow.charging:
@@ -436,8 +442,8 @@ func use_item() -> bool:
 			return swing_sword()
 		Hotbar.Item.BOW:
 			return start_bow()
-		Hotbar.Item.GUN:
-			return fire_gun()
+		Hotbar.Item.STAFF:
+			return cast_spell()
 		Hotbar.Item.HEAL:
 			return use_heal()
 	return false
@@ -600,16 +606,27 @@ func spin_slash() -> bool:
 
 ## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
 func _hold_to_swing() -> void:
-	var held := hotbar.selected == Hotbar.Item.SWORD or hotbar.selected == Hotbar.Item.GUN
+	var held := hotbar.selected == Hotbar.Item.SWORD or hotbar.selected == Hotbar.Item.STAFF
 	if held and not menu.is_open() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		use_item()
 
-func change_aim_offset(d: int) -> void:
-	aim_offset = clampi(aim_offset + d, -AirGun.MAX_OFFSET, AirGun.MAX_OFFSET)
+## 手に持つ杖で、今使える魔法（ステータスの魔法の数まで）。
+func usable_spells() -> Array:
+	var eq := run.inventory.equipment
+	var slot := eq.staff_slot()
+	return Magic.usable(slot, eq.effective(slot), run.stats.spell_slots())
 
-## エアガンの狙い。画面の点 screen にカーソルがあるとき、撃つ先の点・高さの段・重なっている敵。
-## 敵の体にカーソルを重ねると、その敵の高さに自動で合う。そうでなければ、カーソルの下の地面の高さ＋ホイールの段。
-func gun_aim_at(screen: Vector2) -> Dictionary:
+## 選んでいる魔法。使えるものがなければ -1。
+func current_spell() -> int:
+	return magic.current(usable_spells())
+
+## ホイールで使う魔法を替える。
+func cycle_spell(d: int) -> void:
+	magic.cycle(d, usable_spells())
+
+## 魔法の狙い。画面の点 screen にカーソルがあるとき、狙う点・高さの段・重なっている敵。
+## 敵の体にカーソルを重ねると、その敵に合う。そうでなければ、カーソルの下の地面。
+func magic_aim_at(screen: Vector2) -> Dictionary:
 	var best: Enemy = null
 	var best_d := 8.0
 	for e in enemies:
@@ -621,70 +638,227 @@ func gun_aim_at(screen: Vector2) -> Dictionary:
 	if best != null:
 		return {"point": best.walker.pos, "level": best.walker.height, "enemy": best}
 	var ground := camera.pick_ground(screen, map, MAX_HEIGHT)
-	var level := clampi(map.get_height(HeightMap.world_to_cell(ground)) + aim_offset, 0, MAX_HEIGHT)
-	return {"point": camera.screen_to_world(screen, level * StackSprite.LEVEL_PX), "level": level, "enemy": null}
+	return {"point": ground, "level": map.get_height(HeightMap.world_to_cell(ground)), "enemy": null}
 
-## エアガンを撃つ（押したままで連射）。狙った高さへまっすぐ飛ぶ。弾がなければ false。
-func fire_gun(screen = null) -> bool:
-	var eq := run.inventory.equipment
-	if eq.effective(Equipment.Slot.GUN) == 0:
+## 火柱・炎の雨を起こす点（届く所まで）。
+func _spell_point(spell: int, aim: Dictionary) -> Vector2:
+	var reach := Magic.PILLAR_REACH if spell == Magic.Spell.FIRE_PILLAR else Magic.RAIN_REACH
+	var from := player.mover.pos
+	var p: Vector2 = aim["point"]
+	if p.distance_to(from) > reach:
+		p = from + (p - from).normalized() * reach
+	return p
+
+## 魔法を使う（押したままで続けて使う）。マナが足りなければ false。
+func cast_spell(screen = null) -> bool:
+	var spell := current_spell()
+	if spell < 0:
 		return false
-	if run.inventory.ammo <= 0:
-		if gun.cooldown <= 0.0:
-			notice("弾がない", 1.5)
+	if mana.value < Magic.COST[spell]:
+		if magic.cooldown <= 0.0:
+			notice("マナが足りない", 1.0)
 		return false
-	var skills := run.stats.skills_in(PlayerStats.Stat.GUN)
-	if not gun.try_fire(skills >= 2):
+	if not magic.try_cast(spell, mana):
 		return false
-	run.inventory.ammo -= 1
-	var aim := gun_aim_at(screen if screen != null else get_viewport().get_mouse_position())
+	var aim := magic_aim_at(screen if screen != null else get_viewport().get_mouse_position())
+	match spell:
+		Magic.Spell.NULL_BOLT, Magic.Spell.FIREBALL:
+			_launch_bolt(spell, aim)
+		Magic.Spell.FIRE_PILLAR:
+			_fire_pillar(_spell_point(spell, aim))
+		Magic.Spell.FIRE_RAIN:
+			_fire_rain(_spell_point(spell, aim))
+	return true
+
+## 魔法のダメージ。lower は相手が自分より何段低いか（高所の有利）。
+func _magic_damage(spell: int, lower: int) -> int:
+	return Damage.magic(current_attack(), Magic.POWER[spell], run.stats.points_in(PlayerStats.Stat.MAGIC), lower)
+
+func _hit_enemy(e: Enemy, spell: int, from_h: int) -> void:
+	var lower: int = from_h - e.walker.height
+	var dmg := _magic_damage(spell, lower)
+	e.walker.take_damage(dmg)
+	_popup(e.walker.pos, e.walker.height, dmg, HIGH_GROUND_COLOR if lower > 0 else Color.WHITE)
+
+## 無の弾・火の玉：狙った高さへまっすぐ飛ばす。
+func _launch_bolt(spell: int, aim: Dictionary) -> void:
 	var mv := player.mover
 	var p := Pellet.new()
-	p.aim(mv.pos, mv.height * StackSprite.LEVEL_PX + 5.0, aim["point"], aim["level"] * StackSprite.LEVEL_PX + 4.0, 1 if skills >= 1 else 0)
-	var dmg := Damage.gun(current_attack(), run.stats.points_in(PlayerStats.Stat.GUN))
+	p.aim(mv.pos, mv.height * StackSprite.LEVEL_PX + 5.0, aim["point"], aim["level"] * StackSprite.LEVEL_PX + 4.0)
 	var s := StackSprite.new()
 	s.camera = camera
 	s.sort_by_cell = true
 	s.sort_map = map
 	s.sort_radius = 2.0
 	s.draw_bias = 3
-	s.set_model(VoxelModel.box(Vector3i(2, 2, 2), Color("9fd8ff")))
+	if spell == Magic.Spell.FIREBALL:
+		s.set_model(VoxelModel.sphere(2, Color("ff8a3d")))
+	else:
+		s.set_model(VoxelModel.box(Vector3i(2, 2, 2), Color("c8b6ff")))
 	_area_root.add_child(s)
-	_pellets.append([p, s, dmg])
-	_place_pellet(p, s)
-	return true
+	_bolts.append([p, s, spell, mv.height])
+	_place_bolt(p, s)
 
-func pellets_in_flight() -> int:
-	return _pellets.size()
+func bolts_in_flight() -> int:
+	return _bolts.size()
 
-func _place_pellet(p: Pellet, s: StackSprite) -> void:
+func _place_bolt(p: Pellet, s: StackSprite) -> void:
 	s.world_pos = p.pos
 	s.base_height = maxi(0, int(floor(p.z / StackSprite.LEVEL_PX)))
 	s.lift_px = p.z - s.base_height * StackSprite.LEVEL_PX
 	s.refresh()
 
-## エアガンの弾を進め、体に当たった敵（狙った高さの敵）にダメージ。墓石に当たれば壊す。
-func _step_pellets(delta: float) -> void:
-	for i in range(_pellets.size() - 1, -1, -1):
-		var p: Pellet = _pellets[i][0]
-		var s: StackSprite = _pellets[i][1]
-		var dmg: int = _pellets[i][2]
+## 魔法の弾を進める。体に当たった敵にダメージ。火の玉は止まった所で弾けて、まわりも焼く。墓石に当たれば壊す。
+func _step_bolts(delta: float) -> void:
+	var playing := area_state.result == AreaState.Result.PLAYING
+	for i in range(_bolts.size() - 1, -1, -1):
+		var p: Pellet = _bolts[i][0]
+		var s: StackSprite = _bolts[i][1]
+		var spell: int = _bolts[i][2]
+		var from_h: int = _bolts[i][3]
 		p.step(delta, map)
-		if p.alive and area_state.result == AreaState.Result.PLAYING:
+		if p.alive and playing:
 			for e in enemies:
 				if is_instance_valid(e) and e.walker.alive and p.hits_body(e.walker.pos, e.walker.height):
-					e.walker.take_damage(dmg)
-					_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
+					if spell != Magic.Spell.FIREBALL:
+						_hit_enemy(e, spell, from_h)
 					p.alive = false
 					break
 		if not p.alive:
-			if run.grave != null and run.grave.area_id == area.id and p.hit_grave == run.grave.cell and area_state.result == AreaState.Result.PLAYING:
+			if playing and spell == Magic.Spell.FIREBALL:
+				_explode(p.pos, p.z, from_h)
+			if playing and run.grave != null and run.grave.area_id == area.id and p.hit_grave == run.grave.cell:
 				_remove_grave_marker()
 				run.break_grave()
 			s.queue_free()
-			_pellets.remove_at(i)
+			_bolts.remove_at(i)
 			continue
-		_place_pellet(p, s)
+		_place_bolt(p, s)
+
+## 火の玉が弾ける。まわりの、高さの近い敵にダメージとやけど。地面の近くなら、そこが少しの間燃える。
+func _explode(pos: Vector2, z: float, from_h: int) -> void:
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(pos) < Magic.FIREBALL_RADIUS \
+				and absf(e.walker.height * StackSprite.LEVEL_PX + 4.0 - z) <= 12.0:
+			_hit_enemy(e, Magic.Spell.FIREBALL, from_h)
+			e.walker.burn(Magic.BURN_SECONDS)
+	var c := HeightMap.world_to_cell(pos)
+	if map.in_bounds(c) and not map.is_wall(c) and z - map.get_height(c) * StackSprite.LEVEL_PX < 10.0:
+		var s := _effect_sprite(_flame_model(), pos, map.get_height(c), 0.0, Magic.FIRE_PATCH_SECONDS)
+		_fires.append([pos, map.get_height(c), Magic.FIRE_PATCH_SECONDS, s])
+
+## 燃えている所に入った敵はやけどする。
+func _step_fires(delta: float) -> void:
+	for i in range(_fires.size() - 1, -1, -1):
+		var f = _fires[i]
+		f[2] -= delta
+		if f[2] <= 0.0:
+			_fires.remove_at(i)
+			continue
+		for e in enemies:
+			if is_instance_valid(e) and e.walker.alive and e.walker.height == f[1] and e.walker.pos.distance_to(f[0]) < 10.0 \
+					and not e.walker.is_burning():
+				e.walker.burn(Magic.BURN_SECONDS)
+
+func fires_burning() -> int:
+	return _fires.size()
+
+## 火柱：狙った点の、全部の高さの敵に当たる（崖の上の敵にも届く）。
+func _fire_pillar(point: Vector2) -> void:
+	var mv := player.mover
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(point) < Magic.PILLAR_RADIUS:
+			_hit_enemy(e, Magic.Spell.FIRE_PILLAR, mv.height)
+			e.walker.burn(Magic.BURN_SECONDS)
+	var c := HeightMap.world_to_cell(point)
+	if run.grave != null and run.grave.area_id == area.id and c == run.grave.cell:
+		_remove_grave_marker()
+		run.break_grave()
+	var ground := map.get_height(c) if map.in_bounds(c) else 0
+	_effect_sprite(_pillar_model(), point, ground, 0.0, 0.4)
+
+## 炎の雨：狙った点のまわりに降る。自分より高い所の敵には当たらない。高い所から使うほど広い。
+func _fire_rain(point: Vector2) -> void:
+	var mv := player.mover
+	var c := HeightMap.world_to_cell(point)
+	var ground := map.get_height(c) if map.in_bounds(c) else mv.height
+	var r := Magic.rain_radius(mv.height, ground)
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and e.walker.height <= mv.height and e.walker.pos.distance_to(point) < r:
+			_hit_enemy(e, Magic.Spell.FIRE_RAIN, mv.height)
+	_effect_sprite(_rain_model(r), point, ground, 0.0, 0.5)
+	for k in 5:
+		var off := Vector2.from_angle(rng.randf() * TAU) * rng.randf() * r
+		var fc := HeightMap.world_to_cell(point + off)
+		if map.in_bounds(fc) and not map.is_wall(fc) and map.get_height(fc) <= mv.height:
+			_effect_sprite(_flame_model(), point + off, map.get_height(fc), 0.0, 0.5)
+
+## 少しの間だけ出す絵を置く。
+func _effect_sprite(model: VoxelModel, pos: Vector2, h: int, lift: float, seconds: float) -> StackSprite:
+	var s := StackSprite.new()
+	s.camera = camera
+	s.world_pos = pos
+	s.base_height = h
+	s.lift_px = lift
+	s.sort_by_cell = true
+	s.sort_map = map
+	s.sort_radius = 3.0
+	s.draw_bias = 2
+	s.set_model(model)
+	s.refresh()
+	_area_root.add_child(s)
+	_effects.append([s, seconds])
+	return s
+
+func _step_effects(delta: float) -> void:
+	for i in range(_effects.size() - 1, -1, -1):
+		_effects[i][1] -= delta
+		var s: StackSprite = _effects[i][0]
+		if _effects[i][1] <= 0.0 or not is_instance_valid(s):
+			if is_instance_valid(s):
+				s.queue_free()
+			_effects.remove_at(i)
+			continue
+		s.modulate.a = clampf(_effects[i][1] * 4.0, 0.0, 1.0) * (0.85 + 0.15 * sin(_arrow_blink * 20.0))
+
+## 小さな炎（下が赤、上が黄色）。
+static func _flame_model() -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(6, 6, 7)
+	for z in 7:
+		var r := 2.6 - z * 0.35
+		var col := Color("e8452c") if z < 3 else (Color("ff9a2e") if z < 5 else Color("ffd84a"))
+		for y in 6:
+			for x in 6:
+				if Vector2(x - 2.5, y - 2.5).length() <= r:
+					m.set_voxel(Vector3i(x, y, z), col)
+	return m
+
+## 火柱（細い柱。上ほど明るい）。
+static func _pillar_model() -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(8, 8, 40)
+	for z in 40:
+		var col := Color("e8452c") if z < 12 else (Color("ff9a2e") if z < 28 else Color("ffd84a"))
+		for y in 8:
+			for x in 8:
+				if Vector2(x - 3.5, y - 3.5).length() <= 3.6 - (z % 6) * 0.15:
+					m.set_voxel(Vector3i(x, y, z), col)
+	return m
+
+## 炎の雨の降る範囲（地面の上の、すけた輪）。
+static func _rain_model(r: float) -> VoxelModel:
+	var n := int(ceil(r)) * 2
+	var m := VoxelModel.new()
+	m.size = Vector3i(n, n, 1)
+	for y in n:
+		for x in n:
+			var d := Vector2(x - n / 2.0 + 0.5, y - n / 2.0 + 0.5).length()
+			if d <= r and d >= r - 2.0:
+				m.set_voxel(Vector3i(x, y, 0), Color(1.0, 0.55, 0.2, 0.9))
+			elif d < r - 2.0 and (x + y) % 3 == 0:
+				m.set_voxel(Vector3i(x, y, 0), Color(1.0, 0.45, 0.15, 0.45))
+	return m
 
 ## 敵の落とし物を置く（このエリアにいる間だけ残る）。
 func spawn_drop(cell: Vector2i, kind: RunState.PickupKind, amount: int) -> void:
@@ -703,7 +877,9 @@ func _on_skill_learned(skill: String) -> void:
 		"受け身": "4段まで飛び降りられる",
 		"矢の種類": "Tab：弓の枠で毒矢を選べる",
 		"斬り上げ": "剣が1段上の敵にも届く",
-		"跳弾": "エアガンの弾が壁で1回はね返る",
+		"魔法2つ目": "杖に魔法が2つあれば、ホイールで替えて使える",
+		"最大マナ＋10": "マナが %d までたまる" % run.stats.max_mana(),
+		"魔法3つ目": "杖に魔法が3つあれば、3つとも使える",
 	}
 	notice("技能「%s」を覚えた！\n%s" % [skill, how.get(skill, "")], 4.0)
 
@@ -711,12 +887,10 @@ func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
 	match kind:
 		RunState.PickupKind.BOW:
 			notice("弓を手に入れた！\n3：持ちかえ　押して溜め、離して撃つ")
-		RunState.PickupKind.GUN:
-			notice("エアガンを手に入れた！\n4：持ちかえ　ホイール：撃つ高さ")
+		RunState.PickupKind.STAFF_FIRE:
+			notice("炎の杖を手に入れた！\nTab：杖を持ちかえる　ホイール：魔法を替える")
 		RunState.PickupKind.ARMOR:
 			notice("防具を手に入れた！\n最大いのちが増えた")
-		RunState.PickupKind.AMMO:
-			notice("弾 ×%d" % amount, 1.5)
 		RunState.PickupKind.ARROWS:
 			notice("矢 ×%d" % amount, 1.5)
 		RunState.PickupKind.POISON_ARROWS:
@@ -754,9 +928,10 @@ func _update_aim() -> void:
 	var show := playing and hotbar.selected == Hotbar.Item.IRON_BALL \
 		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map, player.mover.height)
 	var show_reticle := false
-	if playing and hotbar.selected == Hotbar.Item.GUN and run.inventory.equipment.effective(Equipment.Slot.GUN) > 0:
-		# エアガン：狙う高さに輪を浮かべ、その真下の地面に影を出す
-		var aim := gun_aim_at(get_viewport().get_mouse_position())
+	var spell := current_spell() if playing and hotbar.selected == Hotbar.Item.STAFF else -1
+	if spell == Magic.Spell.NULL_BOLT or spell == Magic.Spell.FIREBALL:
+		# 魔法の弾：狙う高さに輪を浮かべ、その真下の地面に影を出す
+		var aim := magic_aim_at(get_viewport().get_mouse_position())
 		target = aim["point"]
 		var c := HeightMap.world_to_cell(target)
 		show = map.in_bounds(c)
@@ -764,6 +939,10 @@ func _update_aim() -> void:
 		aim_reticle.world_pos = target
 		aim_reticle.base_height = aim["level"]
 		aim_reticle.lift_px = 4.0
+	elif spell >= 0:
+		# 火柱・炎の雨：届く所までの地面に影を出す
+		target = _spell_point(spell, magic_aim_at(get_viewport().get_mouse_position()))
+		show = map.in_bounds(HeightMap.world_to_cell(target))
 	aim_reticle.force_hidden = not show_reticle
 	if playing and bow.charging:
 		# 弓を溜めている間は、今離したら矢が落ちる点（届かなければ手前）
@@ -963,10 +1142,8 @@ func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
 			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
 		RunState.PickupKind.HEAL:
 			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
-		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.GUN, RunState.PickupKind.ARMOR:
+		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.STAFF_FIRE, RunState.PickupKind.ARMOR:
 			return _chest_model()
-		RunState.PickupKind.AMMO:
-			return VoxelModel.box(Vector3i(4, 3, 3), Color("6f8fa8"))
 		RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS:
 			var m := VoxelModel.box(Vector3i(6, 2, 2), Color("e8d9b0"))
 			var tip := Color("9be36b") if kind == RunState.PickupKind.POISON_ARROWS else Color("9aa0a8")
@@ -1011,7 +1188,8 @@ func _update_ui() -> void:
 func status_text() -> String:
 	var inv := run.inventory
 	var st := run.stats
-	var text := "Lv%d　いのち %d/%d　経験 %d/%d　お金 %d　素材 %d" % [st.level, player.hp, player.max_hp, st.exp_in_level(), st.exp_level_span(), inv.money, inv.materials]
+	var text := "Lv%d いのち%d/%d マナ%d/%d 経験%d/%d お金%d 素材%d" % [st.level, player.hp, player.max_hp,
+		floori(mana.value), mana.max_value, st.exp_in_level(), st.exp_level_span(), inv.money, inv.materials]
 	if run.grave != null:
 		text += "　墓石：%s" % world.area(run.grave.area_id).title
 	return text + "\n" + hotbar_text()
@@ -1028,16 +1206,14 @@ func hotbar_text() -> String:
 		elif item == Hotbar.Item.IRON_BALL:
 			name = InventoryMenu.weapon_label(Equipment.Slot.BALL, ball_rank)
 		else:
-			var slot: Equipment.Slot = Hotbar.WEAPON_SLOT[item]
+			var slot: Equipment.Slot = eq.staff_slot() if item == Hotbar.Item.STAFF else Hotbar.WEAPON_SLOT[item]
 			if eq.effective(slot) == 0:
 				continue
 			name = InventoryMenu.weapon_label(slot, eq.effective(slot))
 			if item == Hotbar.Item.BOW:
 				name += "(矢%d)" % _usable_arrows()
-			elif item == Hotbar.Item.GUN:
-				name += "(弾%d)" % run.inventory.ammo
-				if aim_offset != 0:
-					name += "高さ%+d" % aim_offset
+			elif item == Hotbar.Item.STAFF and item == hotbar.selected and current_spell() >= 0:
+				name += ":" + Magic.NAMES[current_spell()]
 		var t := "%d %s" % [i + 1, name]
 		parts.append("[%s]" % t if item == hotbar.selected else " %s " % t)
 	return "".join(parts)

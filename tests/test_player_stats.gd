@@ -67,3 +67,23 @@ func test_skill_every_three_points():
 	assert_eq(s.skills_in(PlayerStats.Stat.SWORD), 0)
 	s.allocate(PlayerStats.Stat.SWORD)
 	assert_eq(s.skills_in(PlayerStats.Stat.SWORD), 1)
+
+## 魔法：3ポイントで魔法2つ目、6で最大マナ＋10、9で魔法3つ目（2026-11-24 決定）
+func test_magic_points_unlock_slots_and_mana():
+	var st := PlayerStats.new()
+	st.add_exp(PlayerStats.exp_to_reach(6))
+	assert_eq(st.spell_slots(), 1)
+	assert_eq(st.max_mana(), 50)
+	for i in 3:
+		st.allocate(PlayerStats.Stat.MAGIC)
+	assert_eq(st.spell_slots(), 2)
+	assert_eq(st.max_mana(), 50)
+	for i in 3:
+		st.allocate(PlayerStats.Stat.MAGIC)
+	assert_eq(st.spell_slots(), 2)
+	assert_eq(st.max_mana(), 60)
+	for i in 3:
+		st.allocate(PlayerStats.Stat.MAGIC)
+	assert_eq(st.spell_slots(), 3)
+	assert_eq(PlayerStats.SKILLS[PlayerStats.Stat.MAGIC], ["魔法2つ目", "最大マナ＋10", "魔法3つ目"])
+	assert_eq(PlayerStats.NAMES[PlayerStats.Stat.MAGIC], "魔法")

@@ -12,4 +12,3 @@ var heals: int = 0
 var equipment := {}
 ## 墓石に入った矢（Arrow.Kind → 数）
 var arrows := {}
-var ammo := 0

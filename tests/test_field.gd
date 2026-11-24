@@ -534,11 +534,8 @@ func _use_map(m: HeightMap, cell: Vector2i) -> void:
 	f.player.mover.map = m
 	f.player.mover.place(cell)
 
-## 野営地でエアガンと弾を拾い、敵にカーソルを重ねて撃つと、その高さへまっすぐ飛んで当たる
-func test_gun_from_camp_auto_aims_enemy():
-	_get_camp_pickup(RunState.PickupKind.GUN)
-	_get_camp_pickup(RunState.PickupKind.AMMO)
-	assert_eq(f.run.inventory.ammo, 40)
+## 最初から無の杖を持っている。敵にカーソルを重ねて無の弾を使うと、その高さへまっすぐ飛んで当たる（高所の有利も乗る）
+func test_null_bolt_auto_aims_enemy():
 	assert_true(f.hotbar.select_slot(4, f.run.inventory.equipment))
 	var m := HeightMap.new(Vector2i(12, 3))
 	for y in 3:
@@ -546,43 +543,113 @@ func test_gun_from_camp_auto_aims_enemy():
 	_use_map(m, Vector2i(1, 1))
 	var e := _solo_enemy(m, Vector2i(6, 1))
 	var screen: Vector2 = f.camera.world_to_screen(e.walker.pos, e.walker.height * StackSprite.LEVEL_PX + 4.0)
-	var aim: Dictionary = f.gun_aim_at(screen)
+	var aim: Dictionary = f.magic_aim_at(screen)
 	assert_eq(aim["enemy"], e)
 	var hp: int = e.walker.hp
-	assert_true(f.fire_gun(screen))
-	assert_eq(f.run.inventory.ammo, 39)
+	assert_true(f.cast_spell(screen))
+	assert_eq(f.mana.value, 50.0 - Magic.COST[Magic.Spell.NULL_BOLT])
 	for i in 60:
-		f._step_pellets(1.0 / 60)
-	assert_eq(hp - e.walker.hp, Damage.gun(5, 0))
-	assert_false(f.fire_gun(screen))  # 撃つ間隔
+		f._step_bolts(1.0 / 60)
+	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.NULL_BOLT], 0, 2))
+	assert_false(f.cast_spell(screen))  # 次に使えるまで少し待つ
 
-## ホイールで撃つ高さを地面から上げ下げできる
-func test_wheel_offsets_aim_height():
-	f.run.inventory.equipment.gain(Equipment.Slot.GUN, 1)
+## マナが足りなければ使えない
+func test_no_mana_no_cast():
 	f.hotbar.select_slot(4, f.run.inventory.equipment)
-	var screen := Vector2(200, 90)
-	var base: int = f.gun_aim_at(screen)["level"]
-	f.change_aim_offset(1)
-	assert_eq(f.gun_aim_at(screen)["level"], base + 1)
-	for i in 10:
-		f.change_aim_offset(1)
-	assert_eq(f.aim_offset, AirGun.MAX_OFFSET)
+	f.mana.value = 2.0
+	assert_false(f.cast_spell(Vector2(200, 90)))
+	assert_string_contains(f.ui_message(), "マナが足りない")
 
-func test_no_ammo_no_fire():
-	f.run.inventory.equipment.gain(Equipment.Slot.GUN, 1)
-	f.hotbar.select_slot(4, f.run.inventory.equipment)
-	assert_false(f.fire_gun(Vector2(200, 90)))
-	assert_string_contains(f.ui_message(), "弾がない")
+## 野営地で炎の杖（ランク3）を拾い、持ちかえる。魔法に3ポイント振ると2つ目が使え、ホイールで替えられる
+func test_fire_staff_from_camp_and_wheel():
+	_get_camp_pickup(RunState.PickupKind.STAFF_FIRE)
+	var eq: Equipment = f.run.inventory.equipment
+	assert_eq(eq.staff_slot(), Equipment.Slot.STAFF_NONE)
+	assert_true(eq.choose_staff(Equipment.Slot.STAFF_FIRE))
+	f.hotbar.select_slot(4, eq)
+	assert_eq(f.usable_spells(), [Magic.Spell.FIREBALL])
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
+	for i in 3:
+		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
+	assert_eq(f.usable_spells().size(), 2)
+	f.cycle_spell(1)
+	assert_eq(f.current_spell(), Magic.Spell.FIRE_PILLAR)
+	assert_string_contains(f.hotbar_text(), "火柱")
+	assert_string_contains(f.status_text(), "マナ50/50")
 
-## 敵が落とした弾は拾える（エリアを出ると消える）
-func test_enemy_drop_ammo_and_pick():
+## 火柱は、崖の上の敵にも当たる（全部の高さ）
+func test_fire_pillar_hits_enemy_on_cliff():
+	var eq: Equipment = f.run.inventory.equipment
+	eq.gain(Equipment.Slot.STAFF_FIRE, 2)
+	eq.choose_staff(Equipment.Slot.STAFF_FIRE)
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
+	for i in 3:
+		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
+	f.hotbar.select_slot(4, eq)
+	f.cycle_spell(1)
+	var m := HeightMap.new(Vector2i(12, 3))
+	for y in 3:
+		for x in range(4, 12):
+			m.set_height(Vector2i(x, y), 2)
+	_use_map(m, Vector2i(1, 1))
+	var e := _solo_enemy(m, Vector2i(4, 1))
+	e.walker.hp = 50  # 一撃で倒れないようにして、やけども確かめる
+	var screen: Vector2 = f.camera.world_to_screen(e.walker.pos, e.walker.height * StackSprite.LEVEL_PX + 4.0)
+	var hp: int = e.walker.hp
+	assert_true(f.cast_spell(screen))
+	assert_eq(hp - e.walker.hp, Damage.magic(f.current_attack(), Magic.POWER[Magic.Spell.FIRE_PILLAR], 3, 0))
+	assert_eq(f.current_attack(), 5 + Equipment.rank_attack(2))  # 杖のランクもつよさに足される
+	assert_true(e.walker.is_burning())
+
+## 火の玉は当たった所で弾けて敵をやけどにし、地面が少しの間燃える
+func test_fireball_burns():
+	var eq: Equipment = f.run.inventory.equipment
+	eq.gain(Equipment.Slot.STAFF_FIRE, 1)
+	eq.choose_staff(Equipment.Slot.STAFF_FIRE)
+	f.hotbar.select_slot(4, eq)
+	var m := HeightMap.new(Vector2i(12, 3))
+	_use_map(m, Vector2i(1, 1))
+	var e := _solo_enemy(m, Vector2i(5, 1))
+	var screen: Vector2 = f.camera.world_to_screen(e.walker.pos, 4.0)
+	var hp: int = e.walker.hp
+	assert_true(f.cast_spell(screen))
+	for i in 60:
+		f._step_bolts(1.0 / 60)
+	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.FIREBALL], 0, 0))
+	assert_true(e.walker.is_burning())
+	assert_eq(f.fires_burning(), 1)
+
+## 炎の雨：高い所から使うほど広い。自分より高い所の敵には当たらない
+func test_fire_rain_from_high_ground():
+	var eq: Equipment = f.run.inventory.equipment
+	eq.gain(Equipment.Slot.STAFF_FIRE, 3)
+	eq.choose_staff(Equipment.Slot.STAFF_FIRE)
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(8))
+	for i in 9:
+		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
+	f.hotbar.select_slot(4, eq)
+	f.cycle_spell(2)
+	assert_eq(f.current_spell(), Magic.Spell.FIRE_RAIN)
+	var m := HeightMap.new(Vector2i(14, 5))
+	for y in 5:
+		for x in 3:
+			m.set_height(Vector2i(x, y), 3)
+	_use_map(m, Vector2i(1, 2))
+	var low := _solo_enemy(m, Vector2i(6, 2))
+	var hp: int = low.walker.hp
+	# 地面の点を狙う：段差3なら広さは 16 + 24 = 40px。敵は中心から 20px
+	f._fire_rain(low.walker.pos + Vector2(20, 0))
+	assert_lt(low.walker.hp, hp)
+
+## 敵の落とし物は拾える（エリアを出ると消える）
+func test_enemy_drop_and_pick():
 	var c := Continent.START_CELL + Vector2i(2, 0)
-	f.spawn_drop(c, RunState.PickupKind.AMMO, 5)
+	f.spawn_drop(c, RunState.PickupKind.HEAL, 1)
 	f.player.mover.place(c)
 	f._process(0.016)
-	assert_eq(f.run.inventory.ammo, 5)
+	assert_eq(f.run.inventory.heals, 1)
 	assert_eq(f.drops_left(), 0)
-	f.spawn_drop(c, RunState.PickupKind.AMMO, 5)
+	f.spawn_drop(c, RunState.PickupKind.HEAL, 1)
 	_walk_out(_exit("camp", "hills"))
 	assert_eq(f.drops_left(), 0)
 

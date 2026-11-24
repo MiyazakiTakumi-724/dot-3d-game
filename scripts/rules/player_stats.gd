@@ -5,14 +5,14 @@ extends RefCounted
 ## 同じ項目に3ポイント振るごとに技能を1つ覚える（技能の中身は後の段階で作る）。
 ## 数値のうち、17.1 にないもの（必要経験値・ポイント数・1ポイントで上がる量）は【提案】の仮の値。
 
-enum Stat { VITALITY, ATTACK, SWORD, BOW, GUN, MOVE }
+enum Stat { VITALITY, ATTACK, SWORD, BOW, MAGIC, MOVE }
 
 const NAMES := {
 	Stat.VITALITY: "いのち",
 	Stat.ATTACK: "つよさ",
 	Stat.SWORD: "剣",
 	Stat.BOW: "弓",
-	Stat.GUN: "エアガン",
+	Stat.MAGIC: "魔法",
 	Stat.MOVE: "体の動き",
 }
 
@@ -20,7 +20,7 @@ const NAMES := {
 const SKILLS := {
 	Stat.SWORD: ["落下斬り強化", "斬り上げ", "回転斬り"],
 	Stat.BOW: ["矢の種類", "高所射撃", "連射"],
-	Stat.GUN: ["跳弾", "速射"],
+	Stat.MAGIC: ["魔法2つ目", "最大マナ＋10", "魔法3つ目"],  # 2026-11-24 決定
 	Stat.MOVE: ["しゃがみ", "受け身", "よじ登り"],
 }
 
@@ -82,6 +82,17 @@ func max_hp(equip := 0) -> int:
 ## 攻撃力。equip は手に持つ武器（と防具）で足される分。
 func attack(equip := 0) -> int:
 	return BASE_ATTACK + points_in(Stat.ATTACK) * ATTACK_PER_POINT + equip
+
+## 同時に使える魔法の数（1〜3）。魔法に3ポイントで2つ、9ポイントで3つ。
+func spell_slots() -> int:
+	var n := skills_in(Stat.MAGIC)
+	return 1 + (1 if n >= 1 else 0) + (1 if n >= 3 else 0)
+
+## 最大マナ。魔法に6ポイントで＋10。
+func max_mana() -> int:
+	return Mana.BASE_MAX + (MANA_BONUS if skills_in(Stat.MAGIC) >= 2 else 0)
+
+const MANA_BONUS := 10
 
 func move_speed_mult() -> float:
 	return 1.0 + points_in(Stat.MOVE) * SPEED_PER_POINT

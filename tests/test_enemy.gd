@@ -188,3 +188,17 @@ func test_poison_ticks_once_per_second_for_five_seconds():
 	assert_eq(total, 5)
 	assert_eq(w.hp, 15)
 	assert_false(w.is_poisoned())
+
+## やけど（火の魔法）：毒と同じく毎秒1ダメージ。やけどの間は is_burning
+func test_burn_ticks():
+	var m := HeightMap.new(Vector2i(4, 4))
+	var w := EnemyWalker.new(m, Vector2i(1, 1), Vector2.RIGHT, 10)
+	w.burn(3.0)
+	assert_true(w.is_burning())
+	var total := 0
+	for i in 40:
+		total += w.update_poison(0.1)
+	assert_eq(total, 3)
+	assert_false(w.is_burning())
+	w.poison(2.0)
+	assert_false(w.is_burning())
