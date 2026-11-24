@@ -430,6 +430,33 @@ func test_falling_slash_after_drop():
 	assert_true(f.swing_sword())
 	assert_eq(hp - e.walker.hp, Damage.sword(5, 0, 2))
 
+## 高所の有利：1段下の敵を剣で斬ると、威力が上がる
+func test_sword_high_ground_bonus():
+	f.run.inventory.equipment.gain(Equipment.Slot.SWORD, 1)
+	f.hotbar.select_slot(2, f.run.inventory.equipment)
+	var m := HeightMap.new(Vector2i(6, 3))
+	m.set_height(Vector2i(1, 1), 1)
+	f.map = m
+	f.player.mover.map = m
+	f.player.mover.place(Vector2i(1, 1))
+	for e in f.enemies:
+		e.queue_free()
+	f.enemies.clear()
+	var e := Enemy.new()
+	e.setup(m, Vector2i(2, 1), Vector2.RIGHT, f.player, f.camera, EnemyKind.Kind.MELEE)
+	add_child_autofree(e)
+	e.set_process(false)
+	f.enemies.append(e)
+	e.walker.pos = f.player.mover.pos + Vector2(14, 0)
+	f.player.mover.facing = Vector2.RIGHT
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
+	for i in 5:
+		f.run.stats.allocate(PlayerStats.Stat.ATTACK)  # つよさ10
+	var hp: int = e.walker.hp
+	assert_true(f.swing_sword())
+	assert_eq(hp - e.walker.hp, Damage.sword(10, 0, 0, false, 1))
+	assert_gt(Damage.sword(10, 0, 0, false, 1), Damage.sword(10, 0, 0))
+
 func _get_camp_pickup(kind) -> void:
 	for i in f.area.pickups.size():
 		var p = f.area.pickups[i]

@@ -45,3 +45,11 @@ func test_bow():
 func test_gun():
 	assert_eq(Damage.gun(5, 0), 2)
 	assert_eq(Damage.gun(10, 5), 6)
+
+## 高所の有利：自分より低い敵を剣で攻めると、1段につき×（1 ＋ 0.25）【提案】
+func test_sword_high_ground():
+	assert_eq(Damage.sword(10, 0, 0, false, 0), 6)
+	assert_eq(Damage.sword(10, 0, 0, false, 1), 7)  # 6 × 1.25 = 7.5
+	assert_eq(Damage.sword(10, 0, 0, false, 2), 9)  # 6 × 1.5
+	assert_eq(Damage.high_ground(2), 1.5)
+	assert_eq(Damage.high_ground(-1), 1.0)  # 下から攻めても減らない

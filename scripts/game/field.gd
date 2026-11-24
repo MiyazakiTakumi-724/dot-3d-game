@@ -13,6 +13,7 @@ const FALL_SINK_PX := 40.0  ## 奈落に落ちる演出で沈む量（0.5秒で�
 const GRAVE_HINT_SECONDS := 6.0
 const MAX_HEIGHT := 8
 const LEVEL_UP_SECONDS := 3.0
+const HIGH_GROUND_COLOR := Color("8fd3ff")  ## 高所の有利が乗ったダメージの数字の色
 ## 設定（簡単モードなど）。インベントリ画面の「設定」のページで変える
 var settings := GameSettings.new()
 
@@ -450,12 +451,14 @@ func swing_sword() -> bool:
 	var fall := mv.recent_drop(Sword.FALL_WINDOW)
 	var strong_fall := st.skills_in(PlayerStats.Stat.SWORD) >= 1
 	var up := Sword.reaches_up(run.inventory.equipment.effective(Equipment.Slot.SWORD), st.skills_in(PlayerStats.Stat.SWORD) >= 2)
-	var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
 	player.swing(fall > 0)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, up):
+			# 低い敵には高所の有利が乗る（数字の色で分かるようにする）
+			var lower: int = mv.height - e.walker.height
+			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall, lower)
 			e.walker.take_damage(dmg)
-			_popup(e.walker.pos, e.walker.height, dmg, Color("ffb347") if fall > 0 else Color.WHITE)
+			_popup(e.walker.pos, e.walker.height, dmg, Color("ffb347") if fall > 0 else (HIGH_GROUND_COLOR if lower > 0 else Color.WHITE))
 	if run.grave != null and run.grave.area_id == area.id:
 		var g := run.grave.cell
 		if Sword.hits(mv.pos, mv.height, mv.facing, HeightMap.cell_center(g), map.get_height(g), up):
@@ -586,12 +589,13 @@ func spin_slash() -> bool:
 	if run.inventory.equipment.effective(Equipment.Slot.SWORD) == 0 or not sword.try_spin():
 		return false
 	var mv := player.mover
-	var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0)
 	player.spin()
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, true):
+			var lower: int = mv.height - e.walker.height
+			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0, false, lower)
 			e.walker.take_damage(dmg)
-			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
+			_popup(e.walker.pos, e.walker.height, dmg, HIGH_GROUND_COLOR if lower > 0 else Color.WHITE)
 	return true
 
 ## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
@@ -852,6 +856,7 @@ func _step_bullets(delta: float) -> void:
 			_bullets.remove_at(i)
 			continue
 		s.world_pos = b.pos
+		_place_bullet_sprite(b, s)
 
 func _on_enemy_shot(b: Bullet) -> void:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
@@ -859,8 +864,7 @@ func _on_enemy_shot(b: Bullet) -> void:
 	var s := StackSprite.new()
 	s.camera = camera
 	s.world_pos = b.pos
-	s.base_height = b.height
-	s.lift_px = 3
+	_place_bullet_sprite(b, s)
 	s.draw_bias = 3
 	s.sort_by_cell = true
 	s.sort_map = map
@@ -869,6 +873,12 @@ func _on_enemy_shot(b: Bullet) -> void:
 	s.refresh()
 	_area_root.add_child(s)
 	_bullets.append([b, s])
+
+## 弾の絵を弾の高さ（z）に合わせる。
+func _place_bullet_sprite(b: Bullet, s: StackSprite) -> void:
+	var z := b.get_z()
+	s.base_height = maxi(0, floori(z / StackSprite.LEVEL_PX))
+	s.lift_px = z - s.base_height * StackSprite.LEVEL_PX - 1.0
 
 ## 鉄球が着いた。ダメージは17章の式で、攻撃力（強い鉄球なら上乗せ）・落とした高さ・レベルで決まる。
 func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:

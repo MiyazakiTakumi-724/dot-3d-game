@@ -13,9 +13,16 @@ static func iron_ball(attack: int, drop_levels: int, level: int) -> int:
 
 ## 剣：攻撃力 × 0.6 ×（1 ＋ 剣のポイント × 0.1）。落下斬りは ×（1 ＋ 落ちた段数 × 0.5）、
 ## 技能「落下斬り強化」があれば 0.5 が 0.75 になる。
-static func sword(attack: int, points: int, fall_levels: int, strong_fall := false) -> int:
+## lower_levels は相手が自分より何段低いか（高所の有利）。
+static func sword(attack: int, points: int, fall_levels: int, strong_fall := false, lower_levels := 0) -> int:
 	var fall_rate := 0.75 if strong_fall else 0.5
-	return _floor(attack * 0.6 * (1.0 + points * 0.1) * (1.0 + maxi(0, fall_levels) * fall_rate))
+	return _floor(attack * 0.6 * (1.0 + points * 0.1) * (1.0 + maxi(0, fall_levels) * fall_rate) * high_ground(lower_levels))
+
+## 高所の有利【提案】：自分より低い相手を攻めると、1段につき威力が25%増える。下から攻めても減らない。
+## 鉄球（落とした高さ）と弓（技能「高所射撃」）は、それぞれの式で高さを数えるので使わない。
+const HIGH_GROUND_PER_LEVEL := 0.25
+static func high_ground(lower_levels: int) -> float:
+	return 1.0 + maxi(0, lower_levels) * HIGH_GROUND_PER_LEVEL
 
 ## 弓：攻撃力 × チャージ率 × 矢の倍率 ×（1 ＋ 弓のポイント × 0.1）。
 ## lower_levels は技能「高所射撃」で数える、自分より低い段数（×（1 ＋ 段数 × 0.5））。

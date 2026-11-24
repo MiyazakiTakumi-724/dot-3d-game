@@ -89,3 +89,40 @@ func test_bullet_flies_over_water():
 		b.step(0.1, map)
 	assert_true(b.alive)
 	assert_gt(b.pos.x, 48.0)
+
+## 狙って撃つ弾：高い所から、下に立つ相手へ届く（崖のふちから撃つとき）
+func test_aimed_bullet_reaches_lower_target():
+	var map := HeightMap.new(Vector2i(8, 8))
+	map.set_height(Vector2i(0, 0), 2)
+	var b := Bullet.new()
+	var target := HeightMap.cell_center(Vector2i(4, 0))
+	b.aim(HeightMap.cell_center(Vector2i(0, 0)) + Vector2(6, 0), 2, target, 0, 80.0)
+	var hit := false
+	for i in 100:
+		b.step(0.016, map)
+		if b.hits(target, 0, 6.0):
+			hit = true
+			break
+	assert_true(hit)
+
+## 狙って撃つ弾：下から高い所の相手を狙うと、崖の側面に当たって止まる
+func test_aimed_bullet_from_below_hits_cliff():
+	var map := HeightMap.new(Vector2i(8, 8))
+	for x in range(2, 8):
+		map.set_height(Vector2i(x, 0), 2)
+	var b := Bullet.new()
+	var target := HeightMap.cell_center(Vector2i(5, 0))
+	b.aim(HeightMap.cell_center(Vector2i(0, 0)), 0, target, 2, 80.0)
+	for i in 100:
+		b.step(0.016, map)
+	assert_false(b.alive)
+	assert_lt(b.pos.x, 40.0)
+
+## 弾は自分の高さ（z）で当たりを決める。体の高さの外を通る弾は当たらない
+func test_bullet_hits_by_z():
+	var b := Bullet.new()
+	b.pos = Vector2(8, 8)
+	b.height = 0
+	b.z = 20.0  # 2段の高さ（地面0に立つ相手の頭の上）
+	assert_false(b.hits(Vector2(8, 8), 0, 6.0))
+	assert_true(b.hits(Vector2(8, 8), 2, 6.0))

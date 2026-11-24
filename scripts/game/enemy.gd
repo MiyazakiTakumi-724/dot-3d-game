@@ -70,10 +70,9 @@ func _process(delta: float) -> void:
 		var to_player := target.mover.pos - walker.pos
 		if _cooldown <= 0.0 and to_player.length() <= SHOOT_RANGE:
 			_cooldown = SHOOT_INTERVAL
+			# 相手の体へまっすぐ撃つ。高い所からなら下まで届き、下からだと崖に当たりやすい
 			var b := Bullet.new()
-			b.pos = walker.pos
-			b.vel = to_player.normalized() * BULLET_SPEED
-			b.height = walker.height
+			b.aim(walker.pos, walker.height, target.mover.pos, target.mover.height, BULLET_SPEED)
 			b.damage = attack
 			shot.emit(b)
 	world_pos = walker.pos
