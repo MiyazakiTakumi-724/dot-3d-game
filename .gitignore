@@ -9,3 +9,4 @@ build/
 
 # 地図のプレビュー
 tools/area_maps/preview_*.png
+__pycache__/

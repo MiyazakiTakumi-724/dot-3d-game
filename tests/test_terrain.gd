@@ -109,16 +109,38 @@ func test_top_color_brighter_when_higher():
 	assert_gt(Terrain.top_color(5).v, Terrain.top_color(1).v)
 	assert_gt(Terrain.top_color(8).v, Terrain.top_color(7).v)
 
-func test_edge_highlight_on_lower_side():
-	var plain := Terrain.ground_model(2, 3, 0, false, -1, 0)
-	var lit := Terrain.ground_model(2, 3, 0, false, -1, 2)
-	var top := (2 - -1) * StackSprite.LEVEL_PX  # 上の面の輪切り
-	assert_gt(lit.get_voxel(Vector3i(15, 8, top)).v, plain.get_voxel(Vector3i(15, 8, top)).v)
-	assert_eq(lit.get_voxel(Vector3i(0, 8, top)), plain.get_voxel(Vector3i(0, 8, top)))
+## 段のふちの明るい線は、モデルを増やさずにスプライトが描く（モデルの数を抑えて、エリアに入るときに待たせないため）
+func test_build_sets_rim_sides_on_ground_sprites():
+	var m := HeightMap.new(Vector2i(3, 3))
+	m.set_height(Vector2i(1, 1), 2)
+	var cam := StackCamera.new()
+	var root := Node2D.new()
+	Terrain.build(m, cam, root)
+	var found := false
+	for c in root.get_children():
+		var s: StackSprite = c
+		if HeightMap.world_to_cell(s.world_pos) == Vector2i(1, 1):
+			assert_eq(s.rim_sides, 1 | 2 | 4 | 8)
+			assert_eq(s.rim_layer, (2 - s.base_height) * StackSprite.LEVEL_PX)
+			found = true
+	assert_true(found)
+	root.free()
+	cam.free()
+
+func test_model_keys_match_build_and_warm():
+	var m := HeightMap.new(Vector2i(4, 4))
+	m.set_height(Vector2i(1, 1), 3)
+	var keys := Terrain.model_keys(m, {})
+	assert_gt(keys.size(), 0)
+	for k in keys:
+		assert_false(k.contains("/15"), "rim must not be in the key: " + k)
+	Terrain.warm(keys, 1000.0)
+	for k in keys:
+		assert_true(Terrain.is_cached(k), k)
 
 func test_side_has_level_bands():
 	# 1段ごとに暗い帯が入る：高さの境目の輪切りは、その1つ上より暗い
-	var m := Terrain.ground_model(4, 4, 2, false, 0, 0)
+	var m := Terrain.ground_model(4, 4, 2, false, 0)
 	assert_lt(m.get_voxel(Vector3i(0, 0, 8)).v, m.get_voxel(Vector3i(0, 0, 9)).v)
 
 func test_arrow_model_points_north():

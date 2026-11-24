@@ -134,26 +134,62 @@ static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dic
 	for y in map.size.y:
 		for x in map.size.x:
 			var cell := Vector2i(x, y)
-			if map.is_void(cell) or map.is_pit(cell):
-				continue  # 島の外と奈落は描かない（奈落は、隣の柱の断面が裂け目の壁になる）
-			var kind: String = deco.get(cell, "")
+			var keys := _cell_keys(map, cell, deco)
+			if keys.is_empty():
+				continue
 			var h := map.get_height(cell)
-			var v := variant(cell, 3)
-			var bottom := column_bottom(map, cell, deco)
-			var key: String
-			if map.is_wall(cell) and map.get_blocker(cell) == HeightMap.Blocker.NONE and kind == "":
-				key = "wall"
-				bottom = 0
-			elif map.is_water(cell):
-				key = "water/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(_has_higher_water(map, cell)), int(_next_to_void(map, cell))]
-			elif kind == "bridge":
-				var across_ns := map.is_water(cell + Vector2i.UP) or map.is_water(cell + Vector2i.DOWN)
-				key = "bridge/%d/%d/%d" % [h, h - bottom, int(across_ns)]
-			else:
-				key = "ground/%d/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(kind == "flower"), bottom, lower_sides(map, cell)]
-			_place(parent, camera, cell, bottom, 0, _cached(key))
-			if kind in ["rock", "tree", "pine", "bush"]:
-				_place(parent, camera, cell, h, 1, _cached("%s/%d" % [kind, v]))
+			var bottom := 0 if keys[0] == "wall" else column_bottom(map, cell, deco)
+			var s := _place(parent, camera, cell, bottom, 0, _cached(keys[0]))
+			if keys[0].begins_with("ground/"):
+				# 段のふちの明るい線は、モデルを増やさずにスプライトが上の面に描く
+				s.rim_sides = lower_sides(map, cell)
+				s.rim_layer = (h - bottom) * StackSprite.LEVEL_PX
+				s.rim_color = top_color(h).lightened(0.38)
+			if keys.size() > 1:
+				_place(parent, camera, cell, h, 1, _cached(keys[1]))
+
+## そのマスに置くモデルの名前（地面と、木などの物）。描かないマスは空。
+static func _cell_keys(map: HeightMap, cell: Vector2i, deco: Dictionary) -> Array[String]:
+	var out: Array[String] = []
+	if map.is_void(cell) or map.is_pit(cell):
+		return out  # 島の外と奈落は描かない（奈落は、隣の柱の断面が裂け目の壁になる）
+	var kind: String = deco.get(cell, "")
+	var h := map.get_height(cell)
+	var v := variant(cell, 3)
+	var bottom := column_bottom(map, cell, deco)
+	if map.is_wall(cell) and map.get_blocker(cell) == HeightMap.Blocker.NONE and kind == "":
+		out.append("wall")
+	elif map.is_water(cell):
+		out.append("water/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(_has_higher_water(map, cell)), int(_next_to_void(map, cell))])
+	elif kind == "bridge":
+		var across_ns := map.is_water(cell + Vector2i.UP) or map.is_water(cell + Vector2i.DOWN)
+		out.append("bridge/%d/%d/%d" % [h, h - bottom, int(across_ns)])
+	else:
+		out.append("ground/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(kind == "flower"), bottom])
+	if kind in ["rock", "tree", "pine", "bush"]:
+		out.append("%s/%d" % [kind, v])
+	return out
+
+## その地図を描くのに要るモデルの名前（重なりなし）。
+static func model_keys(map: HeightMap, deco: Dictionary) -> Array[String]:
+	var seen := {}
+	for y in map.size.y:
+		for x in map.size.x:
+			for k in _cell_keys(map, Vector2i(x, y), deco):
+				seen[k] = true
+	var out: Array[String] = []
+	out.assign(seen.keys())
+	return out
+
+static func is_cached(key: String) -> bool:
+	return _models.has(key)
+
+## keys のモデルを、budget_ms ミリ秒まで前もって作っておく。作り終えた名前は keys から取り除く。
+## エリアに初めて入るときに待たせないよう、遊んでいる間に少しずつ呼ぶ。
+static func warm(keys: Array[String], budget_ms: float) -> void:
+	var start := Time.get_ticks_usec()
+	while not keys.is_empty() and (Time.get_ticks_usec() - start) < budget_ms * 1000.0:
+		_cached(keys.pop_back())
 
 ## 暗いグラデーションの背景を一番奥に置く（島が浮いて見えるように）。
 static func add_background(parent: Node) -> void:
@@ -195,7 +231,7 @@ static func _next_to_void(map: HeightMap, cell: Vector2i) -> bool:
 				return true
 	return false
 
-static func _place(parent: Node2D, camera: StackCamera, cell: Vector2i, h: int, bias: int, m: VoxelModel) -> void:
+static func _place(parent: Node2D, camera: StackCamera, cell: Vector2i, h: int, bias: int, m: VoxelModel) -> StackSprite:
 	var s := StackSprite.new()
 	s.camera = camera
 	s.world_pos = HeightMap.cell_center(cell)
@@ -203,6 +239,8 @@ static func _place(parent: Node2D, camera: StackCamera, cell: Vector2i, h: int, 
 	s.draw_bias = bias
 	s.set_model(m)
 	parent.add_child(s)
+	return s
+	return s
 
 static func _cached(key: String) -> VoxelModel:
 	if not _models.has(key):
@@ -219,7 +257,7 @@ static func _make(key: String) -> VoxelModel:
 		"bridge":
 			return bridge_model(int(p[1]), int(p[2]), p[3] == "1")
 		"ground":
-			return ground_model(int(p[1]), int(p[2]), int(p[3]), p[4] == "1", int(p[5]), int(p[6]))
+			return ground_model(int(p[1]), int(p[2]), int(p[3]), p[4] == "1", int(p[5]))
 		"rock":
 			return rock_model(int(p[1]))
 		"tree":
@@ -288,13 +326,12 @@ static func _arrow_north() -> VoxelModel:
 ## 地面の柱。depth は柱の高さ（段）、bottom は柱の下の端の段（土の縞を隣とそろえるのに使う）。
 ## 上の面は草（マスごとに色を少しずらし、草むらか花を足す）。側面は上から草のふち→土の縞→
 ## 0より下は暗い土と岩。島のふちの柱は、下の端が少しすぼまってでこぼこになる。
-## lower_sides：隣が低い辺（1＝北、2＝東、4＝南、8＝西）。その辺の上の面のふちに明るい線を引く。
 ## 側面は1段ごとに暗い帯を入れて、何段ぶんの崖かを数えられるようにする。
-static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0, lower_sides: int = 0) -> VoxelModel:
+## 段のふちの明るい線はモデルには入れず、StackSprite.rim_sides で描く。
+static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0) -> VoxelModel:
 	var layers := depth * StackSprite.LEVEL_PX + 1
 	var grass: Color = top_color(h)
 	grass = [grass, grass.lightened(0.05), grass.darkened(0.05)][v] as Color
-	var rim := grass.lightened(0.38)
 	var m := VoxelModel.new()
 	m.size = Vector3i(16, 16, layers + 2)
 	var base_px := bottom * StackSprite.LEVEL_PX
@@ -310,9 +347,6 @@ static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, 
 				var c: Color
 				if from_top == 0:
 					c = grass
-					if (lower_sides & 1 and yy == inset) or (lower_sides & 2 and xx == 15 - inset) \
-							or (lower_sides & 4 and yy == 15 - inset) or (lower_sides & 8 and xx == inset):
-						c = rim
 				elif from_top <= 2 and (from_top == 1 or (xx * 3 + yy * 5) % 4 != 0):
 					c = grass.darkened(0.12 * from_top)  # 崖のふちに草が少し垂れる
 				elif abs_px >= 0:

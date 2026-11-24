@@ -126,3 +126,39 @@ func test_kind_table():
 	assert_true(EnemyKind.shoots(EnemyKind.Kind.SHOOTER))
 	assert_false(EnemyKind.contact(EnemyKind.Kind.MELEE))
 	assert_true(EnemyKind.contact(EnemyKind.Kind.WEAK))
+
+## 斜めに追うとき、マスの角をすり抜けて2段上の崖に入らない（レビューの指摘）
+func test_diagonal_chase_does_not_cut_corner_into_cliff():
+	var m := HeightMap.new(Vector2i(12, 12))
+	m.set_height(Vector2i(7, 6), 2)
+	var w := EnemyWalker.new(m, Vector2i(6, 6), Vector2.RIGHT, 2, 1)
+	for i in 600:
+		w.chase(Vector2(130, 79.7), 0)
+		w.step(1.0 / 60)
+		assert_ne(w.cell(), Vector2i(7, 6))
+		if w.cell() == Vector2i(7, 6):
+			return
+
+func test_chase_fuzz_never_enters_bad_cell():
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for run in 300:
+		var m := HeightMap.new(Vector2i(10, 10))
+		for y in 10:
+			for x in 10:
+				m.set_height(Vector2i(x, y), rng.randi_range(0, 3))
+				if rng.randf() < 0.06:
+					m.set_water(Vector2i(x, y), true)
+		var start := Vector2i(5, 5)
+		m.set_water(start, false)
+		var w := EnemyWalker.new(m, start, Vector2.RIGHT, 2, 1)
+		var target := Vector2(rng.randf_range(20, 140), rng.randf_range(20, 140))
+		var prev := w.cell()
+		for i in 240:
+			w.chase(target, w.height)
+			w.step(1.0 / 60)
+			var c := w.cell()
+			if c != prev:
+				assert_false(m.is_water(c), "water %s" % c)
+				assert_lte(absi(m.get_height(c) - m.get_height(prev)), 1, "step %s→%s" % [prev, c])
+				prev = c

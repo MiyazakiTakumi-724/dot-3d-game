@@ -56,6 +56,7 @@ class Grid:
         self.rng = random.Random(seed)
         self.seed = seed
         self.reserved = set()   # 物を置かないマス
+        self.hedge = set()      # 道を折り返させる木の列（つなぐ直しでも壊さない）
     def inside(self, x, y):
         return 0 <= x < self.w and 0 <= y < self.h
     def cells(self):
@@ -202,8 +203,8 @@ def carve_to(g, src, targets):
             continue
         for n in g.nb(*c):
             o = g.O[n[1]][n[0]]
-            if o in '~_':
-                continue
+            if o in '~_' or n in g.hedge:
+                continue  # 水・奈落・折り返しの生け垣は壊さない
             dh = abs(g.H[n[1]][n[0]] - g.H[c[1]][c[0]])
             cost = 1 + (8 if o in WALLS else 0) + 40 * max(0, dh - 1)
             nd = d + cost
@@ -301,6 +302,29 @@ def flatten_exits(g):
         for x, y in ((cells[0][0] - along[0], cells[0][1] - along[1]), (cells[-1][0] + along[0], cells[-1][1] + along[1])):
             if g.inside(x, y) and (x, y) not in g.reserved:
                 g.O[y][x] = 'P'
+
+def exit_height(g, e):
+    c = exit_cells(g.name, e[1], e[2], e[3])[0]
+    return g.H[c[1]][c[0]]
+
+def set_exit_height(g, e, h):
+    """出口と、その内側3マスの高さを h にする（となりのエリアと境目の高さをそろえる）。"""
+    dx, dy = INWARD[e[1]]
+    for c in exit_cells(g.name, e[1], e[2], e[3]):
+        for k in range(4):
+            g.H[c[1] + dy * k][c[0] + dx * k] = h
+
+def match_seams(gs):
+    """出口でつながる2つのエリアの、境目の高さをそろえる（大陸として違和感なくつながるように）。"""
+    for e in EXITS:
+        if e[0] > e[4]:
+            continue  # 組ごとに1回だけ
+        other = next(o for o in EXITS if o[0] == e[4] and o[4] == e[0] and o[5] == e[5])
+        a, b = gs[e[0]], gs[e[4]]
+        h = max(exit_height(a, e), exit_height(b, other))  # 低い側に坂を作る（高い側を掘り下げると、生け垣を壊す道ができやすい）
+        set_exit_height(a, e, h)
+        set_exit_height(b, other, h)
+        print('  境目 %s-%s の高さ %d' % (e[0], e[4], h))
 
 def pad(g, x, y, r=3):
     """敵1のための6×6の平地（撃つ敵は r=2 で4×4）。"""
@@ -403,6 +427,7 @@ def make_hills():
             in_gap = (gap == 'E' and x >= g.w - 3) or (gap == 'W' and x < x0 + 3)
             if not in_gap:
                 g.O[y][x] = 'T' if (x + y) % 3 else 'B'
+                g.hedge.add((x, y))
             g.reserved.add((x, y))  # すき間にも木を置かない
     # 西の岸の木立
     scatter(g, [('T', 3), ('P', 1), ('B', 2), ('F', 3)], 0.10, 11,
@@ -455,6 +480,7 @@ def make_forest():
             in_gap = (gap == 'E' and x >= g.w - 3) or (gap == 'W' and x < PLATEAU_X + 3)
             if not in_gap:
                 g.O[y][x] = 'P' if (x + y) % 4 else 'T'
+                g.hedge.add((x, y))
             g.reserved.add((x, y))  # すき間にも木を置かない
     # 奈落の裂け目（東の森の真ん中、細い道の横）
     for c in line_cells([(34, 19), (38, 20), (42, 18), (47, 19)], 0.6):
@@ -554,6 +580,7 @@ def preview(g, path):
 
 def main():
     gs = {'camp': make_camp(), 'rocks': make_rocks(), 'hills': make_hills(), 'forest': make_forest()}
+    match_seams(gs)
     hubs = {k: finish(g) for k, g in gs.items()}
     camp, hills, forest = gs['camp'], gs['hills'], gs['forest']
     # 経路の長さ（マス）：たき火 → 丘陵 → 奥の森の強い鉄球

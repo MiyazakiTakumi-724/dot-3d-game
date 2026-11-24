@@ -65,20 +65,24 @@ func step(delta: float) -> void:
 	if _try(dir, delta):
 		return
 	if chasing:
-		# 追っている間は引き返さず、動ける方の軸だけ動く（だめなら止まる）
-		if not _try(Vector2(signf(dir.x), 0), delta):
-			_try(Vector2(0, signf(dir.y)), delta)
-		return
+		return  # 追っている間は引き返さず、止まって待つ
 	dir = -dir
 
-## 体の半分先（8px）のマスを見て、入れるなら進む。
+## d の向きに進む。斜めのときは x と y を1軸ずつ動かし、それぞれ体の半分先（8px）のマスを確かめる
+## （まとめて動かすと、マスの角をすり抜けて入れないマスに入ることがあるため）。少しでも進めたら true。
 func _try(d: Vector2, delta: float) -> bool:
-	if d == Vector2.ZERO:
-		return false
-	var ahead := HeightMap.world_to_cell(pos + d * (HeightMap.CELL_PX * 0.5 + 0.1))
+	var moved := false
+	if d.x != 0.0:
+		moved = _try_axis(Vector2(d.x, 0), delta) or moved
+	if d.y != 0.0:
+		moved = _try_axis(Vector2(0, d.y), delta) or moved
+	return moved
+
+func _try_axis(v: Vector2, delta: float) -> bool:
+	var ahead := HeightMap.world_to_cell(pos + v.sign() * (HeightMap.CELL_PX * 0.5 + 0.1))
 	if ahead != cell() and not can_enter(ahead):
 		return false
-	pos += d * SPEED * delta
+	pos += v * SPEED * delta
 	height = map.get_height(cell())
 	return true
 

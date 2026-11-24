@@ -49,6 +49,9 @@ var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・
 var _message: Label  ## 真ん中：エリアの名前・門のヒント・やられた
 var _guide: Label  ## 下：操作の説明
 var _arrow_blink := 0.0
+## まだ作っていない、ほかのエリアのモデルの名前（遊んでいる間に少しずつ作る）
+var _warm_queue: Array[String] = []
+const WARM_BUDGET_MS := 10.0  ## 1フレームでモデル作りに使う時間
 
 func _ready() -> void:
 	world = Continent.build()
@@ -134,6 +137,29 @@ func enter_area(id: String, cell: Vector2i) -> void:
 		ball.map = map
 		ball.rules_ball.return_to_hand()  # 地面に置いたままの鉄球は手元に戻る
 	_title_time = TITLE_SECONDS
+	_queue_warm()
+
+## となりのエリアを先に、ほかのエリアのモデルを作る順番に並べる（warm は後ろから取る）。
+func _queue_warm() -> void:
+	var near: Array[String] = []
+	var far: Array[String] = []
+	for ex in area.exits:
+		if not near.has(ex.target):
+			near.append(ex.target)
+	for id in world.ids():
+		if id != area.id and not near.has(id):
+			far.append(id)
+	var seen := {}
+	_warm_queue.clear()
+	for id in far + near:
+		var loaded := Continent.load_map(world.area(id))
+		for k in Terrain.model_keys(loaded[0], loaded[1]["deco"]):
+			if not Terrain.is_cached(k) and not seen.has(k):
+				seen[k] = true
+				_warm_queue.append(k)
+
+func warm_left() -> int:
+	return _warm_queue.size()
 
 func _spawn_enemies() -> void:
 	var safe := area.entry_safe_cells()
@@ -188,6 +214,8 @@ func _update_switch(delta: float) -> void:
 			_switch_phase = 2
 			_switch_time = 0.0
 	elif _switch_phase == 2:
+		# エリアを作った直後の重いフレームで、明るくする演出を飛ばさない（1フレームで進むのは0.1秒まで）
+		_switch_time += minf(delta, 0.1) - delta
 		_fade.color.a = clampf(1.0 - _switch_time / FADE_SECONDS, 0.0, 1.0)
 		if _switch_time >= FADE_SECONDS:
 			_switch_phase = 0
@@ -197,6 +225,8 @@ func _update_switch(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	roster.tick(delta)
+	if not _warm_queue.is_empty() and not is_switching():
+		Terrain.warm(_warm_queue, WARM_BUDGET_MS)
 	if is_switching():
 		_update_switch(delta)
 	else:
@@ -408,6 +438,8 @@ func _on_enemy_shot(b: Bullet) -> void:
 	_bullets.append([b, s])
 
 func _on_ball_landed(land_pos: Vector2, damage: int) -> void:
+	if area_state.result != AreaState.Result.PLAYING:
+		return  # 死んでいる間に着いた鉄球は何も壊さない（できたばかりの墓石を壊さないように）
 	if run.grave != null and run.grave.area_id == area.id and IronBall.touches_cell(land_pos, run.grave.cell):
 		_remove_grave_marker()  # 墓石のマスを空けてから中身を戻す（break_grave で grave が null になるため）
 		run.break_grave()

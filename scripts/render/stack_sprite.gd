@@ -21,6 +21,10 @@ var always_redraw := false
 var _drawn_angle := NAN
 ## 0より大きければ、足元（lift_px の分だけ下の地面）に、この半径の影を描く
 var shadow_radius := 0.0
+## 地面の柱の上の面のふちに引く明るい線（隣が低い辺。1＝北、2＝東、4＝南、8＝西）と、上の面の輪切りの番号・色
+var rim_sides := 0
+var rim_layer := 0
+var rim_color := Color.WHITE
 
 ## 画面（320×180）から、これだけ外にはみ出したものは描かない。広いエリアで描画を軽くするため。
 ## 輪切りを回すと、マスより少し大きく見えるので、その分の余裕。
@@ -73,4 +77,19 @@ func _draw() -> void:
 		var t := _layers[i]
 		draw_set_transform(Vector2(0, -i), -camera.angle, Vector2.ONE)
 		draw_texture(t, -t.get_size() * 0.5)
+	_draw_rim()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## 上の面のふちの明るい線（地面の柱だけ）。
+func _draw_rim() -> void:
+	if rim_sides == 0:
+		return
+	draw_set_transform(Vector2(0, -rim_layer), -camera.angle, Vector2.ONE)
+	if rim_sides & 1:
+		draw_rect(Rect2(-8, -8, 16, 1), rim_color)
+	if rim_sides & 2:
+		draw_rect(Rect2(7, -8, 1, 16), rim_color)
+	if rim_sides & 4:
+		draw_rect(Rect2(-8, 7, 16, 1), rim_color)
+	if rim_sides & 8:
+		draw_rect(Rect2(-8, -8, 1, 16), rim_color)

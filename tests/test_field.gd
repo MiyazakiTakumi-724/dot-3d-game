@@ -25,7 +25,7 @@ func _walk_out(ex: ExitDef) -> void:
 	f.player.mover.place(_mid(ex))
 	f.player.mover.move(Vector2(ex.outward()) * 12.0)
 	f._process(0.016)
-	for i in 3:
+	for i in 4:
 		f._process(0.25)
 
 func _finish_death():
@@ -252,3 +252,36 @@ func test_start_hint_then_nothing():
 func test_arrows_on_open_exits_only():
 	# 野営地：西と東の出口に矢印、北の門には矢印なし
 	assert_eq(f.arrow_count(), 6)
+
+## 死んでいる間に着いた鉄球で、できたばかりの墓石が壊れない（レビューの指摘）
+func test_ball_landing_while_dying_does_not_break_new_grave():
+	f.run.inventory.money = 40
+	f.run.inventory.materials = 3
+	var b: IronBall = f.ball.rules_ball
+	assert_true(b.drop_at(f.player.mover, f.map, f.player.mover.pos + Vector2(6, 0)))
+	f.kill_player(false)
+	b.update(0.1, f.player.mover, f.map, f.rules)
+	assert_not_null(f.run.grave)
+	assert_eq(f.run.inventory.materials, 0)
+
+## 遊んでいる間に、ほかのエリアのモデルを少しずつ作っておく（初めて入るエリアで待たせない）
+func test_other_areas_models_warm_in_background():
+	for i in 3000:
+		if f.warm_left() == 0:
+			break
+		f._process(0.016)
+	assert_eq(f.warm_left(), 0)
+	for id in ["rocks", "hills", "forest"]:
+		var loaded = Continent.load_map(f.world.area(id))
+		for k in Terrain.model_keys(loaded[0], loaded[1]["deco"]):
+			assert_true(Terrain.is_cached(k), k)
+
+## 読み込みで長い1フレームがあっても、明るくする演出を飛ばさない
+func test_fade_in_not_skipped_by_long_frame():
+	var ex := _exit("camp", "hills")
+	f.player.mover.place(_mid(ex))
+	f.player.mover.move(Vector2(ex.outward()) * 12.0)
+	f._process(0.016)
+	f._process(0.25)  # 暗くなりきって、エリアを作る
+	f._process(3.0)   # 重いフレームの後
+	assert_true(f.is_switching())
