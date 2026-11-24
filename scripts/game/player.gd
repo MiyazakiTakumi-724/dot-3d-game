@@ -78,6 +78,9 @@ func set_hp(v: int) -> void:
 	hp = v
 	hp_changed.emit(hp)
 
+func _sort_map() -> HeightMap:
+	return mover.map if mover != null else null
+
 func _process(delta: float) -> void:
 	if _invulnerable > 0.0:
 		_invulnerable = maxf(0.0, _invulnerable - delta)

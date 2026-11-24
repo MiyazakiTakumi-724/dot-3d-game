@@ -12,6 +12,11 @@ var draw_bias: int = 0  ## 同じ奥行きのとき、大きい方を後に描�
 ## true なら立っているマスの中心で奥行きを決める（動くもの用）。
 ## マスの奥側に立っても、足元の床より後に描かれるようにするため。
 var sort_by_cell := false
+## sort_by_cell のとき、これがあれば足元の円（半径 sort_radius）がかかるマスのうち、
+## 自分以下の高さのマスの一番手前で奥行きを決める（sort_depth）。マスの手前のふちに立っても、
+## 手前のマスの地面が上にかぶらないようにするため。
+var sort_map: HeightMap
+var sort_radius := 5.0
 var _layers: Array[ImageTexture] = []
 ## true の間は描かない。visible は画面外かどうかで毎フレーム書き換えるので、隠したいときはこちらを使う。
 var force_hidden := false
@@ -30,6 +35,26 @@ var rim_color := Color.WHITE
 ## 輪切りを回すと、マスより少し大きく見えるので、その分の余裕。
 const VISIBLE_MARGIN := 24.0
 
+## 奥行き1pxあたりの z_index。この中で draw_bias（0〜7）で順番を決める。
+## 地面 0、目印 1、敵・墓石 2、プレイヤー 2、鉄球・弾 3、木や岩 5（Terrain.DECO_BIAS）。
+const Z_PER_PX := 8
+
+## 足元の円がかかるマスのうち、高さ h 以下で壁でないマス（と自分のマス）の、一番手前の中心の奥行き。
+## それより高いマスや壁は、手前にあればキャラを隠すのが正しいので数えない。
+static func sort_depth(cam: StackCamera, map: HeightMap, pos: Vector2, h: int, radius: float) -> float:
+	var own := HeightMap.world_to_cell(pos)
+	var best := cam.depth_key(HeightMap.cell_center(own))
+	for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		var c := HeightMap.world_to_cell(pos + corner * radius)
+		if c == own or not map.in_bounds(c) or map.is_wall(c) or map.get_height(c) > h:
+			continue
+		best = maxf(best, cam.depth_key(HeightMap.cell_center(c)))
+	return best
+
+## 奥行きを決めるのに使う地図。動くもの（プレイヤー・敵・鉄球）は自分の地図を返すよう上書きする。
+func _sort_map() -> HeightMap:
+	return sort_map
+
 func set_model(m: VoxelModel) -> void:
 	_layers = m.textures()
 	queue_redraw()
@@ -46,8 +71,14 @@ func refresh() -> void:
 	visible = not force_hidden and _on_screen()
 	if not visible:
 		return
-	var sort_pos := HeightMap.cell_center(HeightMap.world_to_cell(world_pos)) if sort_by_cell else world_pos
-	z_index = clampi(int(camera.depth_key(sort_pos)) * 4 + draw_bias, -4000, 4000)
+	var depth := camera.depth_key(world_pos)
+	if sort_by_cell:
+		var m := _sort_map()
+		if m != null:
+			depth = sort_depth(camera, m, world_pos, base_height, sort_radius)
+		else:
+			depth = camera.depth_key(HeightMap.cell_center(HeightMap.world_to_cell(world_pos)))
+	z_index = clampi(int(depth) * Z_PER_PX + draw_bias, -4000, 4000)
 	if needs_redraw() or not was_visible:
 		queue_redraw()
 

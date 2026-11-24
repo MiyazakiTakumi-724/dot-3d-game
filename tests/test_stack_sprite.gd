@@ -55,3 +55,51 @@ func test_static_sprite_redraws_only_on_turn():
 	s._drawn_angle = cam.angle
 	s.always_redraw = true
 	assert_true(s.needs_redraw())
+
+## 動くものの描く順番：足元の円（半径 r）がかかるマスのうち、自分以下の高さのマスより後に描く。
+## マスの手前のふちに立ったとき、手前のマスの地面がキャラにかぶらないように（ユーザーの指摘 2026-11-24）。
+func _flat_map() -> HeightMap:
+	return HeightMap.new(Vector2i(6, 6))
+
+func test_sort_depth_center_of_cell_uses_own_cell():
+	var cam: StackCamera = autofree(StackCamera.new())
+	var m := _flat_map()
+	var c := HeightMap.cell_center(Vector2i(2, 2))
+	assert_almost_eq(StackSprite.sort_depth(cam, m, c, 0, 5.0), cam.depth_key(c), 0.001)
+
+func test_sort_depth_near_front_edge_uses_front_cell():
+	var cam: StackCamera = autofree(StackCamera.new())
+	var m := _flat_map()
+	var p := HeightMap.cell_center(Vector2i(2, 2)) + Vector2(0, 6)
+	var front := HeightMap.cell_center(Vector2i(2, 3))
+	assert_almost_eq(StackSprite.sort_depth(cam, m, p, 0, 5.0), cam.depth_key(front), 0.001)
+
+func test_sort_depth_ignores_higher_front_cell():
+	var cam: StackCamera = autofree(StackCamera.new())
+	var m := _flat_map()
+	m.set_height(Vector2i(2, 3), 1)
+	var own := HeightMap.cell_center(Vector2i(2, 2))
+	assert_almost_eq(StackSprite.sort_depth(cam, m, own + Vector2(0, 6), 0, 5.0), cam.depth_key(own), 0.001)
+
+func test_sort_depth_ignores_wall_front_cell():
+	var cam: StackCamera = autofree(StackCamera.new())
+	var m := _flat_map()
+	m.set_wall(Vector2i(2, 3), true)
+	var own := HeightMap.cell_center(Vector2i(2, 2))
+	assert_almost_eq(StackSprite.sort_depth(cam, m, own + Vector2(0, 6), 0, 5.0), cam.depth_key(own), 0.001)
+
+func test_unit_at_front_edge_draws_after_front_tile():
+	var cam: StackCamera = autofree(StackCamera.new())
+	var m := _flat_map()
+	var tile: StackSprite = autofree(StackSprite.new())
+	tile.camera = cam
+	tile.world_pos = HeightMap.cell_center(Vector2i(2, 3))
+	var unit: StackSprite = autofree(StackSprite.new())
+	unit.camera = cam
+	unit.sort_by_cell = true
+	unit.sort_map = m
+	unit.draw_bias = 2
+	unit.world_pos = HeightMap.cell_center(Vector2i(2, 2)) + Vector2(0, 7)
+	tile.refresh()
+	unit.refresh()
+	assert_gt(unit.z_index, tile.z_index)

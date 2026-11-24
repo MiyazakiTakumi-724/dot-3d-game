@@ -50,11 +50,13 @@ static func reach_point(from: Vector2, target: Vector2) -> Vector2:
 		return target
 	return from + d.normalized() * REACH_PX
 
-## その点に鉄球を落とせるか。マップの外・奈落・水・壁には落とせない。
-## 墓石は壁と同じく通れないが、鉄球を落として壊せる。
-static func can_drop_at(point: Vector2, map: HeightMap) -> bool:
+## 高さ from_height に立って、その点に鉄球を落とせるか。マップの外・奈落・水・壁と、
+## 自分より高い地面には落とせない。墓石は壁と同じく通れないが、鉄球を落として壊せる。
+static func can_drop_at(point: Vector2, map: HeightMap, from_height: int) -> bool:
 	var target := HeightMap.world_to_cell(point)
 	if not map.in_bounds(target) or map.is_pit(target) or map.is_water(target):
+		return false
+	if map.get_height(target) > from_height:
 		return false
 	return map.is_grave(target) or not map.is_wall(target)
 
@@ -73,7 +75,7 @@ func drop_at(player: PlayerMover, map: HeightMap, target: Vector2) -> bool:
 	if state != State.HELD:
 		return false
 	var p := reach_point(player.pos, target)
-	if not can_drop_at(p, map):
+	if not can_drop_at(p, map, player.height):
 		return false
 	pos = p
 	height = map.get_height(cell())

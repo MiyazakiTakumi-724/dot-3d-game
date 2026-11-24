@@ -44,6 +44,9 @@ static func _body_color(k: EnemyKind.Kind) -> Color:
 			return Color("b9770e")
 	return Color("c0392b")
 
+func _sort_map() -> HeightMap:
+	return walker.map if walker != null else null
+
 func _process(delta: float) -> void:
 	if kind == EnemyKind.Kind.MELEE and target.hp > 0:
 		walker.chase(target.mover.pos, target.mover.height)

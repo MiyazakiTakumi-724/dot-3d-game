@@ -130,6 +130,9 @@ static func _is_wet(map: HeightMap, cell: Vector2i, deco: Dictionary) -> bool:
 ## 作ったモデルはステージをまたいで使い回す（輪切りの画像を作るのが重いため）
 static var _models := {}
 
+## 木・岩・茂み（歩けないマスの上の物）の draw_bias。同じ奥行きなら、キャラや鉄球より後に描く。
+const DECO_BIAS := 5
+
 static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dictionary = {}) -> void:
 	for y in map.size.y:
 		for x in map.size.x:
@@ -146,7 +149,7 @@ static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dic
 				s.rim_layer = (h - bottom) * StackSprite.LEVEL_PX
 				s.rim_color = top_color(h).lightened(0.38)
 			if keys.size() > 1:
-				_place(parent, camera, cell, h, 1, _cached(keys[1]))
+				_place(parent, camera, cell, h, DECO_BIAS, _cached(keys[1]))
 
 ## そのマスに置くモデルの名前（地面と、木などの物）。描かないマスは空。
 static func _cell_keys(map: HeightMap, cell: Vector2i, deco: Dictionary) -> Array[String]:
@@ -239,7 +242,6 @@ static func _place(parent: Node2D, camera: StackCamera, cell: Vector2i, h: int, 
 	s.draw_bias = bias
 	s.set_model(m)
 	parent.add_child(s)
-	return s
 	return s
 
 static func _cached(key: String) -> VoxelModel:

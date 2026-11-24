@@ -18,8 +18,12 @@ func setup(p: Player, height_map: HeightMap, movement_rules: MovementRules, cam:
 	camera = cam
 	draw_bias = 3
 	sort_by_cell = true
+	sort_radius = 4.0
 	always_redraw = true  # 落ちていく間、影の位置が毎フレーム変わる
 	set_model(VoxelModel.sphere(4, Color("6b6f78")))
+
+func _sort_map() -> HeightMap:
+	return map
 
 func _process(delta: float) -> void:
 	if rules_ball.strong != _shown_strong:

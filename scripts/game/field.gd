@@ -136,6 +136,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	if ball.player != null:
 		ball.map = map
 		ball.rules_ball.return_to_hand()  # 地面に置いたままの鉄球は手元に戻る
+	aim_marker.sort_map = map
 	_title_time = TITLE_SECONDS
 	_queue_warm()
 
@@ -334,7 +335,7 @@ func _update_aim() -> void:
 	if playing and target.distance_to(player.mover.pos) > 4.0:
 		player.mover.facing = (target - player.mover.pos).normalized()
 	var show := playing and hotbar.selected == Hotbar.Item.IRON_BALL \
-		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map)
+		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map, player.mover.height)
 	aim_marker.force_hidden = not show
 	if show:
 		aim_marker.world_pos = target
@@ -432,6 +433,8 @@ func _on_enemy_shot(b: Bullet) -> void:
 	s.lift_px = 3
 	s.draw_bias = 3
 	s.sort_by_cell = true
+	s.sort_map = map
+	s.sort_radius = 2.0
 	s.set_model(VoxelModel.sphere(2, Color("ffd23f")))
 	s.refresh()
 	_area_root.add_child(s)
@@ -569,11 +572,14 @@ func ui_message() -> String:
 
 ## `-- --screenshot=path.png` で数フレーム後に画面を保存して終了する（確認用）。
 ## `--area=hills` でエリア、`--player=x,y` で位置、`--angle=0.8` でカメラ角度。`--fps` で平均FPSを出す。
+## `--offset=dx,dy` でプレイヤーをマスの中心からずらす。`--ball=dx,dy` で鉄球をプレイヤーからずらして地面に置く。
 ## `--inventory` でインベントリを開いた画面。
 func _maybe_screenshot() -> void:
 	var path := ""
 	var measure_fps := false
 	var place = null
+	var offset := Vector2.ZERO
+	var ball_offset = null
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--screenshot="):
 			path = a.trim_prefix("--screenshot=")
@@ -584,13 +590,25 @@ func _maybe_screenshot() -> void:
 		elif a.begins_with("--player="):
 			var p := a.trim_prefix("--player=").split(",")
 			place = Vector2i(int(p[0]), int(p[1]))
+		elif a.begins_with("--offset="):
+			var o := a.trim_prefix("--offset=").split(",")
+			offset = Vector2(float(o[0]), float(o[1]))
+		elif a.begins_with("--ball="):
+			var o := a.trim_prefix("--ball=").split(",")
+			ball_offset = Vector2(float(o[0]), float(o[1]))
 		elif a == "--fps":
 			measure_fps = true
 		elif a == "--inventory":
 			get_tree().create_timer(0.05).timeout.connect(open_inventory)
 	if place != null:
 		player.mover.place(place)
+		player.mover.pos += offset
 		camera.focus_height = player.mover.height * StackSprite.LEVEL_PX
+	if ball_offset != null:
+		var b := ball.rules_ball
+		b.pos = player.mover.pos + ball_offset
+		b.height = map.get_height(b.cell())
+		b.state = IronBall.State.ON_GROUND
 	if path == "":
 		return
 	var start := Time.get_ticks_msec()

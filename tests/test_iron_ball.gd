@@ -66,25 +66,33 @@ func test_drop_into_wall_keeps_ball():
 	var b := IronBall.new()
 	assert_false(b.drop_at(p, map, _front(p)))
 
-func test_drop_onto_higher_cell_uses_min_damage():
+## 自分より高い地面には置けない（ユーザーの指示 2026-11-24）。
+func test_cannot_drop_onto_higher_ground():
 	map.set_height(Vector2i(2, 1), 1)
 	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
 	var b := IronBall.new()
-	watch_signals(b)
-	b.drop_at(p, map, _front(p))
-	b.update(1.0, p, map, rules)
-	assert_signal_emitted_with_parameters(b, "landed", [HeightMap.cell_center(Vector2i(2, 1)), 1])
-	assert_eq(b.height, 1)
+	assert_false(b.drop_at(p, map, _front(p)))
+	assert_eq(b.state, IronBall.State.HELD)
+	assert_false(IronBall.can_drop_at(_front(p), map, 0))
+	assert_true(IronBall.can_drop_at(_front(p), map, 1))
 
-func test_unreachable_ball_returns_to_player():
+func test_can_drop_onto_same_height():
+	map.set_height(Vector2i(1, 1), 2)
 	map.set_height(Vector2i(2, 1), 2)
 	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
 	var b := IronBall.new()
-	b.drop_at(p, map, _front(p))
+	assert_true(b.drop_at(p, map, _front(p)))
+
+## 飛び降りられない深さ（4段以上下）に落とすと、足元へ戻る
+func test_unreachable_ball_returns_to_player():
+	map.set_height(Vector2i(1, 1), 5)
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	assert_true(b.drop_at(p, map, _front(p)))
 	b.update(1.0, p, map, rules)  # 着地
 	b.update(1.5, p, map, rules)  # 1秒以上届かない
 	assert_eq(b.cell(), Vector2i(1, 1))
-	assert_eq(b.height, 0)
+	assert_eq(b.height, 5)
 	assert_eq(b.state, IronBall.State.ON_GROUND)
 
 func test_reachable_ball_stays():
@@ -150,7 +158,7 @@ func test_cannot_drop_into_water():
 func test_cannot_drop_into_void():
 	var m := HeightMap.new(Vector2i(4, 4))
 	m.set_void(Vector2i(2, 1), true)
-	assert_false(IronBall.can_drop_at(HeightMap.cell_center(Vector2i(2, 1)), m))
+	assert_false(IronBall.can_drop_at(HeightMap.cell_center(Vector2i(2, 1)), m, 9))
 
 func test_reach_point_clamps_to_24px():
 	assert_eq(IronBall.reach_point(Vector2.ZERO, Vector2(100, 0)), Vector2(24, 0))

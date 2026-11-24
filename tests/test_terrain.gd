@@ -147,3 +147,8 @@ func test_arrow_model_points_north():
 	var a := Terrain.arrow_model()
 	assert_ne(a.get_voxel(Vector3i(a.size.x / 2, 0, 0)).a, 0.0)
 	assert_eq(a.get_voxel(Vector3i(0, 0, 0)).a, 0.0)
+
+## 木や岩（歩けないマスの上の物）は、同じ奥行きならキャラや鉄球より後に描く。
+## 手前のマスの奥側に立ったキャラが、木の前に出て見えないように。
+func test_decorations_draw_after_units_at_same_depth():
+	assert_gt(Terrain.DECO_BIAS, 3)  # プレイヤー 2・鉄球 3 より大きい
