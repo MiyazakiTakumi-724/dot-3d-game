@@ -18,6 +18,7 @@ func setup(p: Player, height_map: HeightMap, movement_rules: MovementRules, cam:
 	camera = cam
 	draw_bias = 3
 	sort_by_cell = true
+	always_redraw = true  # 落ちていく間、影の位置が毎フレーム変わる
 	set_model(VoxelModel.sphere(4, Color("6b6f78")))
 
 func _process(delta: float) -> void:
@@ -26,6 +27,11 @@ func _process(delta: float) -> void:
 		set_model(VoxelModel.sphere(4, Color("7a2230") if _shown_strong else Color("6b6f78")))
 	rules_ball.update(delta, player.mover, map, rules)
 
+	# 落ちていく間と地面にある間は、落ちる場所が分かるように影を出す
+	var shadow := 0.0 if rules_ball.state == IronBall.State.HELD else 3.0
+	if shadow != shadow_radius:
+		shadow_radius = shadow
+		queue_redraw()
 	if rules_ball.state == IronBall.State.HELD:
 		world_pos = player.mover.pos
 		base_height = player.mover.height

@@ -15,6 +15,10 @@ func set_voxel(p: Vector3i, c: Color) -> void:
 		_voxels[p] = c
 		_textures = []  # 使い回している側の配列は空にしない（新しい配列にする）
 
+## そのボクセルの色。何もなければ透明。
+func get_voxel(p: Vector3i) -> Color:
+	return _voxels.get(p, Color(0, 0, 0, 0))
+
 ## 輪切りの画像をテクスチャにしたもの。同じモデルを使うスプライト同士で共有する（作り直しは形が変わったときだけ）。
 func textures() -> Array[ImageTexture]:
 	if _textures.is_empty():

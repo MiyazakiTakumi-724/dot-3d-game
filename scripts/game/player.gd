@@ -28,6 +28,7 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	draw_bias = 2
 	sort_by_cell = true
 	always_redraw = true  # 向きが変わる
+	shadow_radius = 4.0
 	var m := VoxelModel.box(Vector3i(6, 6, 10), Color("3b6dd8"))
 	for y in 2:  # 顔の向きが分かるように前側に目印
 		for x in 2:
@@ -105,6 +106,7 @@ func _draw() -> void:
 	_drawn_angle = camera.angle
 	# 向いている方向の目印が回るよう、モデルの「前」(+y) を facing に合わせる
 	var face_angle := mover.facing.angle() - PI / 2
+	_draw_shadow()
 	for i in _layers.size():
 		var t := _layers[i]
 		draw_set_transform(Vector2(0, -i), face_angle - camera.angle, Vector2.ONE)

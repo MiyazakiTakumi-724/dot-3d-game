@@ -150,7 +150,7 @@ static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dic
 				var across_ns := map.is_water(cell + Vector2i.UP) or map.is_water(cell + Vector2i.DOWN)
 				key = "bridge/%d/%d/%d" % [h, h - bottom, int(across_ns)]
 			else:
-				key = "ground/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(kind == "flower"), bottom]
+				key = "ground/%d/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(kind == "flower"), bottom, lower_sides(map, cell)]
 			_place(parent, camera, cell, bottom, 0, _cached(key))
 			if kind in ["rock", "tree", "pine", "bush"]:
 				_place(parent, camera, cell, h, 1, _cached("%s/%d" % [kind, v]))
@@ -219,7 +219,7 @@ static func _make(key: String) -> VoxelModel:
 		"bridge":
 			return bridge_model(int(p[1]), int(p[2]), p[3] == "1")
 		"ground":
-			return ground_model(int(p[1]), int(p[2]), int(p[3]), p[4] == "1", int(p[5]))
+			return ground_model(int(p[1]), int(p[2]), int(p[3]), p[4] == "1", int(p[5]), int(p[6]))
 		"rock":
 			return rock_model(int(p[1]))
 		"tree":
@@ -235,13 +235,44 @@ static func _make(key: String) -> VoxelModel:
 static func _hash3(x: int, y: int, z: int, n: int) -> int:
 	return absi((x * 92837111) ^ (y * 689287499) ^ (z * 283923481)) % n
 
+## 上の面の色。高い所ほど少し明るくする（0〜8段）。
+static func top_color(h: int) -> Color:
+	return Color("5aa23a").lerp(Color("c4e48a"), clampf(h / 8.0, 0.0, 1.0))
+
+## 隣が低い辺のビット（1＝北、2＝東、4＝南、8＝西）。マップの外・島の外・奈落も低いとみなす。
+static func lower_sides(map: HeightMap, cell: Vector2i) -> int:
+	var h := map.get_height(cell)
+	var bits := 0
+	var dirs := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
+	for i in 4:
+		var n: Vector2i = cell + dirs[i]
+		if not map.in_bounds(n) or map.is_void(n) or map.is_pit(n) or map.get_height(n) < h:
+			bits |= 1 << i
+	return bits
+
+## 出口の地面に置く、平たい矢印（北向き）。
+static func arrow_model() -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(12, 12, 1)
+	var c := Color("ffe27a")
+	for y in 6:  # 矢じり
+		for x in range(maxi(0, 5 - y), mini(12, 7 + y)):
+			m.set_voxel(Vector3i(x, y, 0), c)
+	for y in range(6, 12):  # 軸
+		for x in range(4, 8):
+			m.set_voxel(Vector3i(x, y, 0), c)
+	return m
+
 ## 地面の柱。depth は柱の高さ（段）、bottom は柱の下の端の段（土の縞を隣とそろえるのに使う）。
 ## 上の面は草（マスごとに色を少しずらし、草むらか花を足す）。側面は上から草のふち→土の縞→
 ## 0より下は暗い土と岩。島のふちの柱は、下の端が少しすぼまってでこぼこになる。
-static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0) -> VoxelModel:
+## lower_sides：隣が低い辺（1＝北、2＝東、4＝南、8＝西）。その辺の上の面のふちに明るい線を引く。
+## 側面は1段ごとに暗い帯を入れて、何段ぶんの崖かを数えられるようにする。
+static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0, lower_sides: int = 0) -> VoxelModel:
 	var layers := depth * StackSprite.LEVEL_PX + 1
-	var grass: Color = GRASS_COLORS[clampi(h, 0, GRASS_COLORS.size() - 1)]
+	var grass: Color = top_color(h)
 	grass = [grass, grass.lightened(0.05), grass.darkened(0.05)][v] as Color
+	var rim := grass.lightened(0.38)
 	var m := VoxelModel.new()
 	m.size = Vector3i(16, 16, layers + 2)
 	var base_px := bottom * StackSprite.LEVEL_PX
@@ -257,6 +288,9 @@ static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, 
 				var c: Color
 				if from_top == 0:
 					c = grass
+					if (lower_sides & 1 and yy == inset) or (lower_sides & 2 and xx == 15 - inset) \
+							or (lower_sides & 4 and yy == 15 - inset) or (lower_sides & 8 and xx == inset):
+						c = rim
 				elif from_top <= 2 and (from_top == 1 or (xx * 3 + yy * 5) % 4 != 0):
 					c = grass.darkened(0.12 * from_top)  # 崖のふちに草が少し垂れる
 				elif abs_px >= 0:
@@ -271,6 +305,8 @@ static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, 
 					c = DEEP_COLORS[deep]
 					if _hash3(xx, yy, abs_px / 3, 7) == 0:
 						c = STONE_COLOR.darkened(0.1 * deep)
+				if from_top > 2 and abs_px > 0 and abs_px % StackSprite.LEVEL_PX == 0:
+					c = c.darkened(0.18)  # 1段ごとの帯
 				m.set_voxel(Vector3i(xx, yy, z), c)
 	var top := layers
 	if flowers:

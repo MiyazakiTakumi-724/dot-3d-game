@@ -94,3 +94,34 @@ func test_column_bottom_next_to_pit():
 	var m := _flat(1)
 	m.set_pit(Vector2i(2, 3), true)
 	assert_lt(Terrain.column_bottom(m, Vector2i(2, 2)), 0)
+
+func test_lower_sides_bits():
+	var m := HeightMap.new(Vector2i(3, 3))
+	m.set_height(Vector2i(1, 1), 2)
+	m.set_height(Vector2i(1, 0), 2)
+	assert_eq(Terrain.lower_sides(m, Vector2i(1, 1)), 2 | 4 | 8)
+
+func test_lower_sides_counts_map_edge():
+	var m := HeightMap.new(Vector2i(3, 3))
+	assert_eq(Terrain.lower_sides(m, Vector2i(0, 1)), 8)
+
+func test_top_color_brighter_when_higher():
+	assert_gt(Terrain.top_color(5).v, Terrain.top_color(1).v)
+	assert_gt(Terrain.top_color(8).v, Terrain.top_color(7).v)
+
+func test_edge_highlight_on_lower_side():
+	var plain := Terrain.ground_model(2, 3, 0, false, -1, 0)
+	var lit := Terrain.ground_model(2, 3, 0, false, -1, 2)
+	var top := (2 - -1) * StackSprite.LEVEL_PX  # 上の面の輪切り
+	assert_gt(lit.get_voxel(Vector3i(15, 8, top)).v, plain.get_voxel(Vector3i(15, 8, top)).v)
+	assert_eq(lit.get_voxel(Vector3i(0, 8, top)), plain.get_voxel(Vector3i(0, 8, top)))
+
+func test_side_has_level_bands():
+	# 1段ごとに暗い帯が入る：高さの境目の輪切りは、その1つ上より暗い
+	var m := Terrain.ground_model(4, 4, 2, false, 0, 0)
+	assert_lt(m.get_voxel(Vector3i(0, 0, 8)).v, m.get_voxel(Vector3i(0, 0, 9)).v)
+
+func test_arrow_model_points_north():
+	var a := Terrain.arrow_model()
+	assert_ne(a.get_voxel(Vector3i(a.size.x / 2, 0, 0)).a, 0.0)
+	assert_eq(a.get_voxel(Vector3i(0, 0, 0)).a, 0.0)

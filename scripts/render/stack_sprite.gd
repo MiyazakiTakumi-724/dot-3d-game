@@ -19,6 +19,8 @@ var force_hidden := false
 ## false のものは、カメラの角度が変わったときだけ描き直す（地形など。動かすだけなら描き直さなくてよい）。
 var always_redraw := false
 var _drawn_angle := NAN
+## 0より大きければ、足元（lift_px の分だけ下の地面）に、この半径の影を描く
+var shadow_radius := 0.0
 
 ## 画面（320×180）から、これだけ外にはみ出したものは描かない。広いエリアで描画を軽くするため。
 ## 輪切りを回すと、マスより少し大きく見えるので、その分の余裕。
@@ -51,6 +53,14 @@ func _on_screen() -> bool:
 	return position.x > -m and position.x < 320.0 + m \
 		and position.y + m > 0.0 and position.y - _layers.size() - m < 180.0
 
+## 足元の影。横長の楕円（ドット絵らしく、少ない色の半透明の黒）。
+func _draw_shadow() -> void:
+	if shadow_radius <= 0.0:
+		return
+	draw_set_transform(Vector2(0, lift_px), 0.0, Vector2(1.0, 0.6))
+	draw_circle(Vector2.ZERO, shadow_radius, Color(0, 0, 0, 0.32), true, -1.0, false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func needs_redraw() -> bool:
 	return always_redraw or camera == null or camera.angle != _drawn_angle
 
@@ -58,6 +68,7 @@ func _draw() -> void:
 	if camera == null:
 		return
 	_drawn_angle = camera.angle
+	_draw_shadow()
 	for i in _layers.size():
 		var t := _layers[i]
 		draw_set_transform(Vector2(0, -i), -camera.angle, Vector2.ONE)

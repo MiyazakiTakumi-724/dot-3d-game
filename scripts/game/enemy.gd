@@ -27,6 +27,7 @@ func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, 
 	draw_bias = 1
 	sort_by_cell = true
 	always_redraw = true  # 向きが変わる
+	shadow_radius = 5.0
 	_cooldown = first_shot_delay
 	var m := VoxelModel.box(Vector3i(8, 8, 8), _body_color(kind))
 	for x in 2:  # 目
@@ -70,6 +71,7 @@ func _draw() -> void:
 	if camera == null:
 		return
 	var face_angle := walker.dir.angle() - PI / 2
+	_draw_shadow()
 	for i in _layers.size():
 		var t := _layers[i]
 		draw_set_transform(Vector2(0, -i), face_angle - camera.angle, Vector2.ONE)
