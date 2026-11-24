@@ -338,7 +338,6 @@ func _process(delta: float) -> void:
 		bow.cancel()
 	player.charge = bow.rate() if bow.charging else -1.0
 	player.set_look(held_look(), run.inventory.equipment.current(Equipment.Slot.ARMOR))
-	ball.stowed = hotbar.selected != Hotbar.Item.IRON_BALL
 	if not _warm_queue.is_empty() and not is_switching():
 		Terrain.warm(_warm_queue, WARM_BUDGET_MS)
 	if is_switching():
@@ -611,13 +610,17 @@ func warm_hero_looks() -> void:
 	var armor := eq.current(Equipment.Slot.ARMOR)
 	HeroModel.build("", armor).textures()
 	HeroModel.build("heal", armor).textures()
-	for slot in [Equipment.Slot.SWORD, Equipment.Slot.BOW, Equipment.Slot.STAFF]:
+	for slot in [Equipment.Slot.BALL, Equipment.Slot.SWORD, Equipment.Slot.BOW, Equipment.Slot.STAFF]:
 		if eq.current(slot) != "":
 			HeroModel.build(eq.current(slot), armor).textures()
 
-## 主人公が手に持って見せる物（HeroModel）。剣・弓・杖は品物の id、回復は "heal"、鉄球は ""（頭の上に乗せる）。
+## 主人公が手に持って見せる物（HeroModel）。鉄球・剣・弓・杖は品物の id、回復は "heal"。
+## 鉄球は持っている間だけ両手で抱える（落としたあとは何も持たない）。
 func held_look() -> String:
 	match hotbar.selected:
+		Hotbar.Item.IRON_BALL:
+			if ball.rules_ball.state == IronBall.State.HELD:
+				return run.inventory.equipment.current(Equipment.Slot.BALL)
 		Hotbar.Item.SWORD, Hotbar.Item.BOW, Hotbar.Item.STAFF:
 			return run.inventory.equipment.current(Hotbar.WEAPON_SLOT[hotbar.selected])
 		Hotbar.Item.HEAL:

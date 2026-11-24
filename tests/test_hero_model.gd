@@ -30,7 +30,7 @@ func _top_most(m: VoxelModel) -> int:
 
 ## どの姿も同じ大きさ（輪切りの数が変わらないので、上に出す鉄球やバーの位置がずれない）。大きさは偶数で、真ん中が体の真ん中
 func test_same_size_for_all_looks():
-	for held in ["", "sword_1", "bow_1", "staff_none_1", "staff_fire_9", "heal"]:
+	for held in ["", "ball_1", "ball_2", "sword_1", "bow_1", "staff_none_1", "staff_fire_9", "heal"]:
 		var m := HeroModel.build(held, "")
 		assert_eq(m.size, HeroModel.SIZE, held)
 	assert_eq(HeroModel.SIZE.x % 2, 0)
@@ -47,6 +47,28 @@ func test_staff_stands_up_with_colored_orb():
 	assert_eq(HeroModel.raw("staff_none_1", "").get_voxel(tip), HeroModel.NONE_ORB)
 	assert_eq(HeroModel.raw("staff_fire_3", "").get_voxel(tip), HeroModel.FIRE_ORB)
 	assert_eq(HeroModel.orb_color("staff_fire_9"), HeroModel.FIRE_ORB)
+
+## 鉄球は両手で体の前に抱える。強い鉄球（ランク2）は赤黒い
+func test_ball_held_in_front_with_both_hands():
+	var c := Vector3i(HeroModel.BALL_CENTER)
+	assert_eq(HeroModel.raw("ball_1", "").get_voxel(c), HeroModel.BALL)
+	assert_eq(HeroModel.raw("ball_2", "").get_voxel(c), HeroModel.STRONG_BALL)
+	assert_eq(HeroModel.raw("", "").get_voxel(c).a, 0.0)
+	assert_gt(_front_most(HeroModel.build("ball_1", "")), _front_most(HeroModel.build("", "")))
+
+## デザイン案（STYLES）はどれも同じ大きさで作れて、見た目が違う
+func test_every_style_builds():
+	var keep := HeroModel.style
+	var looks := []
+	for st in HeroModel.STYLES:
+		HeroModel.style = st
+		var m := HeroModel.build("ball_1", "")
+		assert_eq(m.size, HeroModel.SIZE, st)
+		looks.append(m.voxels())
+	HeroModel.style = keep
+	for i in looks.size():
+		for j in range(i + 1, looks.size()):
+			assert_ne(looks[i], looks[j])
 
 ## 防具を着ると、胸に鎧の色が出る
 func test_armor_shows_on_body():

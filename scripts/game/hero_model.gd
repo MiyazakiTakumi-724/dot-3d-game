@@ -1,30 +1,27 @@
 class_name HeroModel
 extends RefCounted
-## 主人公の姿（ボクセル）。頭の大きいちびキャラで、手に持つ物と防具が姿で分かる。
+## 主人公の姿（ボクセル）。頭の大きいちびキャラの勇者で、手に持つ物と防具が姿で分かる。
 ## ほかの物の2倍の細かさで作り、ボクセル1つを本当の画面の1pxで描く（VOXEL_SCALE）。ゲームの座標では 14×14×19 の大きさ。
 ## 前は +y、上は +z。体の真ん中が模型の真ん中（SIZE の半分）に来る。左右の x は 27 − x で写す。
-## build(手に持つ品物の id, 防具の id) で作る。持つ物：剣・弓・杖は品物の id、回復は "heal"、何も持たない（鉄球）は ""。
+## build(手に持つ品物の id, 防具の id) で作る。持つ物：鉄球・剣・弓・杖は品物の id、回復は "heal"、何も持たないときは ""。
+## デザインは STYLES の中から style で選ぶ（2026-11-25 にユーザーへ見せた案。選ばれたものを残す）。
 
 const SIZE := Vector3i(28, 28, 38)
 const VOXEL_SCALE := 0.5  ## = 1 / StackCamera.PIXEL_SCALE
 ## 杖の先の玉の、手前の横の1つ（杖を持っているときだけある。玉の色そのまま）
 const STAFF_TIP := Vector3i(20, 16, 33)
+## 両手で持った鉄球の真ん中
+const BALL_CENTER := Vector3(13.5, 21.0, 11.5)
 
 const SKIN := Color("f7d3b0")
 const CHEEK := Color("f29a9a")
 const MOUTH := Color("c4685c")
 const EYE := Color("2b2140")
-const IRIS := Color("4a74e8")
 const EYE_SHINE := Color("ffffff")
-const HAIR := Color("7a3f24")
-const TUNIC := Color("3567d6")
-const TRIM := Color("f2c14e")
-const PANTS := Color("3b3456")
-const BOOTS := Color("6a3f2a")
 const SOLE := Color("3a2418")
 const BELT := Color("7b4a2b")
 const GOLD := Color("f2c14e")
-const SCARF := Color("e0413f")
+const SILVER := Color("c9d3df")
 const ARMOR_COLOR := Color("aab6c6")
 const STEEL := Color("dfe7f0")
 const WOOD := Color("a26b3c")
@@ -33,28 +30,55 @@ const NONE_ORB := Color("c8b6ff")
 const FIRE_ORB := Color("ff7a2e")
 const POTION := Color("ff6fa8")
 const GLASS_SHINE := Color("ffe6f1")
+const BALL := Color("6b6f78")
+const STRONG_BALL := Color("7a2230")
+const NONE := Color(0, 0, 0, 0)
 ## 影は青紫へ、光は暖かい白へ寄せる（色相をずらして、暗い所も濁らないように）
 const SHADOW := Color("2b1d47")
 const LIGHT := Color("fff3d6")
 
+## デザインの案。hair_kind：soft（ふわっと）・spiky（ツンツン）。gear：頭の装備（circlet 額当て・wing_helm 羽根かぶと・hood フード）。
+## cape・scarf・vest は NONE ならなし。
+const STYLES := {
+	"a": {"title": "王道の勇者", "hair": Color("6b3a22"), "hair_kind": "soft", "gear": "circlet", "gem": Color("3fa7ff"),
+		"tunic": Color("2c4fb0"), "trim": Color("f2c14e"), "pants": Color("4a3b2f"), "boots": Color("6a3f2a"),
+		"cape": Color("c8323c"), "scarf": NONE, "vest": NONE, "shoulder": true, "emblem": false, "iris": Color("3a6fd8")},
+	"b": {"title": "若き勇者", "hair": Color("e8902a"), "hair_kind": "spiky", "gear": "", "gem": NONE,
+		"tunic": Color("f2ead6"), "trim": Color("6b4426"), "pants": Color("3b4a6b"), "boots": Color("5a3a28"),
+		"cape": NONE, "scarf": Color("e0413f"), "vest": Color("8a5a34"), "shoulder": false, "emblem": false, "iris": Color("3fa06a")},
+	"c": {"title": "羽根かぶとの勇者", "hair": Color("f0d070"), "hair_kind": "soft", "gear": "wing_helm", "gem": NONE,
+		"tunic": Color("3a7bd5"), "trim": Color("f2c14e"), "pants": Color("3b3456"), "boots": Color("8a93a3"),
+		"cape": Color("2c3f9c"), "scarf": NONE, "vest": NONE, "shoulder": true, "emblem": true, "iris": Color("4a74e8")},
+	"d": {"title": "外套の旅の勇者", "hair": Color("2a2430"), "hair_kind": "soft", "gear": "hood", "gem": NONE,
+		"tunic": Color("d9c9a3"), "trim": Color("7b4a2b"), "pants": Color("4a4038"), "boots": Color("5a3a28"),
+		"cape": Color("2f6f6a"), "scarf": NONE, "vest": NONE, "shoulder": false, "emblem": false, "iris": Color("d08a2c")},
+}
+
+## 今のデザイン（STYLES のキー）。ユーザーが選ぶまでは、上から見て目立つ C を仮に使う
+static var style := "c"
 static var _cache := {}
 
-## 姿を作る（同じ組み合わせは使い回す）。上を向いた面は明るく、ふちは光り、横と下は暗い。
+## 姿を作る（同じ組み合わせは使い回す）。
 static func build(held: String, armor: String) -> VoxelModel:
-	var key := held + "|" + armor
+	var key := style + "|" + held + "|" + armor
 	if not _cache.has(key):
 		_cache[key] = _shade(raw(held, armor))
 	return _cache[key]
 
 ## 影をつける前の姿。
 static func raw(held: String, armor: String) -> VoxelModel:
+	var s: Dictionary = STYLES[style]
 	var m := VoxelModel.new()
 	m.size = SIZE
-	_body(m)
-	_head(m)
+	_body(m, s)
+	_head(m, s)
+	if s["shoulder"]:
+		_shoulders(m, SILVER)
 	if armor != "":
 		_armor(m)
 	match ItemCatalog.slot(held) if ItemCatalog.exists(held) else -1:
+		Equipment.Slot.BALL:
+			_iron_ball(m, s, STRONG_BALL if ItemCatalog.rank(held) >= 2 else BALL)
 		Equipment.Slot.SWORD:
 			_sword(m)
 		Equipment.Slot.BOW:
@@ -85,7 +109,10 @@ static func _both(m: VoxelModel, from: Vector3i, to: Vector3i, c: Color) -> void
 	_fill(m, Vector3i(27 - to.x, from.y, from.z), Vector3i(27 - from.x, to.y, to.z), c)
 
 static func _clear(m: VoxelModel, p: Vector3i) -> void:
-	m.set_voxel(p, Color(0, 0, 0, 0))
+	m.set_voxel(p, NONE)
+
+static func _filled(m: VoxelModel, p: Vector3i) -> bool:
+	return m.get_voxel(p).a > 0.0
 
 ## 箱の縦の4つの角を落とす（丸く見せる）。
 static func _round_box(m: VoxelModel, from: Vector3i, to: Vector3i, c: Color) -> void:
@@ -106,96 +133,237 @@ static func _ellipsoid(m: VoxelModel, center: Vector3, radius: Vector3, c: Color
 				if _inside_ellipsoid(p, center, radius) and (not keep.is_valid() or keep.call(p)):
 					m.set_voxel(p, c)
 
-## 前（+y）から見て、列 (x, z) の一番手前にある肌のボクセルの色を変える（顔に目や口を描く）。
-static func _paint_face(m: VoxelModel, x: int, z: int, c: Color) -> void:
+## 前（+y）から見て、列 (x, z) の一番手前のボクセルが only の色なら c に変える（only が NONE なら何色でも）。
+static func _paint_front(m: VoxelModel, x: int, z: int, c: Color, only := SKIN) -> void:
 	for y in range(SIZE.y - 1, -1, -1):
 		var v := m.get_voxel(Vector3i(x, y, z))
 		if v.a > 0.0:
-			if v == SKIN:
+			if only.a <= 0.0 or v == only:
 				m.set_voxel(Vector3i(x, y, z), c)
 			return
 
+## 高さ z の輪切りで、外側（となりが空いている）ボクセルを c に塗る。y_min より後ろと、x_min〜x_max の外は塗らない。
+static func _paint_ring(m: VoxelModel, z: int, c: Color, y_min := 0, x_min := 0, x_max := SIZE.x - 1) -> void:
+	var cells := []
+	for y in range(y_min, SIZE.y):
+		for x in range(x_min, x_max + 1):
+			var p := Vector3i(x, y, z)
+			if not _filled(m, p):
+				continue
+			for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0)]:
+				if not _filled(m, p + d):
+					cells.append(p)
+					break
+	for p in cells:
+		m.set_voxel(p, c)
+
+## 列 (x, y) の一番上のボクセルの高さ。なければ -1。
+static func _top_z(m: VoxelModel, x: int, y: int) -> int:
+	for z in range(SIZE.z - 1, -1, -1):
+		if _filled(m, Vector3i(x, y, z)):
+			return z
+	return -1
+
 # ---------------------------------------------------------------- 体
 
-const HEAD_CENTER := Vector3(13.5, 13.5, 26.5)
-const HEAD_RADIUS := Vector3(8.2, 7.2, 8.0)
+const HEAD_CENTER := Vector3(13.5, 13.5, 26.0)
+const HEAD_RADIUS := Vector3(8.0, 7.2, 7.6)
 
-static func _body(m: VoxelModel) -> void:
+static func _body(m: VoxelModel, s: Dictionary) -> void:
+	var tunic: Color = s["tunic"]
+	var trim: Color = s["trim"]
+	# マントは体より先に置いて、体で前をふさぐ
+	var cape: Color = s["cape"]
+	if cape.a > 0.0:
+		_cape(m, cape)
 	# くつ（底は暗く、つま先は前へ）とズボン
-	_both(m, Vector3i(9, 11, 0), Vector3i(12, 16, 3), BOOTS)
-	_both(m, Vector3i(9, 17, 0), Vector3i(12, 17, 1), BOOTS)
+	_both(m, Vector3i(9, 11, 0), Vector3i(12, 16, 3), s["boots"])
+	_both(m, Vector3i(9, 17, 0), Vector3i(12, 17, 1), s["boots"])
 	_both(m, Vector3i(9, 11, 0), Vector3i(12, 17, 0), SOLE)
-	_both(m, Vector3i(9, 12, 4), Vector3i(12, 15, 7), PANTS)
-	# 服：すそは少し広がって、金のふち
-	_round_box(m, Vector3i(7, 9, 8), Vector3i(20, 18, 9), TUNIC)
+	_both(m, Vector3i(9, 12, 4), Vector3i(12, 15, 7), s["pants"])
+	# 服：すそは少し広がって、ふちの色
+	_round_box(m, Vector3i(7, 9, 8), Vector3i(20, 18, 9), tunic)
 	for y in range(9, 19):
 		for x in range(7, 21):
-			if (x == 7 or x == 20 or y == 9 or y == 18) and m.get_voxel(Vector3i(x, y, 8)).a > 0.0:
-				m.set_voxel(Vector3i(x, y, 8), TRIM)
-	_round_box(m, Vector3i(8, 10, 10), Vector3i(19, 17, 17), TUNIC)
+			if (x == 7 or x == 20 or y == 9 or y == 18) and _filled(m, Vector3i(x, y, 8)):
+				m.set_voxel(Vector3i(x, y, 8), trim)
+	_round_box(m, Vector3i(8, 10, 10), Vector3i(19, 17, 17), tunic)
+	# 革のベスト（前は開いて、下の服が見える）
+	var vest: Color = s["vest"]
+	if vest.a > 0.0:
+		for z in range(12, 18):
+			_paint_ring(m, z, vest, 0, 8, 19)
+		_fill(m, Vector3i(12, 17, 12), Vector3i(15, 17, 17), tunic)
+	# 胸の金の紋章（十字）
+	if s["emblem"]:
+		for z in range(13, 17):
+			for x in [13, 14]:
+				_paint_front(m, x, z, GOLD, NONE)
+		for x in [12, 15]:
+			_paint_front(m, x, 15, GOLD, NONE)
 	# ベルトと、前の金の留め金
 	_round_box(m, Vector3i(8, 10, 11), Vector3i(19, 17, 12), BELT)
 	_fill(m, Vector3i(12, 18, 11), Vector3i(15, 18, 12), GOLD)
 	_fill(m, Vector3i(13, 18, 11), Vector3i(14, 18, 12), BELT)
 	# 腕（そで）と手
-	_both(m, Vector3i(5, 12, 11), Vector3i(7, 15, 17), TUNIC)
+	_both(m, Vector3i(5, 12, 11), Vector3i(7, 15, 17), tunic)
 	_both(m, Vector3i(5, 12, 8), Vector3i(7, 15, 10), SKIN)
 	for z in [8, 17]:
 		for y in [12, 15]:
 			_clear(m, Vector3i(5, y, z))
 			_clear(m, Vector3i(22, y, z))
-	# 首のマフラーと、後ろに垂れるはし
-	_round_box(m, Vector3i(8, 10, 16), Vector3i(19, 17, 18), SCARF)
-	_round_box(m, Vector3i(9, 11, 19), Vector3i(18, 16, 19), SCARF)
-	_fill(m, Vector3i(15, 8, 9), Vector3i(18, 9, 17), SCARF)
-	_fill(m, Vector3i(16, 7, 8), Vector3i(18, 7, 11), SCARF)
+	# 首まわり：マフラー（長いはしが後ろへなびく）か、服のえり
+	var scarf: Color = s["scarf"]
+	if scarf.a > 0.0:
+		_round_box(m, Vector3i(8, 10, 16), Vector3i(19, 17, 18), scarf)
+		_round_box(m, Vector3i(9, 11, 19), Vector3i(18, 16, 19), scarf)
+		for k in 9:
+			var y := 9 - k
+			var z := 17 - k / 2
+			var x := 16 + k / 3
+			_fill(m, Vector3i(x, maxi(y, 0), z - 1), Vector3i(x + 1, maxi(y, 0), z), scarf)
+		for k in 6:
+			_fill(m, Vector3i(11 - k / 3, maxi(9 - k, 0), 15 - k / 2), Vector3i(12 - k / 3, maxi(9 - k, 0), 16 - k / 2), scarf)
+	else:
+		_round_box(m, Vector3i(9, 11, 18), Vector3i(18, 16, 18), trim)
 
-static func _head(m: VoxelModel) -> void:
+## マント：肩から下へ、後ろに垂れて少し広がる。肩の上にえり。
+static func _cape(m: VoxelModel, c: Color) -> void:
+	for z in range(2, 19):
+		var t := (18 - z) / 16.0  # 上 0 → 下 1
+		var half := 6.0 + 2.0 * t
+		var y := 8 - int(round(1.5 * t))
+		var x0 := int(ceil(13.5 - half))
+		var x1 := int(floor(13.5 + half))
+		for x in range(x0, x1 + 1):
+			m.set_voxel(Vector3i(x, y, z), c)
+			m.set_voxel(Vector3i(x, y + 1, z), c)
+		# 両わきへ回りこむ
+		for yy in range(y + 2, 12):
+			m.set_voxel(Vector3i(x0, yy, z), c)
+			m.set_voxel(Vector3i(x1, yy, z), c)
+	# 肩の上のえり
+	_round_box(m, Vector3i(6, 8, 18), Vector3i(21, 13, 18), c)
+
+static func _shoulders(m: VoxelModel, c: Color) -> void:
+	for cx in [6.0, 21.0]:
+		_ellipsoid(m, Vector3(cx, 13.5, 17.0), Vector3(2.6, 3.0, 1.8), c)
+
+static func _head(m: VoxelModel, s: Dictionary) -> void:
+	var hair: Color = s["hair"]
+	var gear: String = s["gear"]
 	# 顔
 	_ellipsoid(m, HEAD_CENTER, HEAD_RADIUS, SKIN)
 	# 髪：頭より一回り大きく、てっぺんと後ろと横をおおう（顔の前は空けて、45°の見下ろしでも顔が見えるように）
 	var shell := HEAD_RADIUS + Vector3(0.9, 0.9, 0.7)
-	_ellipsoid(m, HEAD_CENTER, shell, HAIR, func(p: Vector3i) -> bool:
-		return p.z >= 31 or p.y <= 12 or (p.z >= 24 and absf(p.x - 13.5) >= 6.5 and p.y <= 16))
+	_ellipsoid(m, HEAD_CENTER, shell, hair, func(p: Vector3i) -> bool:
+		return p.z >= 30 or p.y <= 12 or (p.z >= 23 and absf(p.x - 13.5) >= 6.5 and p.y <= 16))
 	# 前髪（ぎざぎざに下りる）
 	var fringe := [0, 1, 2, 1, 0, 2, 1, 0, 1, 2, 0, 1, 2, 0, 1, 2, 1]
 	for x in range(5, 22):
-		for z in range(29 - fringe[x - 5], 36):
-			_paint_face(m, x, z, HAIR)
+		for z in range(28 - fringe[x - 5], 35):
+			_paint_front(m, x, z, hair)
 	# 顔の横に下りる髪
-	_both(m, Vector3i(5, 15, 20), Vector3i(6, 18, 29), HAIR)
-	# アホ毛
-	m.set_voxel(Vector3i(14, 14, 36), HAIR)
-	m.set_voxel(Vector3i(15, 14, 36), HAIR)
-	m.set_voxel(Vector3i(15, 15, 37), HAIR)
-	m.set_voxel(Vector3i(16, 15, 37), HAIR)
-	# 目（上は濃く、下は青。光を1つ）
+	_both(m, Vector3i(5, 15, 19), Vector3i(6, 18, 28), hair)
+	if s["hair_kind"] == "spiky":
+		_spikes(m, hair)
+	elif gear == "" or gear == "circlet":
+		m.set_voxel(Vector3i(14, 14, 34), hair)  # アホ毛
+		m.set_voxel(Vector3i(15, 15, 35), hair)
+	# 目（上は濃く、下は色。光を1つ）
+	var iris: Color = s["iris"]
 	for ex in [9, 17]:
 		for x in [ex, ex + 1]:
-			_paint_face(m, x, 26, EYE)
-			_paint_face(m, x, 25, EYE)
-			_paint_face(m, x, 24, IRIS)
-			_paint_face(m, x, 23, IRIS)
-		_paint_face(m, ex, 25, EYE_SHINE)
+			_paint_front(m, x, 25, EYE)
+			_paint_front(m, x, 24, EYE)
+			_paint_front(m, x, 23, iris)
+			_paint_front(m, x, 22, iris)
+		_paint_front(m, ex, 24, EYE_SHINE)
 	# ほおと口
 	for x in [7, 8, 19, 20]:
-		_paint_face(m, x, 22, CHEEK)
+		_paint_front(m, x, 21, CHEEK)
 	for x in [13, 14]:
-		_paint_face(m, x, 21, MOUTH)
+		_paint_front(m, x, 20, MOUTH)
+	match gear:
+		"circlet":
+			_circlet(m, s["gem"])
+		"wing_helm":
+			_wing_helm(m)
+		"hood":
+			_hood(m, s["cape"])
+
+## ツンツンの髪：てっぺんと後ろに、とがった房を立てる。
+static func _spikes(m: VoxelModel, hair: Color) -> void:
+	var spots := [Vector2i(13, 13), Vector2i(9, 12), Vector2i(17, 12), Vector2i(11, 8), Vector2i(16, 8), Vector2i(13, 16), Vector2i(7, 9), Vector2i(20, 9)]
+	var lean := [Vector2i(0, 0), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(0, 1), Vector2i(-1, -1), Vector2i(1, -1)]
+	for i in spots.size():
+		var p: Vector2i = spots[i]
+		var top := _top_z(m, p.x, p.y)
+		if top < 0:
+			continue
+		_fill(m, Vector3i(p.x, p.y, top + 1), Vector3i(p.x + 1, p.y + 1, top + 2), hair)
+		var q: Vector2i = p + lean[i]
+		m.set_voxel(Vector3i(q.x, q.y, top + 3), hair)
+		m.set_voxel(Vector3i(q.x + 1, q.y, top + 3), hair)
+
+## 額当て：頭のまわりの銀の輪と、おでこの宝石。
+static func _circlet(m: VoxelModel, gem: Color) -> void:
+	_paint_ring(m, 28, SILVER, 6)
+	_paint_ring(m, 29, SILVER, 6)
+	for x in [13, 14]:
+		_paint_front(m, x, 28, gem, SILVER)
+		_paint_front(m, x, 29, gem, SILVER)
+	_paint_front(m, 12, 28, GOLD, SILVER)
+	_paint_front(m, 15, 28, GOLD, SILVER)
+
+## 羽根かぶと：頭の上半分をおおう銀のかぶとと、両横の白い羽根。
+static func _wing_helm(m: VoxelModel) -> void:
+	var r := HEAD_RADIUS + Vector3(1.4, 1.4, 1.2)
+	_ellipsoid(m, HEAD_CENTER, r, SILVER, func(p: Vector3i) -> bool:
+		return p.z >= 28 and not (p.y >= 17 and p.z <= 28))
+	# ひさしの金のふち
+	_paint_ring(m, 28, GOLD)
+	var white := Color("ffffff")
+	for side in [0, 1]:
+		var x0 := 4 if side == 0 else 23
+		var dx := -1 if side == 0 else 1
+		_fill(m, Vector3i(mini(x0, x0 + dx), 11, 28), Vector3i(maxi(x0, x0 + dx), 15, 30), white)
+		_fill(m, Vector3i(x0 + dx, 9, 31), Vector3i(x0 + dx, 14, 32), white)
+		_fill(m, Vector3i(x0 + dx, 8, 33), Vector3i(x0 + dx, 12, 34), white)
+		_fill(m, Vector3i(x0 + 2 * dx, 7, 34), Vector3i(x0 + 2 * dx, 10, 35), white)
+
+## フード：頭を後ろからおおい、顔のまわりだけ開いている。後ろにとがった先。
+static func _hood(m: VoxelModel, c: Color) -> void:
+	var r := HEAD_RADIUS + Vector3(1.6, 1.6, 1.3)
+	_ellipsoid(m, HEAD_CENTER, r, c, func(p: Vector3i) -> bool:
+		var opening := p.y >= 16 and absf(p.x - 13.5) <= 6.0 and p.z <= 29
+		return (p.z >= 19 and not opening and not _filled(m, p)) or (p.z >= 30 and p.y >= 9))
+	_fill(m, Vector3i(13, 7, 31), Vector3i(14, 8, 33), c)
+	_fill(m, Vector3i(13, 6, 30), Vector3i(14, 6, 31), c)
+	# 顔のまわりのふち
+	for z in range(20, 31):
+		for x in [6, 7, 20, 21]:
+			_paint_front(m, x, z, c.darkened(0.25), c)
 
 static func _armor(m: VoxelModel) -> void:
 	# 胸当て（胴のまわり）と、金の鋲
 	for z in range(13, 17):
 		for y in range(10, 18):
 			for x in range(8, 20):
-				if (x == 8 or x == 19 or y == 10 or y == 17) and m.get_voxel(Vector3i(x, y, z)).a > 0.0:
+				if (x == 8 or x == 19 or y == 10 or y == 17) and _filled(m, Vector3i(x, y, z)):
 					m.set_voxel(Vector3i(x, y, z), ARMOR_COLOR)
 	_fill(m, Vector3i(13, 17, 14), Vector3i(14, 17, 15), GOLD)
-	# 肩当て（丸い）
-	for cx in [6.0, 21.0]:
-		_ellipsoid(m, Vector3(cx, 13.5, 17.0), Vector3(2.6, 3.0, 1.8), ARMOR_COLOR)
+	_shoulders(m, ARMOR_COLOR)
 
 # ---------------------------------------------------------------- 手に持つ物
+
+## 鉄球：両手で体の前に抱える。
+static func _iron_ball(m: VoxelModel, s: Dictionary, c: Color) -> void:
+	_ellipsoid(m, BALL_CENTER, Vector3(5.2, 5.2, 5.2), c)
+	m.set_voxel(Vector3i(11, 19, 15), c.lightened(0.5))  # 光
+	# 腕を前へ出して、両わきから支える
+	_both(m, Vector3i(6, 15, 11), Vector3i(7, 18, 14), s["tunic"])
+	_both(m, Vector3i(7, 19, 10), Vector3i(8, 22, 13), SKIN)
 
 ## 剣：右手に持ち、前へ突き出す。
 static func _sword(m: VoxelModel) -> void:

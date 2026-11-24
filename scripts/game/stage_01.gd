@@ -97,6 +97,9 @@ func _update_ui() -> void:
 
 func _process(delta: float) -> void:
 	_read_ball_keys()
+	# 鉄球を持っている間は、主人公が両手で抱えて見せる
+	var holding := ball.rules_ball.state == IronBall.State.HELD
+	player.set_look(("ball_2" if ball.rules_ball.strong else "ball_1") if holding else "", "")
 	camera.follow(player.mover.pos, player.mover.height * StackSprite.LEVEL_PX, delta)
 	_step_bullets(delta)
 	if Input.is_physical_key_pressed(KEY_R) and state.result != StageState.Result.PLAYING:

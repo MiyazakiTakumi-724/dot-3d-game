@@ -371,6 +371,7 @@ func test_choose_ball_rank_in_menu():
 	f._process(0.016)
 	assert_eq(f.ball_rank, 2)
 	assert_true(f.ball.rules_ball.strong)
+	assert_eq(f.player.held_look, "ball_2")
 	assert_eq(f.current_attack(), 5 + Equipment.ATTACK_PER_RANK)
 	assert_false(f.menu.choose("sword_1"))  # 持っていない品物は選べない
 
@@ -754,16 +755,21 @@ func test_easy_mode_from_settings_page():
 	f.hurt_player(4)
 	assert_eq(f.player.hp, 8)
 
-## 主人公の姿は、手に持つ物と防具で変わる。鉄球は、手に持つ物に選んでいる間だけ頭の上に見える
+## 主人公の姿は、手に持つ物と防具で変わる。鉄球は持っている間、両手で抱えて見せる（鉄球の絵は出さない）
 func test_hero_look_follows_held_item():
 	var eq: Equipment = f.run.inventory.equipment
 	f._process(0.016)
-	assert_eq(f.player.held_look, "")
-	assert_false(f.ball.stowed)
+	f.ball._process(0.0)
+	assert_eq(f.player.held_look, "ball_1")
+	assert_true(f.ball.force_hidden)
+	assert_true(f.ball.rules_ball.drop_at(f.player.mover, f.map, f.player.mover.pos))
+	f._process(0.016)
+	f.ball._process(0.0)
+	assert_eq(f.player.held_look, "")  # 落としたあとは手に何もない
+	assert_false(f.ball.force_hidden)
 	assert_true(f.hotbar.select_slot(4, eq))
 	f._process(0.016)
 	assert_eq(f.player.held_look, "staff_none_1")
-	assert_true(f.ball.stowed)
 	eq.gain("sword_1")
 	eq.gain("armor_1")
 	assert_true(f.hotbar.select_slot(2, eq))
@@ -786,4 +792,4 @@ func test_portrait_holds_selected_slot_item():
 	f.menu.select_slot(Equipment.Slot.STAFF)
 	assert_eq(f.menu.portrait_look(), ["staff_fire_3", ""])
 	f.menu.select_slot(Equipment.Slot.BALL)
-	assert_eq(f.menu.portrait_look(), ["", ""])
+	assert_eq(f.menu.portrait_look(), ["ball_1", ""])

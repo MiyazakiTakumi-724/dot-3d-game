@@ -218,11 +218,11 @@ func refresh() -> void:
 				var on: bool = settings.easy_mode == easy
 				_difficulty_buttons[easy].text = ("● " if on else "○ ") + ("簡単" if easy else "普通")
 
-## 主人公の姿に出す物：[手に持つ物, 防具]。剣・弓・杖の枠を選んでいるときは、その枠の品物を持たせる。
+## 主人公の姿に出す物：[手に持つ物, 防具]。鉄球・剣・弓・杖の枠を選んでいるときは、その枠の品物を持たせる。
 func portrait_look() -> Array:
 	var eq := run.inventory.equipment
 	var held := ""
-	if selected_slot in [Equipment.Slot.SWORD, Equipment.Slot.BOW, Equipment.Slot.STAFF]:
+	if selected_slot in [Equipment.Slot.BALL, Equipment.Slot.SWORD, Equipment.Slot.BOW, Equipment.Slot.STAFF]:
 		held = eq.current(selected_slot)
 	return [held, eq.current(Equipment.Slot.ARMOR)]
 
