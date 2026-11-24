@@ -108,7 +108,7 @@ func test_walking_on_pickup_collects_it():
 	var p = area.PICKUPS[0]
 	area.player.mover.place(p[0])
 	area._process(0.016)
-	assert_true(area.run.is_picked(0))
+	assert_true(area.run.is_picked("area_02:0"))
 	assert_eq(area.run.inventory.money, p[2])
 
 func test_door_opens_only_from_far_side():
@@ -122,7 +122,7 @@ func test_door_opens_only_from_far_side():
 	mover.facing = Vector2(door - area.DOOR_OPEN_FROM[0])
 	assert_true(area.try_open_door())
 	assert_false(area.map.is_wall(door))
-	assert_true(area.run.is_door_open(0))
+	assert_true(area.run.is_door_open("door0"))
 
 func test_open_door_stays_open_after_death():
 	var mover: PlayerMover = area.player.mover

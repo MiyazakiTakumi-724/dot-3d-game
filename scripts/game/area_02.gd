@@ -235,7 +235,7 @@ func _ready() -> void:
 	checkpoint = info["checkpoint"]
 	goal = info["goal"]
 	doors = info["doors"]
-	run = RunState.new(checkpoint)
+	run = RunState.new("area_02", checkpoint)
 	camera = StackCamera.new()
 	add_child(camera)
 	_world = Node2D.new()
@@ -289,10 +289,10 @@ func _play_step() -> void:
 	var c := player.mover.cell()
 	for i in PICKUPS.size():
 		var p = PICKUPS[i]
-		if p[0] == c and run.collect(i, p[1], p[2]):
+		if p[0] == c and run.collect("area_02:%d" % i, p[1], p[2]):
 			_pickup_nodes[i].queue_free()
 			_pickup_nodes.erase(i)
-	if run.is_near_checkpoint(c) and player.hp < Player.MAX_HP:
+	if run.is_near_checkpoint("area_02", c) and player.hp < Player.MAX_HP:
 		player.set_hp(Player.MAX_HP)
 	if c == goal:
 		area_state.on_goal()
@@ -375,7 +375,7 @@ func kill_player(fell: bool) -> void:
 		return
 	var c := player.mover.last_safe_cell if fell else player.mover.cell()
 	_remove_grave_marker()
-	run.on_death(c)
+	run.on_death("area_02", c)
 	map.set_blocker(c, HeightMap.Blocker.GRAVE)
 	_grave_node = _marker(c, _grave_model(), 2)
 	player.controllable = false
@@ -409,10 +409,10 @@ func respawn() -> void:
 ## 門の奥側の前のマス（DOOR_OPEN_FROM）に立っていれば、向きに関係なく開ける。開けたら true。
 func try_open_door() -> bool:
 	for i in doors.size():
-		if run.is_door_open(i):
+		if run.is_door_open("door%d" % i):
 			continue
 		if player.mover.cell() == DOOR_OPEN_FROM[i]:
-			run.open_door(i)
+			run.open_door("door%d" % i)
 			map.set_blocker(doors[i], HeightMap.Blocker.NONE)
 			_door_nodes[i].queue_free()
 			return true
@@ -420,7 +420,7 @@ func try_open_door() -> bool:
 
 func _can_open_door_here() -> bool:
 	for i in doors.size():
-		if not run.is_door_open(i) and player.mover.cell() == DOOR_OPEN_FROM[i]:
+		if not run.is_door_open("door%d" % i) and player.mover.cell() == DOOR_OPEN_FROM[i]:
 			return true
 	return false
 

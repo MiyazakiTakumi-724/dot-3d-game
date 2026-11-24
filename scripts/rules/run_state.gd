@@ -10,17 +10,21 @@ const ENEMY_EXP := 1
 
 var inventory := Inventory.new()
 var grave: Gravestone = null
+var checkpoint_area: String
 var checkpoint_cell: Vector2i
+## 拾い済みの id（"エリア:番号"）と、開けた門の id。エリアをまたいで覚える
 var _picked := {}
 var _open_doors := {}
 
-func _init(checkpoint: Vector2i) -> void:
+func _init(cp_area: String, checkpoint: Vector2i) -> void:
+	checkpoint_area = cp_area
 	checkpoint_cell = checkpoint
 
 ## 死んだときの持ち物の移し替え。お金は半分（切り捨て）、ほかの持ち物はすべて墓石へ。
 ## 古い墓石は中身ごと消え、新しい墓石だけが残る。
-func on_death(death_cell: Vector2i) -> Gravestone:
+func on_death(area_id: String, death_cell: Vector2i) -> Gravestone:
 	var g := Gravestone.new()
+	g.area_id = area_id
 	g.cell = death_cell
 	g.money = inventory.money / 2
 	g.materials = inventory.materials
@@ -47,7 +51,7 @@ func on_enemy_killed() -> void:
 	inventory.exp += ENEMY_EXP
 
 ## 拾えるものを拾う。一度拾ったものは死んでも復活しないので、2回目は false。
-func collect(id: int, kind: PickupKind, amount: int) -> bool:
+func collect(id: String, kind: PickupKind, amount: int) -> bool:
 	if _picked.has(id):
 		return false
 	_picked[id] = true
@@ -62,15 +66,15 @@ func collect(id: int, kind: PickupKind, amount: int) -> bool:
 			inventory.has_strong_ball = true
 	return true
 
-func is_picked(id: int) -> bool:
+func is_picked(id: String) -> bool:
 	return _picked.has(id)
 
-func open_door(id: int) -> void:
+func open_door(id: String) -> void:
 	_open_doors[id] = true
 
-func is_door_open(id: int) -> bool:
+func is_door_open(id: String) -> bool:
 	return _open_doors.has(id)
 
 ## チェックポイントのマスか、その周り8マスにいるか。ここにいると全回復する。
-func is_near_checkpoint(cell: Vector2i) -> bool:
-	return absi(cell.x - checkpoint_cell.x) <= 1 and absi(cell.y - checkpoint_cell.y) <= 1
+func is_near_checkpoint(area_id: String, cell: Vector2i) -> bool:
+	return area_id == checkpoint_area and absi(cell.x - checkpoint_cell.x) <= 1 and absi(cell.y - checkpoint_cell.y) <= 1
