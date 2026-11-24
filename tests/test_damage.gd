@@ -23,3 +23,13 @@ func test_enemy_stats_grow_20_percent_per_level():
 	assert_eq(Damage.enemy_scaled(5, 1), 5)
 	assert_eq(Damage.enemy_scaled(5, 3), 7)  # 5 × 1.4
 	assert_eq(Damage.enemy_scaled(10, 2), 12)
+
+## 剣：攻撃力 × 0.6 ×（1 ＋ 剣のポイント × 0.1）。初期状態で3（17.3）
+func test_sword():
+	assert_eq(Damage.sword(5, 0, 0), 3)
+	assert_eq(Damage.sword(5, 5, 0), 4)  # 3 × 1.5 = 4.5
+
+## 落下斬り：×（1 ＋ 落ちた段数 × 0.5）。技能「落下斬り強化」で 0.75
+func test_falling_slash():
+	assert_eq(Damage.sword(5, 0, 2), 6)
+	assert_eq(Damage.sword(5, 0, 2, true), 7)  # 3 × 2.5 = 7.5

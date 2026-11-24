@@ -378,3 +378,54 @@ func test_choose_ball_rank_in_menu():
 func test_rank2_ball_hits_wider():
 	assert_false(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(1)))
 	assert_true(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(2)))
+
+## 野営地の宝箱で剣を手に入れ、2で持ちかえて振ると、前の敵に当たる
+func test_pick_sword_in_camp_and_swing():
+	var p = f.area.pickups[0]
+	assert_eq(p[1], RunState.PickupKind.SWORD)
+	f.player.mover.place(p[0])
+	f._process(0.016)
+	assert_eq(f.run.inventory.equipment.effective(Equipment.Slot.SWORD), 1)
+	assert_string_contains(f.ui_message(), "剣")
+	assert_true(f.hotbar.select_slot(2, f.run.inventory.equipment))
+	_walk_out(_exit("camp", "hills"))
+	f.hotbar.select_slot(2, f.run.inventory.equipment)
+	var c := _open_cell()
+	var e: Enemy = f.enemies[0]
+	e.set_process(false)
+	f.player.mover.place(c)
+	f.player.mover.facing = Vector2.RIGHT
+	e.walker.pos = f.player.mover.pos + Vector2(14, 0)
+	e.walker.height = f.player.mover.height
+	var hp: int = e.walker.hp
+	assert_true(f.use_item())
+	assert_eq(hp - e.walker.hp, Damage.sword(5, 0, 0))
+	assert_false(f.use_item())  # 振る間隔
+
+func test_sword_not_usable_without_sword():
+	f.hotbar.selected = Hotbar.Item.SWORD
+	assert_false(f.swing_sword())
+
+## 飛び降りてすぐに振ると落下斬り
+func test_falling_slash_after_drop():
+	f.run.inventory.equipment.gain(Equipment.Slot.SWORD, 1)
+	f.hotbar.select_slot(2, f.run.inventory.equipment)
+	var m := HeightMap.new(Vector2i(6, 3))
+	m.set_height(Vector2i(1, 1), 2)
+	f.map = m
+	f.player.mover.map = m
+	f.player.mover.place(Vector2i(1, 1))
+	f.player.mover.move(Vector2(12, 0))
+	assert_eq(f.player.mover.height, 0)
+	for e in f.enemies:
+		e.queue_free()
+	f.enemies.clear()
+	var e := Enemy.new()
+	e.setup(m, Vector2i(3, 1), Vector2.RIGHT, f.player, f.camera, EnemyKind.Kind.MELEE)
+	add_child_autofree(e)
+	e.set_process(false)
+	f.enemies.append(e)
+	e.walker.pos = f.player.mover.pos + Vector2(12, 0)
+	var hp: int = e.walker.hp
+	assert_true(f.swing_sword())
+	assert_eq(hp - e.walker.hp, Damage.sword(5, 0, 2))

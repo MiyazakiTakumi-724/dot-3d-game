@@ -58,4 +58,5 @@ const EXITS := [
 const ENEMIES := [
 ]
 const PICKUPS := [
+	[Vector2i(9, 8), RunState.PickupKind.SWORD, 1],
 ]

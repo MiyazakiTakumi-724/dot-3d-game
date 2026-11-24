@@ -21,6 +21,14 @@ var controllable := true
 var aim_screen = null
 
 var _invulnerable := 0.0
+## 剣を振った跡を見せる残り時間と、落下斬りか
+var _swing_t := 0.0
+var _swing_fall := false
+## 飛び降りたときに、少しの間だけ上に浮かせて「落ちていく」ように見せる量（px）
+var _drop_lift := 0.0
+var _last_height := 0
+const SWING_SHOW := 0.15
+const DROP_SPEED := 200.0  ## 飛び降りの見た目の落ちる速さ（px/秒）
 
 ## カーソルが自分のマスの上にあるとき、向きを変えない範囲（画面px）
 const AIM_DEAD_ZONE_PX := 6.0
@@ -55,6 +63,11 @@ func take_hit(amount := 1) -> bool:
 
 func is_invulnerable() -> bool:
 	return _invulnerable > 0.0
+
+## 剣を振った見た目（向いている方に弧を描く）。
+func swing(fall: bool) -> void:
+	_swing_t = SWING_SHOW
+	_swing_fall = fall
 
 func clear_invulnerable() -> void:
 	_invulnerable = 0.0
@@ -94,6 +107,7 @@ func _process(delta: float) -> void:
 		_invulnerable = maxf(0.0, _invulnerable - delta)
 		# 0.1秒ごとに薄くして点滅させる
 		self_modulate.a = 0.35 if int(_invulnerable * 10.0) % 2 == 1 else 1.0
+	_swing_t = maxf(0.0, _swing_t - delta)
 	if hp > 0 and controllable:
 		var dir := Vector2.ZERO
 		if Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A): dir.x -= 1
@@ -104,8 +118,18 @@ func _process(delta: float) -> void:
 			mover.move(camera.screen_dir_to_world(dir.normalized()) * SPEED * speed_mult * delta)
 		if aim_screen != null:
 			aim_at_screen(aim_screen)
+	_update_drop_lift(delta)
 	_sync()
 	super._process(delta)
+
+func _update_drop_lift(delta: float) -> void:
+	# 歩いて下の段へ移ったときだけ（place で置き直したときは since_drop が INF）
+	if mover.height < _last_height and mover.since_drop == 0.0:
+		_drop_lift = (_last_height - mover.height) * LEVEL_PX
+	_last_height = mover.height
+	if _drop_lift > 0.0:
+		_drop_lift = maxf(0.0, _drop_lift - DROP_SPEED * delta)
+		lift_px = _drop_lift
 
 func _sync() -> void:
 	world_pos = mover.pos
@@ -123,3 +147,8 @@ func _draw() -> void:
 		draw_set_transform(Vector2(0, -i), face_angle - camera.angle, Vector2.ONE)
 		draw_texture(t, -t.get_size() * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if _swing_t > 0.0:
+		# 向いている方（画面の上での向き）に、体の真ん中の高さで弧を描く。落下斬りは橙で太く
+		var a := mover.facing.rotated(-camera.angle).angle()
+		var col := Color("ffb347") if _swing_fall else Color(1, 1, 1, 0.9)
+		draw_arc(Vector2(0, -5), 14.0, a - Sword.HALF_ARC, a + Sword.HALF_ARC, 9, col, 3.0 if _swing_fall else 2.0)

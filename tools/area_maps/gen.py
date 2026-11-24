@@ -361,6 +361,8 @@ def make_camp():
         if (x in (0, 1, 22, 23) or y in (0, 1, 18, 19)) and (x, y) not in g.reserved:
             g.O[y][x] = g.rng.choice('TPTB')
     scatter(g, [('F', 3), ('T', 1), ('B', 1)], 0.10, 5)
+    # 試すための武器の宝箱（本来はボスの落とし物。ボスができたら移す）
+    pickup(g, 9, 8, 'SWORD', 1)
     g.start = (12, 11)
     return g
 

@@ -124,3 +124,28 @@ func test_no_edge_push_at_inner_wall():
 	p.place(Vector2i(1, 1))
 	p.move(Vector2(10, 0))
 	assert_eq(p.edge_push, Vector2i.ZERO)
+
+## 飛び降りた段数と、それからの時間（落下斬りに使う）
+func test_recent_drop():
+	var m := HeightMap.new(Vector2i(4, 1))
+	m.set_height(Vector2i(0, 0), 3)
+	m.set_height(Vector2i(1, 0), 1)
+	var p := PlayerMover.new(m, MovementRules.new())
+	p.place(Vector2i(0, 0))
+	assert_eq(p.recent_drop(0.35), 0)
+	p.move(Vector2(16, 0))
+	assert_eq(p.height, 1)
+	assert_eq(p.recent_drop(0.35), 2)
+	p.tick(0.2)
+	assert_eq(p.recent_drop(0.35), 2)
+	p.tick(0.2)
+	assert_eq(p.recent_drop(0.35), 0)
+
+func test_climbing_is_not_a_drop():
+	var m := HeightMap.new(Vector2i(4, 1))
+	m.set_height(Vector2i(1, 0), 1)
+	var p := PlayerMover.new(m, MovementRules.new())
+	p.place(Vector2i(0, 0))
+	p.move(Vector2(16, 0))
+	assert_eq(p.height, 1)
+	assert_eq(p.recent_drop(0.35), 0)

@@ -14,6 +14,9 @@ var last_safe_cell: Vector2i
 ## 直前の move でマップの外へ歩こうとして止まった向き（外向き、1軸だけ）。なければ ZERO。
 ## エリアの端の出口を外へ歩いたかを調べるのに使う。
 var edge_push: Vector2i = Vector2i.ZERO
+## 最後に飛び降りた（下の段へ移った）段数と、それからの秒数。落下斬りに使う
+var last_drop := 0
+var since_drop := INF
 
 func _init(height_map: HeightMap, movement_rules: MovementRules) -> void:
 	map = height_map
@@ -25,6 +28,8 @@ func place(c: Vector2i) -> void:
 	height = map.get_height(c)
 	fell = false
 	last_safe_cell = c
+	last_drop = 0
+	since_drop = INF
 
 func move(world_delta: Vector2) -> void:
 	edge_push = Vector2i.ZERO
@@ -36,6 +41,13 @@ func move(world_delta: Vector2) -> void:
 	# 斜めに壁へ当たったときは、動ける方の軸だけ動かして壁沿いに滑らせる
 	if not _try(pos + Vector2(world_delta.x, 0)):
 		_try(pos + Vector2(0, world_delta.y))
+
+func tick(delta: float) -> void:
+	since_drop += delta
+
+## window 秒のうちに飛び降りていれば、その段数。なければ0。
+func recent_drop(window: float) -> int:
+	return last_drop if since_drop <= window else 0
 
 ## 目の前のマス。マスの中心から1マス分先を見るので、斜めを向いていても必ず隣のマスになる。
 func front_cell() -> Vector2i:
@@ -63,6 +75,9 @@ func _try(new_pos: Vector2) -> bool:
 		var to_h := map.get_height(to)
 		if not rules.can_step(height, to_h):
 			return false
+		if to_h < height:
+			last_drop = height - to_h
+			since_drop = 0.0
 		height = to_h
 		last_safe_cell = to
 	pos = new_pos

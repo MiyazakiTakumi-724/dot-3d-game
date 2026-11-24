@@ -3,7 +3,8 @@ extends RefCounted
 ## 冒険の状態。死んでもステージを読み込み直さないので、死んだときに何が残り何が戻るかをここで決める。
 ## 死んでも変わらないもの：拾い済みのもの、開けた扉、レベル・経験値・振り分け（stats）、お金の半分。
 
-enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL }
+## 武器（SWORD など）の amount はランク
+enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL, SWORD }
 
 const ENEMY_MONEY := 10
 
@@ -70,6 +71,8 @@ func collect(id: String, kind: PickupKind, amount: int) -> bool:
 			inventory.heals += amount
 		PickupKind.STRONG_BALL:
 			inventory.equipment.gain(Equipment.Slot.BALL, 2)
+		PickupKind.SWORD:
+			inventory.equipment.gain(Equipment.Slot.SWORD, amount)
 	return true
 
 func is_picked(id: String) -> bool:

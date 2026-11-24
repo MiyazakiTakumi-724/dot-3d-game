@@ -54,7 +54,10 @@ var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・
 var _message: Label  ## 真ん中：エリアの名前・門のヒント・やられた
 var _guide: Label  ## 下：操作の説明
 var _popups: Control  ## ダメージの数字を置く所（エリアを切り替えると片付ける）
-var _level_up_time := 0.0
+## 真ん中に少しの間だけ出す知らせ（レベルアップ・武器を手に入れたなど）
+var _notice_text := ""
+var _notice_time := 0.0
+var sword := Sword.new()
 var _arrow_blink := 0.0
 ## まだ作っていない、ほかのエリアのモデルの名前（遊んでいる間に少しずつ作る）
 var _warm_queue: Array[String] = []
@@ -205,8 +208,13 @@ func has_enemy(index: int) -> bool:
 func _on_enemy_died(area_id: String, index: int, kind: EnemyKind.Kind, level: int) -> void:
 	roster.kill(area_id, index)
 	if run.on_enemy_killed(kind, level) > 0:
-		_level_up_time = LEVEL_UP_SECONDS
+		notice("レベル%d になった！\nTab：ポイントを振る" % run.stats.level)
 		apply_stats()
+
+## 画面の真ん中に、少しの間だけ知らせを出す。
+func notice(text: String, seconds := LEVEL_UP_SECONDS) -> void:
+	_notice_text = text
+	_notice_time = seconds
 
 func _on_melee_hit(e: Enemy) -> void:
 	if area_state.result == AreaState.Result.PLAYING and not is_switching():
@@ -231,8 +239,13 @@ func apply_stats() -> void:
 
 ## 手に持っている武器を足した攻撃力。
 func current_attack() -> int:
-	var bonus := Equipment.rank_attack(ball_rank) if hotbar.selected == Hotbar.Item.IRON_BALL else 0
-	return run.stats.attack(bonus)
+	var rank := 0
+	match hotbar.selected:
+		Hotbar.Item.IRON_BALL:
+			rank = ball_rank
+		Hotbar.Item.SWORD, Hotbar.Item.BOW, Hotbar.Item.GUN:
+			rank = run.inventory.equipment.effective(Hotbar.WEAPON_SLOT[hotbar.selected])
+	return run.stats.attack(Equipment.rank_attack(rank))
 
 ## 手に持っている鉄球のランクを、装備に合わせる（落としている間は替えない）。
 func _sync_ball_rank() -> void:
@@ -274,6 +287,8 @@ func _update_switch(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	roster.tick(delta)
+	sword.update(delta)
+	player.mover.tick(delta)
 	if not _warm_queue.is_empty() and not is_switching():
 		Terrain.warm(_warm_queue, WARM_BUDGET_MS)
 	if is_switching():
@@ -287,6 +302,7 @@ func _process(delta: float) -> void:
 				kill_player(player.mover.fell)
 			else:
 				_play_step()
+				_hold_to_swing()
 		if area_state.is_falling():
 			player.lift_px = maxf(-FALL_SINK_PX, player.lift_px - FALL_SINK_PX / AreaState.FALL_SECONDS * delta)
 		elif area_state.result == AreaState.Result.DYING and player.mover.fell:
@@ -295,7 +311,7 @@ func _process(delta: float) -> void:
 	camera.follow(player.mover.pos, player.mover.height * StackSprite.LEVEL_PX, delta)
 	_title_time = maxf(0.0, _title_time - delta)
 	_grave_hint_time = maxf(0.0, _grave_hint_time - delta)
-	_level_up_time = maxf(0.0, _level_up_time - delta)
+	_notice_time = maxf(0.0, _notice_time - delta)
 	_start_hint_time = maxf(0.0, _start_hint_time - delta)
 	_arrow_blink += delta
 	var a := 0.55 + 0.45 * sin(_arrow_blink * 4.0)
@@ -312,6 +328,7 @@ func _play_step() -> void:
 		if reach and run.collect(area.pickup_id(i), p[1], p[2]):
 			_pickup_nodes[i].queue_free()
 			_pickup_nodes.erase(i)
+			_on_picked(p[1])
 	if run.is_near_checkpoint(area.id, c) and player.hp < player.max_hp:
 		player.set_hp(player.max_hp)
 	for e in enemies:
@@ -332,10 +349,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
-			KEY_1:
-				hotbar.select_slot(1)
-			KEY_2:
-				hotbar.select_slot(2)
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
+				hotbar.select_slot(event.physical_keycode - KEY_0, run.inventory.equipment)
 			KEY_F:
 				try_open_door()
 			KEY_TAB:
@@ -353,9 +368,45 @@ func use_item() -> bool:
 	match hotbar.selected:
 		Hotbar.Item.IRON_BALL:
 			return ball.rules_ball.drop_at(player.mover, map, _aim_point())
+		Hotbar.Item.SWORD:
+			return swing_sword()
 		Hotbar.Item.HEAL:
 			return use_heal()
 	return false
+
+## 剣を振る（カーソルの方を向いている）。飛び降りてすぐなら落下斬り。墓石も壊せる。
+func swing_sword() -> bool:
+	if run.inventory.equipment.effective(Equipment.Slot.SWORD) == 0 or not sword.try_swing():
+		return false
+	var mv := player.mover
+	var st := run.stats
+	var fall := mv.recent_drop(Sword.FALL_WINDOW)
+	var strong_fall := st.skills_in(PlayerStats.Stat.SWORD) >= 1
+	var up := Sword.reaches_up(run.inventory.equipment.effective(Equipment.Slot.SWORD), st.skills_in(PlayerStats.Stat.SWORD) >= 2)
+	var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
+	player.swing(fall > 0)
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, up):
+			e.walker.take_damage(dmg)
+			_popup(e.walker.pos, e.walker.height, dmg, Color("ffb347") if fall > 0 else Color.WHITE)
+	if run.grave != null and run.grave.area_id == area.id:
+		var g := run.grave.cell
+		if Sword.hits(mv.pos, mv.height, mv.facing, HeightMap.cell_center(g), map.get_height(g), up):
+			_remove_grave_marker()
+			run.break_grave()
+	return true
+
+## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
+func _hold_to_swing() -> void:
+	if hotbar.selected == Hotbar.Item.SWORD and not menu.is_open() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		use_item()
+
+func _on_picked(kind: RunState.PickupKind) -> void:
+	match kind:
+		RunState.PickupKind.SWORD:
+			notice("剣を手に入れた！\n2：持ちかえ　クリック：振る")
+		RunState.PickupKind.STRONG_BALL:
+			notice("鉄球（ランク2）を手に入れた！\nTab：持ち物で選ぶ")
 
 func use_heal() -> bool:
 	if not run.inventory.try_use_heal(player.hp, player.max_hp):
@@ -552,6 +603,17 @@ func _door_model() -> VoxelModel:
 			m.set_voxel(Vector3i(6, y, z), Color("5b3a22"))
 	return m
 
+## 宝箱：茶色の箱に金色の帯。武器が入っている。
+func _chest_model() -> VoxelModel:
+	var m := VoxelModel.box(Vector3i(10, 7, 7), Color("8a5a2b"))
+	for x in 10:
+		for y in 7:
+			m.set_voxel(Vector3i(x, y, 4), Color("ffd23f"))
+	for z in 7:
+		m.set_voxel(Vector3i(4, 6, z), Color("ffd23f"))
+		m.set_voxel(Vector3i(5, 6, z), Color("ffd23f"))
+	return m
+
 func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
 	match kind:
 		RunState.PickupKind.MONEY:
@@ -560,6 +622,8 @@ func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
 			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
 		RunState.PickupKind.HEAL:
 			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
+		RunState.PickupKind.SWORD:
+			return _chest_model()
 		_:
 			return VoxelModel.sphere(4, Color("7a2230"))
 
@@ -577,7 +641,7 @@ func _build_ui() -> void:
 	_guide = UiText.label()
 	_guide.position = Vector2(4, 166)
 	_guide.modulate.a = 0.8
-	_guide.text = "クリック:使う　1・2:持ちかえ　Tab:持ち物　右ドラッグ:カメラ"
+	_guide.text = "クリック:使う　1〜5:持ちかえ　Tab:持ち物　右ドラッグ:カメラ"
 	layer.add_child(_guide)
 	_popups = Control.new()
 	_popups.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -600,13 +664,27 @@ func status_text() -> String:
 	var text := "Lv%d　体力 %d/%d　経験 %d/%d　お金 %d　素材 %d" % [st.level, player.hp, player.max_hp, st.exp_in_level(), st.exp_level_span(), inv.money, inv.materials]
 	if run.grave != null:
 		text += "　墓石：%s" % world.area(run.grave.area_id).title
-	var ball_name := InventoryMenu.weapon_label(Equipment.Slot.BALL, ball_rank)
-	var heal_name := "回復×%d" % inv.heals
-	if hotbar.selected == Hotbar.Item.IRON_BALL:
-		text += "\n[1 %s]　 2 %s" % [ball_name, heal_name]
-	else:
-		text += "\n 1 %s　[2 %s]" % [ball_name, heal_name]
-	return text
+	return text + "\n" + hotbar_text()
+
+## 手に持つアイテムの並び。持っている武器だけ出し、選んでいるものを [ ] で囲む。
+func hotbar_text() -> String:
+	var eq := run.inventory.equipment
+	var parts: Array[String] = []
+	for i in Hotbar.SLOTS.size():
+		var item: Hotbar.Item = Hotbar.SLOTS[i]
+		var name := ""
+		if item == Hotbar.Item.HEAL:
+			name = "回復×%d" % run.inventory.heals
+		elif item == Hotbar.Item.IRON_BALL:
+			name = InventoryMenu.weapon_label(Equipment.Slot.BALL, ball_rank)
+		else:
+			var slot: Equipment.Slot = Hotbar.WEAPON_SLOT[item]
+			if eq.effective(slot) == 0:
+				continue
+			name = InventoryMenu.weapon_label(slot, eq.effective(slot))
+		var t := "%d %s" % [i + 1, name]
+		parts.append("[%s]" % t if item == hotbar.selected else " %s " % t)
+	return "".join(parts)
 
 ## 画面の真ん中に出す言葉。なければ空。
 func ui_message() -> String:
@@ -614,8 +692,8 @@ func ui_message() -> String:
 		return "やられた…\nたき火から やり直す"
 	if _gate_here() != null:
 		return "F：門を開ける"
-	if _level_up_time > 0.0:
-		return "レベル%d になった！\nTab：ポイントを振る" % run.stats.level
+	if _notice_time > 0.0:
+		return _notice_text
 	if _title_time > 0.0:
 		return area.title
 	if _grave_hint_time > 0.0:
