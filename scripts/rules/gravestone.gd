@@ -8,4 +8,5 @@ var cell: Vector2i
 var money: int = 0
 var materials: int = 0
 var heals: int = 0
-var has_strong_ball := false
+## 墓石に入った武器と防具（Equipment.take_for_grave の結果。Slot → ランクの配列）
+var equipment := {}

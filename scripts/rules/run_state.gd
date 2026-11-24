@@ -31,11 +31,10 @@ func on_death(area_id: String, death_cell: Vector2i) -> Gravestone:
 	g.money = inventory.money / 2
 	g.materials = inventory.materials
 	g.heals = inventory.heals
-	g.has_strong_ball = inventory.has_strong_ball
+	g.equipment = inventory.equipment.take_for_grave()
 	inventory.money -= g.money
 	inventory.materials = 0
 	inventory.heals = 0
-	inventory.has_strong_ball = false
 	grave = g
 	return g
 
@@ -45,7 +44,7 @@ func break_grave() -> void:
 	inventory.money += grave.money
 	inventory.materials += grave.materials
 	inventory.heals += grave.heals
-	inventory.has_strong_ball = inventory.has_strong_ball or grave.has_strong_ball
+	inventory.equipment.restore(grave.equipment)
 	grave = null
 
 ## 敵を倒したときのお金と経験値。上がったレベルの数を返す。
@@ -70,7 +69,7 @@ func collect(id: String, kind: PickupKind, amount: int) -> bool:
 		PickupKind.HEAL:
 			inventory.heals += amount
 		PickupKind.STRONG_BALL:
-			inventory.has_strong_ball = true
+			inventory.equipment.gain(Equipment.Slot.BALL, 2)
 	return true
 
 func is_picked(id: String) -> bool:

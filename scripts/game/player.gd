@@ -33,12 +33,16 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	sort_by_cell = true
 	always_redraw = true  # 向きが変わる
 	shadow_radius = 4.0
+	set_model(body_model())
+	_sync()
+
+## 主人公の形。インベントリ画面の姿にも使う。
+static func body_model() -> VoxelModel:
 	var m := VoxelModel.box(Vector3i(6, 6, 10), Color("3b6dd8"))
 	for y in 2:  # 顔の向きが分かるように前側に目印
 		for x in 2:
 			m.set_voxel(Vector3i(2 + x, 5, 7 + y), Color("f4e1c1"))
-	set_model(m)
-	_sync()
+	return m
 
 ## amount のダメージを受ける。無敵の間は受けない。受けたら true。
 func take_hit(amount := 1) -> bool:

@@ -170,12 +170,12 @@ func test_gate_closed_from_camp_and_opens_from_forest():
 	_walk_out(camp_gate)
 	assert_eq(f.area.id, "forest")
 
-func test_clock_stops_while_paused():
+func test_clock_runs_while_inventory_open():
 	assert_true(f.open_inventory())
 	var before: float = f.roster.clock
 	await get_tree().process_frame
 	await get_tree().process_frame
-	assert_eq(f.roster.clock, before)
+	assert_gt(f.roster.clock, before)
 	f.close_inventory()
 
 func test_ball_hits_enemy_where_aimed():
@@ -238,11 +238,14 @@ func test_melee_enemy_hit_hurts_player():
 			return
 	fail_test("丘陵に敵2がいない")
 
-func test_inventory_pauses_and_closes():
+## インベントリを開いても世界は止まらない（design.md 11章）。開いている間のクリックはアイテムに使わない
+func test_inventory_keeps_world_running_and_closes():
 	assert_true(f.open_inventory())
-	assert_true(get_tree().paused)
-	f.close_inventory()
 	assert_false(get_tree().paused)
+	assert_true(f.menu.is_open())
+	assert_false(f.use_item())
+	f.close_inventory()
+	assert_false(f.menu.is_open())
 
 func test_start_hint_then_nothing():
 	assert_string_contains(f.ui_message(), "矢印")
@@ -348,3 +351,30 @@ func test_enemy_level_follows_bosses():
 	var e: Enemy = f.enemies[0]
 	assert_eq(e.level, 3)
 	assert_eq(e.walker.max_hp, EnemyKind.hp(e.kind, 3))
+
+## 画面でポイントを振ると、最大体力に反映される
+func test_allocate_from_menu_applies_stats():
+	f.run.stats.add_exp(5)
+	f.open_inventory()
+	f.menu.show_page(InventoryMenu.Page.STATS)
+	assert_true(f.menu.allocate(PlayerStats.Stat.VITALITY))
+	assert_eq(f.player.max_hp, 10 + PlayerStats.HP_PER_POINT)
+	assert_eq(f.player.hp, 10 + PlayerStats.HP_PER_POINT)
+	assert_false(f.menu.allocate(PlayerStats.Stat.VITALITY) and f.menu.allocate(PlayerStats.Stat.VITALITY))
+
+## 画面で鉄球のランクを選ぶと、手に持つ鉄球が替わり攻撃力に足される
+func test_choose_ball_rank_in_menu():
+	f.run.inventory.equipment.gain(Equipment.Slot.BALL, 2)
+	f.open_inventory()
+	f.menu.select_slot(Equipment.Slot.BALL)
+	assert_true(f.menu.choose(2))
+	f._process(0.016)
+	assert_eq(f.ball_rank, 2)
+	assert_true(f.ball.rules_ball.strong)
+	assert_eq(f.current_attack(), 5 + Equipment.ATTACK_PER_RANK)
+	assert_false(f.menu.choose(3))
+
+## ランク2の鉄球は当たる範囲が広い
+func test_rank2_ball_hits_wider():
+	assert_false(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(1)))
+	assert_true(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(2)))

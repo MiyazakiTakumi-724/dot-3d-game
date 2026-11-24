@@ -23,7 +23,7 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 
 ### 操作（試作3）
 
-WASD・矢印：移動／左クリック：手に持つアイテムを使う（鉄球はカーソルの場所に落とす。届くのは1.5マス）／1・2：手に持つアイテム（鉄球・回復）／Tab：インベントリ（使う鉄球を決める。開いている間は止まる）／F：門を開ける／右ドラッグ・Q/E：カメラ／鉄球は近く（12px）を歩いて拾う。落ちているものはマスの中心から14pxで拾う。試作1は X/Z のまま。
+WASD・矢印：移動／左クリック：手に持つアイテムを使う（鉄球はカーソルの場所に落とす。届くのは1.5マス）／1・2：手に持つアイテム（鉄球・回復）／Tab：インベントリ（装備するランクを決める、ポイントを振る。開いている間も世界は動く）／F：門を開ける／右ドラッグ・Q/E：カメラ／鉄球は近く（12px）を歩いて拾う。落ちているものはマスの中心から14pxで拾う。試作1は X/Z のまま。
 
 ## コマンド
 
@@ -34,7 +34,7 @@ WASD・矢印：移動／左クリック：手に持つアイテムを使う（�
 
 - `run_tests.sh` は、`godot` コマンドにPATHが通っている前提。Windowsでは Godot の実行ファイルに置き換えるか、エディタのGUTパネルから実行する。
 - ゲームの実行は、Godotエディタで `project.godot` を開いてF5を押す。
-- 画面の確認：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--fps` で平均FPSも出す。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
+- 画面の確認：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--exp=30` で経験値を足す。`--fps` で平均FPSも出す。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
 
 ## 構成
 
@@ -54,7 +54,9 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
   bullet.gd          敵の弾。撃った高さを飛び、壁と弾より高い地面で止まる。当たるのは同じ高さだけ（hits）。通り道のマスを1つずつ調べて、壁の角でもすり抜けない
   enemy_walker.gd    敵の往復移動と体力と体当たり（touches）。climb で登れる段数、chase で近くのプレイヤーへ寄る、forbidden に入らない
   stage_state.gd     試作1のクリア・ゲームオーバーの判定
-  inventory.gd       持ち物（お金・素材・回復・強い鉄球）
+  inventory.gd       持ち物（お金・素材・回復）と equipment
+  equipment.gd       武器（鉄球・剣・弓・エアガン）と防具（頭・体・足）のランク。持っているランクと装備するランク。
+                     死ぬとランク1以外は墓石へ（take_for_grave / restore）。ランク1つで攻撃力＋2（rank_attack）。強い鉄球＝鉄球のランク2
   player_stats.gd    レベル・経験値・振り分けポイント（体力・攻撃力・剣・弓・エアガン・体の動き）。3ポイントごとに技能
   damage.gd          ダメージの式（design.md 17章）。鉄球・敵の攻撃（簡単モードで半分）・敵のレベルでの伸び
   gravestone.gd      墓石の場所と中身
@@ -71,7 +73,8 @@ scripts/game/    ノード（ルールのクラスを持って描画するだけ
                      島のふちの柱は0より下へ伸びて断面になり、水の柱の側面は滝になる。奈落と島の外は描かない。
                      高さを読みやすくする：段のふちの明るい線（lower_sides）、側面の段ごとの帯、top_color（高いほど明るい）。arrow_model は出口の矢印
   ui_text.gd         画面の文字（日本語のドット絵フォント PixelMplus 10px・12px）
-  inventory_menu.gd  Tab で開くインベントリ画面
+  inventory_menu.gd  Tab で開くインベントリ画面（開いても世界は止まらない）。装備のページ（回る主人公の姿と枠、ランクを選ぶ）と
+                     ステータスのページ（ポイントを振る、次の技能まであと何ポイント）
   damage_popup.gd    当たったときに出るダメージの数字
 fonts/           PixelMplus（M+ FONT LICENSE。商用利用・再配布が自由）とライセンスの文。*.import はぼかさない設定なので git に入れている
 scripts/areas/   4エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）

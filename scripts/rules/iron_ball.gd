@@ -63,9 +63,13 @@ static func can_drop_at(point: Vector2, map: HeightMap, from_height: int) -> boo
 		return false
 	return map.is_grave(target) or not map.is_wall(target)
 
+## ランクごとの当たる半径。ランク2の特性は「当たる範囲が広い」（design.md 7章）。
+static func hit_radius(rank: int) -> float:
+	return HIT_RADIUS * 1.5 if rank >= 2 else HIT_RADIUS
+
 ## 落ちた点（高さ land_h）が、other_pos に立つ高さ other_h のものに当たるか。
-static func hits(land_pos: Vector2, land_h: int, other_pos: Vector2, other_h: int) -> bool:
-	return land_h == other_h and land_pos.distance_to(other_pos) < HIT_RADIUS
+static func hits(land_pos: Vector2, land_h: int, other_pos: Vector2, other_h: int, radius := HIT_RADIUS) -> bool:
+	return land_h == other_h and land_pos.distance_to(other_pos) < radius
 
 ## 落ちた点から半径の中に、そのマスの四角がかかるか（墓石を壊すのに使う）。
 static func touches_cell(land_pos: Vector2, c: Vector2i) -> bool:

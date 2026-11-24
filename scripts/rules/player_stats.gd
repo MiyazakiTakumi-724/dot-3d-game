@@ -16,6 +16,14 @@ const NAMES := {
 	Stat.MOVE: "体の動き",
 }
 
+## 項目ごとの技能と覚える順番（design.md 11章）。体力・攻撃力に技能を付けるかは未定（16章）。
+const SKILLS := {
+	Stat.SWORD: ["落下斬り強化", "斬り上げ", "回転斬り"],
+	Stat.BOW: ["矢の種類", "高所射撃", "連射"],
+	Stat.GUN: ["跳弾", "速射"],
+	Stat.MOVE: ["しゃがみ", "受け身", "よじ登り"],
+}
+
 const BASE_HP := 10
 const BASE_ATTACK := 5
 const HP_PER_POINT := 2

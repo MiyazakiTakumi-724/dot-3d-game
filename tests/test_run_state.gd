@@ -9,16 +9,16 @@ func _fill():
 	rs.inventory.money = 40
 	rs.inventory.materials = 3
 	rs.inventory.heals = 2
-	rs.inventory.has_strong_ball = true
+	rs.inventory.equipment.gain(Equipment.Slot.BALL, 2)
 	rs.stats.add_exp(5)
 
 func test_death_moves_belongings_to_grave():
 	_fill()
 	var g := rs.on_death("hills", Vector2i(9, 4))
 	assert_eq(g.cell, Vector2i(9, 4))
-	assert_eq([g.money, g.materials, g.heals, g.has_strong_ball], [20, 3, 2, true])
+	assert_eq([g.money, g.materials, g.heals, g.equipment], [20, 3, 2, {Equipment.Slot.BALL: [2]}])
 	var inv := rs.inventory
-	assert_eq([inv.money, inv.materials, inv.heals, inv.has_strong_ball, rs.stats.exp], [20, 0, 0, false, 5])
+	assert_eq([inv.money, inv.materials, inv.heals, inv.equipment.ranks(Equipment.Slot.BALL), rs.stats.exp], [20, 0, 0, [1], 5])
 
 func test_odd_money_keeps_larger_half():
 	rs.inventory.money = 25
@@ -31,7 +31,7 @@ func test_break_grave_returns_everything():
 	rs.on_death("hills", Vector2i(9, 4))
 	rs.break_grave()
 	var inv := rs.inventory
-	assert_eq([inv.money, inv.materials, inv.heals, inv.has_strong_ball, rs.stats.exp], [40, 3, 2, true, 5])
+	assert_eq([inv.money, inv.materials, inv.heals, inv.equipment.ranks(Equipment.Slot.BALL), rs.stats.exp], [40, 3, 2, [1, 2], 5])
 	assert_null(rs.grave)
 
 func test_second_death_erases_old_grave():
@@ -40,10 +40,10 @@ func test_second_death_erases_old_grave():
 	rs.inventory.materials = 1
 	var g2 := rs.on_death("hills", Vector2i(3, 3)) # 墓石に 10, 手元 10
 	assert_eq(rs.grave, g2)
-	assert_eq([g2.money, g2.materials, g2.has_strong_ball], [10, 1, false])
+	assert_eq([g2.money, g2.materials, g2.equipment], [10, 1, {}])
 	rs.break_grave()
 	assert_eq(rs.inventory.money, 20)
-	assert_false(rs.inventory.has_strong_ball)
+	assert_false(rs.inventory.equipment.has(Equipment.Slot.BALL, 2))
 
 func test_empty_death_still_replaces_old_grave():
 	_fill()
@@ -51,7 +51,7 @@ func test_empty_death_still_replaces_old_grave():
 	rs.inventory.money = 0
 	var g2 := rs.on_death("hills", Vector2i(3, 3))
 	assert_eq(rs.grave, g2)
-	assert_eq([g2.money, g2.materials, g2.heals, g2.has_strong_ball], [0, 0, 0, false])
+	assert_eq([g2.money, g2.materials, g2.heals, g2.equipment], [0, 0, 0, {}])
 
 func test_break_without_grave_does_nothing():
 	rs.break_grave()
@@ -84,7 +84,7 @@ func test_pickups_only_once():
 	rs.collect("a:8", RunState.PickupKind.STRONG_BALL, 0)
 	rs.collect("a:9", RunState.PickupKind.HEAL, 1)
 	rs.collect("a:10", RunState.PickupKind.MATERIAL, 2)
-	assert_eq([rs.inventory.has_strong_ball, rs.inventory.heals, rs.inventory.materials], [true, 1, 2])
+	assert_eq([rs.inventory.equipment.has(Equipment.Slot.BALL, 2), rs.inventory.heals, rs.inventory.materials], [true, 1, 2])
 
 func test_pickups_stay_picked_after_death():
 	rs.collect("a:7", RunState.PickupKind.HEAL, 1)
@@ -110,22 +110,14 @@ func test_near_checkpoint():
 	assert_true(rs.is_near_checkpoint("hills", Vector2i(2, 2)))
 	assert_false(rs.is_near_checkpoint("hills", Vector2i(3, 1)))
 
-func test_ball_is_strong_needs_both():
-	var inv := rs.inventory
-	inv.equipped_strong = true
-	assert_false(inv.ball_is_strong())
-	inv.has_strong_ball = true
-	assert_true(inv.ball_is_strong())
-	inv.equipped_strong = false
-	assert_false(inv.ball_is_strong())
-
 func test_equip_survives_death_and_returns_with_grave():
-	rs.inventory.has_strong_ball = true
-	rs.inventory.equipped_strong = true
+	var eq := rs.inventory.equipment
+	eq.gain(Equipment.Slot.BALL, 2)
+	eq.equip(Equipment.Slot.BALL, 2)
 	rs.on_death("hills", Vector2i(4, 4))
-	assert_false(rs.inventory.ball_is_strong())
+	assert_eq(eq.effective(Equipment.Slot.BALL), 1)
 	rs.break_grave()
-	assert_true(rs.inventory.ball_is_strong())
+	assert_eq(eq.effective(Equipment.Slot.BALL), 2)
 
 func test_grave_remembers_area():
 	var run := RunState.new("camp", Vector2i(5, 5))

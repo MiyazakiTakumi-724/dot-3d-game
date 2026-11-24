@@ -31,6 +31,8 @@ var ball: Ball
 ## 鉄球が落ちる点に出す、地面の影のような印
 var aim_marker: StackSprite
 var enemies: Array[Enemy] = []
+## 手に持っている鉄球のランク（Equipment）。落としている間は落としたときのまま
+var ball_rank := 1
 
 var _enemy_index := {}  # Enemy → area.enemies の番号
 var _area_root: Node2D
@@ -93,6 +95,7 @@ func _ready() -> void:
 	menu = InventoryMenu.new()
 	menu.setup(run)
 	menu.close_requested.connect(close_inventory)
+	menu.stats_changed.connect(apply_stats)
 	add_child(menu)
 	_maybe_screenshot()
 
@@ -228,8 +231,15 @@ func apply_stats() -> void:
 
 ## 手に持っている武器を足した攻撃力。
 func current_attack() -> int:
-	var bonus := Inventory.STRONG_BALL_ATTACK if hotbar.selected == Hotbar.Item.IRON_BALL and ball.rules_ball.strong else 0
+	var bonus := Equipment.rank_attack(ball_rank) if hotbar.selected == Hotbar.Item.IRON_BALL else 0
 	return run.stats.attack(bonus)
+
+## 手に持っている鉄球のランクを、装備に合わせる（落としている間は替えない）。
+func _sync_ball_rank() -> void:
+	if ball.rules_ball.state != IronBall.State.HELD:
+		return
+	ball_rank = run.inventory.equipment.effective(Equipment.Slot.BALL)
+	ball.rules_ball.set_strong(ball_rank >= 2)
 
 func _popup(pos: Vector2, h: int, amount: int, color: Color) -> void:
 	_popups.add_child(DamagePopup.make(camera, pos, h * StackSprite.LEVEL_PX, amount, color))
@@ -309,8 +319,7 @@ func _play_step() -> void:
 			hurt_player(e.attack)
 			break
 	ball.rules_ball.try_pick_up(player.mover)
-	if ball.rules_ball.state == IronBall.State.HELD:
-		ball.rules_ball.set_strong(run.inventory.ball_is_strong())
+	_sync_ball_rank()
 	var ex := world.exit_through(area.id, c, player.mover.edge_push)
 	if ex != null and (ex.door_id == "" or run.is_door_open(ex.door_id)):
 		_start_switch(world.arrival(area.id, ex, c))
@@ -339,6 +348,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func use_item() -> bool:
 	if area_state.result != AreaState.Result.PLAYING or is_switching() or not player.controllable:
 		return false
+	if menu.is_open():
+		return false  # 開いている間のクリックは画面の操作に使う
 	match hotbar.selected:
 		Hotbar.Item.IRON_BALL:
 			return ball.rules_ball.drop_at(player.mover, map, _aim_point())
@@ -356,13 +367,10 @@ func open_inventory() -> bool:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
 		return false
 	menu.open()
-	_message.text = ""
-	get_tree().paused = true
 	return true
 
 func close_inventory() -> void:
 	menu.close()
-	get_tree().paused = false
 
 ## カーソルが指している地面の点。
 func _aim_point() -> Vector2:
@@ -395,7 +403,7 @@ func kill_player(fell: bool) -> void:
 ## 野営地のたき火から再開する。敵は復活しない（倒した敵は時間で戻る）。
 func respawn() -> void:
 	enter_area(run.checkpoint_area, Continent.START_CELL)
-	ball.rules_ball.set_strong(run.inventory.ball_is_strong())  # 強い鉄球は墓石に入っているので普通に戻る
+	_sync_ball_rank()  # ランク2以上の鉄球は墓石に入っているので、ランク1に戻る
 	player.set_hp(player.max_hp)
 	player.clear_invulnerable()
 	player.lift_px = 0.0
@@ -489,7 +497,7 @@ func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
 		run.break_grave()
 	var damage := Damage.iron_ball(current_attack(), ball.rules_ball.fall_levels, run.stats.level)
 	for e in enemies:
-		if is_instance_valid(e) and e.walker.alive and IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height):
+		if is_instance_valid(e) and e.walker.alive and IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height, IronBall.hit_radius(ball_rank)):
 			e.walker.take_damage(damage)
 			_popup(e.walker.pos, e.walker.height, damage, Color.WHITE)
 
@@ -592,7 +600,7 @@ func status_text() -> String:
 	var text := "Lv%d　体力 %d/%d　経験 %d/%d　お金 %d　素材 %d" % [st.level, player.hp, player.max_hp, st.exp_in_level(), st.exp_level_span(), inv.money, inv.materials]
 	if run.grave != null:
 		text += "　墓石：%s" % world.area(run.grave.area_id).title
-	var ball_name := "鉄球（強い）" if ball.rules_ball.strong else "鉄球"
+	var ball_name := InventoryMenu.weapon_label(Equipment.Slot.BALL, ball_rank)
 	var heal_name := "回復×%d" % inv.heals
 	if hotbar.selected == Hotbar.Item.IRON_BALL:
 		text += "\n[1 %s]　 2 %s" % [ball_name, heal_name]
@@ -619,7 +627,7 @@ func ui_message() -> String:
 ## `-- --screenshot=path.png` で数フレーム後に画面を保存して終了する（確認用）。
 ## `--area=hills` でエリア、`--player=x,y` で位置、`--angle=0.8` でカメラ角度。`--fps` で平均FPSを出す。
 ## `--offset=dx,dy` でプレイヤーをマスの中心からずらす。`--ball=dx,dy` で鉄球をプレイヤーからずらして地面に置く。
-## `--inventory` でインベントリを開いた画面。
+## `--inventory` でインベントリを開いた画面（`--inventory=stats` でステータスのページ）。`--exp=30` で経験値を足す。
 func _maybe_screenshot() -> void:
 	var path := ""
 	var measure_fps := false
@@ -644,8 +652,13 @@ func _maybe_screenshot() -> void:
 			ball_offset = Vector2(float(o[0]), float(o[1]))
 		elif a == "--fps":
 			measure_fps = true
-		elif a == "--inventory":
+		elif a.begins_with("--inventory"):
+			if a == "--inventory=stats":
+				menu.page = InventoryMenu.Page.STATS
 			get_tree().create_timer(0.05).timeout.connect(open_inventory)
+		elif a.begins_with("--exp="):
+			run.stats.add_exp(int(a.trim_prefix("--exp=")))
+			apply_stats()
 	if place != null:
 		player.mover.place(place)
 		player.mover.pos += offset
