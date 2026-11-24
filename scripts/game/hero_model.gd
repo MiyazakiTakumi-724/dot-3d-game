@@ -54,7 +54,7 @@ const STYLES := {
 		"cape": Color("2f6f6a"), "scarf": NONE, "vest": NONE, "shoulder": false, "emblem": false, "iris": Color("d08a2c")},
 }
 
-## 今のデザイン（STYLES のキー）。ユーザーが選ぶまでは、上から見て目立つ C を仮に使う
+## 今のデザイン（STYLES のキー）。ユーザーが C 羽根かぶとの勇者に決めた（2026-11-25）。ほかの案は残してある
 static var style := "c"
 static var _cache := {}
 
