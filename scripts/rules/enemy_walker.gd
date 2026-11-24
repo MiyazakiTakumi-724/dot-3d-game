@@ -1,11 +1,18 @@
 class_name EnemyWalker
 extends RefCounted
-## 敵の歩き方と体力。自分の段と同じ高さのマスだけを往復する。
+## 敵の歩き方と体力。往復して歩き、入れないマスの前で引き返す。奈落・水・壁・forbidden には入らない。
+## 登り降りできる段数は climb（敵1は0で平らな所だけ、敵2は1）。
+## climb が1以上の敵は、chase() で近くのプレイヤーへ寄っていく。
+## 体当たり：同じ高さで体が触れているかを touches() で調べる。
 
 signal died
 
 const SPEED := 24.0
 const MAX_HP := 3
+## 体当たりになる、中心どうしの距離（px）。敵の体は8px、プレイヤーは6px。
+const TOUCH_RADIUS := 9.0
+const CHASE_RANGE := 48.0  ## これより近いと寄ってくる（3マス）
+const CHASE_STOP := 10.0  ## これより近づいたら止まる（重ならないように）
 
 var map: HeightMap
 var pos: Vector2
@@ -13,9 +20,17 @@ var dir: Vector2
 var height: int
 var hp: int = MAX_HP
 var alive := true
+## 登り降りできる段数
+var climb := 0
+## 入らないマス（出口の近くなど）。Vector2i → true
+var forbidden := {}
+var _chasing := false
+var _chase_target := Vector2.ZERO
 
-func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2) -> void:
+func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2, max_hp: int = MAX_HP, climb_levels: int = 0) -> void:
 	map = height_map
+	hp = max_hp
+	climb = climb_levels
 	pos = HeightMap.cell_center(start_cell)
 	dir = start_dir.normalized()
 	height = map.get_height(start_cell)
@@ -23,15 +38,57 @@ func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2) -> v
 func cell() -> Vector2i:
 	return HeightMap.world_to_cell(pos)
 
+## 近くにいる target（高さ target_h）へ向きを変える。step() の前に毎フレーム呼ぶ。
+func chase(target: Vector2, target_h: int) -> void:
+	_chasing = false
+	if climb <= 0 or not alive:
+		return
+	var d := target - pos
+	if d.length() > CHASE_RANGE or d == Vector2.ZERO or absi(target_h - height) > climb:
+		return
+	dir = d.normalized()
+	_chasing = true
+	_chase_target = target
+
+func can_enter(c: Vector2i) -> bool:
+	if map.is_wall(c) or map.is_pit(c) or map.is_water(c) or forbidden.has(c):
+		return false
+	return absi(map.get_height(c) - height) <= climb
+
 func step(delta: float) -> void:
 	if not alive:
 		return
-	# 体の半分先（8px）のマスを見て、入れなければ引き返す
-	var ahead := HeightMap.world_to_cell(pos + dir * (HeightMap.CELL_PX * 0.5 + 0.1))
-	if ahead != cell() and (map.is_wall(ahead) or map.get_height(ahead) != height):
-		dir = -dir
+	var chasing := _chasing
+	_chasing = false
+	if chasing and pos.distance_to(_chase_target) < CHASE_STOP:
 		return
-	pos += dir * SPEED * delta
+	if _try(dir, delta):
+		return
+	if chasing:
+		return  # 追っている間は引き返さず、止まって待つ
+	dir = -dir
+
+## d の向きに進む。斜めのときは x と y を1軸ずつ動かし、それぞれ体の半分先（8px）のマスを確かめる
+## （まとめて動かすと、マスの角をすり抜けて入れないマスに入ることがあるため）。少しでも進めたら true。
+func _try(d: Vector2, delta: float) -> bool:
+	var moved := false
+	if d.x != 0.0:
+		moved = _try_axis(Vector2(d.x, 0), delta) or moved
+	if d.y != 0.0:
+		moved = _try_axis(Vector2(0, d.y), delta) or moved
+	return moved
+
+func _try_axis(v: Vector2, delta: float) -> bool:
+	var ahead := HeightMap.world_to_cell(pos + v.sign() * (HeightMap.CELL_PX * 0.5 + 0.1))
+	if ahead != cell() and not can_enter(ahead):
+		return false
+	pos += v * SPEED * delta
+	height = map.get_height(cell())
+	return true
+
+## pos に立っている、高さ h のものに触れているか。
+func touches(p: Vector2, h: int) -> bool:
+	return alive and h == height and pos.distance_to(p) < TOUCH_RADIUS
 
 func take_damage(n: int) -> void:
 	if not alive:

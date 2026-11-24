@@ -2,3 +2,11 @@
 .godot/
 *.import
 build/
+
+# フォントは読み込みの設定（ぼかさない）を共有するので入れる
+!fonts/*.import
+
+
+# 地図のプレビュー
+tools/area_maps/preview_*.png
+__pycache__/

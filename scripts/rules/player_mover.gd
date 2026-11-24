@@ -7,13 +7,28 @@ var rules: MovementRules
 var pos: Vector2 = Vector2.ZERO
 var height: int = 0
 var facing: Vector2 = Vector2.DOWN
+## 奈落に踏み込んだら true。以後 move は何もしない。
+var fell := false
+## 最後に立っていた奈落以外のマス。奈落で死んだときの墓石の場所に使う。
+var last_safe_cell: Vector2i
+## 直前の move でマップの外へ歩こうとして止まった向き（外向き、1軸だけ）。なければ ZERO。
+## エリアの端の出口を外へ歩いたかを調べるのに使う。
+var edge_push: Vector2i = Vector2i.ZERO
 
 func _init(height_map: HeightMap, movement_rules: MovementRules) -> void:
 	map = height_map
 	rules = movement_rules
 
+## マスの中心に置き直す（再開するときなど）。
+func place(c: Vector2i) -> void:
+	pos = HeightMap.cell_center(c)
+	height = map.get_height(c)
+	fell = false
+	last_safe_cell = c
+
 func move(world_delta: Vector2) -> void:
-	if world_delta == Vector2.ZERO:
+	edge_push = Vector2i.ZERO
+	if fell or world_delta == Vector2.ZERO:
 		return
 	facing = world_delta.normalized()
 	if _try(pos + world_delta):
@@ -32,11 +47,23 @@ func cell() -> Vector2i:
 func _try(new_pos: Vector2) -> bool:
 	var to := HeightMap.world_to_cell(new_pos)
 	if to != cell():
-		if map.is_wall(to):
+		if not map.in_bounds(to):
+			if to.x < 0 or to.x >= map.size.x:
+				edge_push = Vector2i(signi(to.x - cell().x), 0)
+			else:
+				edge_push = Vector2i(0, signi(to.y - cell().y))
 			return false
+		if map.is_wall(to) or map.is_water(to):
+			return false
+		if map.is_pit(to):
+			# 奈落は高さに関係なく踏み込めて、そのまま落ちる
+			fell = true
+			pos = new_pos
+			return true
 		var to_h := map.get_height(to)
 		if not rules.can_step(height, to_h):
 			return false
 		height = to_h
+		last_safe_cell = to
 	pos = new_pos
 	return true

@@ -1,34 +1,62 @@
 class_name Enemy
 extends StackSprite
-## 敵の見た目。平らな所を往復し、2秒ごとにプレイヤーへ弾を撃つ。
+## 敵の見た目。種類（EnemyKind）で動きが変わる。
+## 撃つ敵は2秒ごとにプレイヤーへ弾を撃つ。敵2は近くのプレイヤーへ寄り、ためてから叩く（melee_hit）。
 
 signal shot(bullet: Bullet)
+signal melee_hit
 
 const SHOOT_INTERVAL := 2.0
 const SHOOT_RANGE := 140.0
 const BULLET_SPEED := 80.0
 
 var walker: EnemyWalker
+var kind: EnemyKind.Kind = EnemyKind.Kind.WEAK
+var melee := MeleeAttack.new()
 var target: Player
+## false なら撃たない（体当たりだけの敵）
+var can_shoot := true
 var _cooldown := SHOOT_INTERVAL
 
-func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, cam: StackCamera, first_shot_delay: float) -> void:
-	walker = EnemyWalker.new(map, start_cell, start_dir)
+func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, cam: StackCamera, enemy_kind: EnemyKind.Kind = EnemyKind.Kind.WEAK, first_shot_delay: float = SHOOT_INTERVAL) -> void:
+	kind = enemy_kind
+	walker = EnemyWalker.new(map, start_cell, start_dir, EnemyKind.hp(kind), EnemyKind.climb(kind))
+	can_shoot = EnemyKind.shoots(kind)
 	target = p
 	camera = cam
 	draw_bias = 1
 	sort_by_cell = true
+	always_redraw = true  # 向きが変わる
+	shadow_radius = 5.0
 	_cooldown = first_shot_delay
-	var m := VoxelModel.box(Vector3i(8, 8, 8), Color("c0392b"))
+	var m := VoxelModel.box(Vector3i(8, 8, 8), _body_color(kind))
 	for x in 2:  # 目
 		m.set_voxel(Vector3i(1 + x * 4, 7, 5), Color.WHITE)
 		m.set_voxel(Vector3i(2 + x * 4, 7, 5), Color.WHITE)
 	set_model(m)
 	walker.died.connect(queue_free)
 
+static func _body_color(k: EnemyKind.Kind) -> Color:
+	match k:
+		EnemyKind.Kind.MELEE:
+			return Color("7d3c98")
+		EnemyKind.Kind.SHOOTER:
+			return Color("b9770e")
+	return Color("c0392b")
+
+func _sort_map() -> HeightMap:
+	return walker.map if walker != null else null
+
 func _process(delta: float) -> void:
+	if kind == EnemyKind.Kind.MELEE and target.hp > 0:
+		walker.chase(target.mover.pos, target.mover.height)
 	walker.step(delta)
-	if target.hp > 0:
+	if kind == EnemyKind.Kind.MELEE:
+		if target.hp > 0 and melee.update(delta, walker.pos, walker.height, target.mover.pos, target.mover.height):
+			melee_hit.emit()
+		# ためている間は体を明るく光らせる（よけるための合図）
+		self_modulate = Color(1.8, 1.8, 1.8) if melee.is_winding_up() else Color.WHITE
+	if can_shoot and target.hp > 0:
 		_cooldown -= delta
 		var to_player := target.mover.pos - walker.pos
 		if _cooldown <= 0.0 and to_player.length() <= SHOOT_RANGE:
@@ -46,6 +74,7 @@ func _draw() -> void:
 	if camera == null:
 		return
 	var face_angle := walker.dir.angle() - PI / 2
+	_draw_shadow()
 	for i in _layers.size():
 		var t := _layers[i]
 		draw_set_transform(Vector2(0, -i), face_angle - camera.angle, Vector2.ONE)
