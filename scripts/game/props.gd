@@ -1,7 +1,9 @@
 class_name Props
 extends RefCounted
-## 主人公以外の物の模型（矢・小物など）。主人公と同じ2倍の細かさで作り、ボクセル1つを本当の画面の1pxで描く
-## （StackSprite.voxel_scale = VOXEL_SCALE）。影は VoxelShade で主人公と同じように付ける。作った模型は使い回す。
+## 主人公以外の物の模型（矢・たき火・宝箱・墓石・門・拾いもの・出口の矢印・魔法の弾・敵の弾・炎・狙いの印）。
+## 主人公と同じ2倍の細かさで作り、ボクセル1つを本当の画面の1pxで描く（StackSprite.voxel_scale = VOXEL_SCALE）。
+## 影は VoxelShade で主人公と同じように付ける（炎や魔法の弾は光っているので影を付けない）。作った模型は使い回す。
+## 大きさは偶数にする（奇数だと真ん中に置いたとき本当の画面の半ピクセルずれる）。
 
 const VOXEL_SCALE := 0.5
 
@@ -61,3 +63,314 @@ static func arrow_raw(kind: Arrow.Kind, pitch: float) -> VoxelModel:
 
 static func _put(m: VoxelModel, p: Vector3, c: Color) -> void:
 	m.set_voxel(Vector3i(p.round()), c)
+
+# ---------------------------------------------------------------- 小物
+
+const STONE := Color("8d8f94")
+const ASH := Color("3a3030")
+const LOG := Color("7a4a2a")
+const WOOD_LIGHT := Color("a8743f")
+const WOOD_DARK := Color("6e4526")
+const GOLD := Color("ffd23f")
+const IRON := Color("5a5f6b")
+const GRAVE_STONE := Color("d8d4e8")
+const GRAVE_MARK := Color("6c5c9a")
+const FLAME_COLORS := [Color("e8452c"), Color("ff7a2e"), Color("ffb347"), Color("ffe27a"), Color("fff6d0")]
+const EXIT_ARROW := Color("ffe27a")
+const EXIT_ARROW_EDGE := Color("c9932e")
+const NULL_BOLT := Color("c8b6ff")
+const FIRE_BOLT := Color("ff8a3d")
+const BULLET := Color("ffd23f")
+
+## たき火：石の輪・灰・組んだまき・燃える炎。frame（0〜2）で炎の形が少し変わる（ゆらめき）。
+static func bonfire(frame := 0) -> VoxelModel:
+	var key := "bonfire|%d" % frame
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(24, 24, 28)
+		var c := Vector2(11.5, 11.5)
+		VoxelDraw.cylinder(m, c, 7.0, 0, 0, ASH)
+		for i in 9:
+			var a := TAU * i / 9.0
+			var p := c + Vector2.from_angle(a) * 9.0
+			var tone := STONE.darkened(0.1 * (i % 3))
+			VoxelDraw.ellipsoid(m, Vector3(p.x, p.y, 1.5), Vector3(2.6, 2.6, 2.2), tone)
+		for i in 4:
+			var a := TAU * i / 4.0 + 0.4
+			var foot := c + Vector2.from_angle(a) * 6.5
+			VoxelDraw.rod(m, Vector3(foot.x, foot.y, 1.0), Vector3(c.x, c.y, 9.0), LOG if i % 2 == 0 else WOOD_DARK)
+		var shaded := VoxelShade.apply(m)
+		_flame(shaded, Vector3(c.x, c.y, 4.0), 4.2, 19, frame)
+		_cache[key] = shaded
+	return _cache[key]
+
+## 炎（下が赤く、上ほど黄色く、真ん中は白っぽい）。base の高さから height だけ、半径 r から細くなる。
+static func _flame(m: VoxelModel, base: Vector3, r: float, height: int, frame: int) -> void:
+	for dz in height:
+		var t := float(dz) / height
+		var sway := sin(t * 5.0 + frame * 2.1) * 1.2 * t
+		var rad := r * pow(1.0 - t, 0.75)
+		if rad < 0.6:
+			continue
+		var cx := base.x + sway
+		var cy := base.y + cos(t * 4.0 + frame * 1.7) * 0.8 * t
+		for y in range(floori(cy - rad), ceili(cy + rad) + 1):
+			for x in range(floori(cx - rad), ceili(cx + rad) + 1):
+				var d := Vector2(x, y).distance_to(Vector2(cx, cy)) / rad
+				if d > 1.0:
+					continue
+				# 炎の舌：ふちは上へいくほど切れ切れにする
+				if d > 0.7 and VoxelDraw.hash3(x, y, dz + frame * 31, 4) == 0 and t > 0.3:
+					continue
+				var heat := clampf((1.0 - d) * 0.9 + (1.0 - t) * 0.35, 0.0, 1.0)
+				var i := clampi(int(heat * FLAME_COLORS.size()), 0, FLAME_COLORS.size() - 1)
+				m.set_voxel(Vector3i(x, y, int(base.z) + dz), FLAME_COLORS[i])
+
+## 宝箱：板の箱にふた、金具の帯と、前の金の錠。前は +y。
+static func chest() -> VoxelModel:
+	if not _cache.has("chest"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(22, 16, 16)
+		VoxelDraw.fill(m, Vector3i(1, 1, 0), Vector3i(20, 14, 8), WOOD_LIGHT)
+		for z in [2, 5]:
+			VoxelDraw.fill(m, Vector3i(1, 1, z), Vector3i(20, 14, z), WOOD_DARK)  # 板の継ぎ目
+		VoxelDraw.fill(m, Vector3i(2, 2, 0), Vector3i(19, 13, 8), WOOD_LIGHT)
+		VoxelDraw.fill(m, Vector3i(1, 1, 9), Vector3i(20, 14, 9), WOOD_DARK)  # ふたの境目
+		# 丸いふた
+		for z in range(10, 15):
+			var inset := maxi(0, z - 12)
+			VoxelDraw.fill(m, Vector3i(1, 1 + inset, z), Vector3i(20, 14 - inset, z), WOOD_LIGHT)
+		for x in [4, 5, 16, 17]:
+			for p: Vector3i in m.voxels().keys():
+				if p.x == x:
+					m.set_voxel(p, IRON)
+		VoxelDraw.fill(m, Vector3i(9, 15, 6), Vector3i(12, 15, 10), GOLD)
+		m.set_voxel(Vector3i(10, 15, 7), WOOD_DARK)
+		m.set_voxel(Vector3i(11, 15, 7), WOOD_DARK)
+		_cache["chest"] = VoxelShade.apply(m)
+	return _cache["chest"]
+
+## 墓石：遠くからでも見つけやすい、背の高い白っぽい石。上は丸く、前に十字を彫る。下に台。前は +y。
+static func grave() -> VoxelModel:
+	if not _cache.has("grave"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(22, 14, 46)
+		VoxelDraw.fill(m, Vector3i(1, 1, 0), Vector3i(20, 12, 3), GRAVE_STONE.darkened(0.15))
+		for z in range(4, 46):
+			var half := 8.0
+			if z > 36:
+				half = sqrt(maxf(0.0, 64.0 - pow(z - 36.0, 2.0) * 0.75))
+			if half < 1.0:
+				continue
+			VoxelDraw.fill(m, Vector3i(roundi(10.5 - half), 3, z), Vector3i(roundi(10.5 + half) - 1, 10, z), GRAVE_STONE)
+		VoxelDraw.fill(m, Vector3i(9, 10, 12), Vector3i(12, 10, 36), GRAVE_MARK)
+		VoxelDraw.fill(m, Vector3i(5, 10, 27), Vector3i(16, 10, 30), GRAVE_MARK)
+		_cache["grave"] = VoxelShade.apply(m)
+	return _cache["grave"]
+
+## 門（閉じた出口のマス）：丸太を並べた柵。先はとがり、鉄の帯でしめてある。どの向きの出口でも同じに見えるよう、マスいっぱいの四角。
+static func gate() -> VoxelModel:
+	if not _cache.has("gate"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(28, 28, 46)
+		for gy in 4:
+			for gx in 4:
+				var c := Vector2(3.5 + gx * 7.0, 3.5 + gy * 7.0)
+				var top := 38 + (gx + gy * 3) % 3 * 2
+				var tone := LOG if (gx + gy) % 2 == 0 else LOG.darkened(0.12)
+				VoxelDraw.cylinder(m, c, 3.6, 0, top, tone)
+				for z in range(top + 1, top + 6):
+					VoxelDraw.cylinder(m, c, 3.6 * (1.0 - (z - top) / 6.0), z, z, tone.lightened(0.1))
+		for z0 in [8, 30]:
+			for p: Vector3i in m.voxels().keys():
+				if p.z >= z0 and p.z <= z0 + 2 and (p.x <= 1 or p.x >= 26 or p.y <= 1 or p.y >= 26):
+					m.set_voxel(p, IRON)
+		_cache["gate"] = VoxelShade.apply(m)
+	return _cache["gate"]
+
+## 落ちている物（拾いもの・敵の落とし物）。武器と防具は宝箱、強い鉄球は鉄球そのもの。
+static func pickup(kind: RunState.PickupKind) -> VoxelModel:
+	match kind:
+		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.STAFF_FIRE, RunState.PickupKind.ARMOR:
+			return chest()
+		RunState.PickupKind.STRONG_BALL:
+			return HeroModel.ball_model(true)
+	var key := "pickup|%d" % kind
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		match kind:
+			RunState.PickupKind.MONEY:
+				# 金貨を3枚、少しずらして重ねる
+				m.size = Vector3i(12, 12, 6)
+				for i in 3:
+					var c := Vector2(5.5 + (i % 2) * 1.5, 5.5 + (i / 2) * 1.0 - (i % 2))
+					VoxelDraw.cylinder(m, c, 3.6, i * 2, i * 2 + 1, GOLD.darkened(0.25))
+					VoxelDraw.cylinder(m, c, 2.6, i * 2 + 1, i * 2 + 1, GOLD)
+			RunState.PickupKind.MATERIAL:
+				# 素材：板の小箱
+				m.size = Vector3i(10, 10, 8)
+				VoxelDraw.fill(m, Vector3i(1, 1, 0), Vector3i(8, 8, 7), WOOD_LIGHT)
+				for z in [0, 7]:
+					VoxelDraw.fill(m, Vector3i(1, 1, z), Vector3i(8, 8, z), WOOD_DARK)
+				VoxelDraw.rod(m, Vector3(1, 8, 0), Vector3(8, 1, 7), WOOD_DARK, 1)
+			RunState.PickupKind.HEAL:
+				# 回復の薬：丸いびん・首・せん・光
+				m.size = Vector3i(10, 10, 14)
+				VoxelDraw.ellipsoid(m, Vector3(4.5, 4.5, 4.0), Vector3(3.8, 3.8, 3.8), HeroModel.POTION)
+				VoxelDraw.fill(m, Vector3i(4, 4, 8), Vector3i(5, 5, 10), HeroModel.GLASS_SHINE)
+				VoxelDraw.fill(m, Vector3i(4, 4, 11), Vector3i(5, 5, 12), WOOD_DARK)
+				m.set_voxel(Vector3i(3, 6, 6), HeroModel.GLASS_SHINE)
+			RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS:
+				# 矢の束：3本を横に寝かせてひもでしばる
+				m.size = Vector3i(20, 8, 4)
+				var head := POISON_HEAD if kind == RunState.PickupKind.POISON_ARROWS else ARROW_HEAD
+				var feather := POISON_FEATHER if kind == RunState.PickupKind.POISON_ARROWS else FEATHER
+				for i in 3:
+					var y := 2 + i * 2
+					var z := 1 if i == 1 else 0
+					VoxelDraw.fill(m, Vector3i(3, y, z), Vector3i(16, y, z), SHAFT)
+					VoxelDraw.fill(m, Vector3i(17, y, z), Vector3i(19, y, z), head)
+					VoxelDraw.fill(m, Vector3i(0, y, z), Vector3i(3, y, z), feather)
+					m.set_voxel(Vector3i(1, y - 1, z), feather)
+					m.set_voxel(Vector3i(1, y + 1, z), feather)
+				VoxelDraw.fill(m, Vector3i(9, 1, 0), Vector3i(10, 7, 2), FEATHER_BAND)
+			_:
+				m.size = Vector3i(8, 8, 8)
+				VoxelDraw.ellipsoid(m, Vector3(3.5, 3.5, 3.5), Vector3.ONE * 3.6, HeroModel.STRONG_BALL)
+		_cache[key] = VoxelShade.apply(m)
+	return _cache[key]
+
+## 出口の地面に置く、平たい矢印（ふちは少し暗い）。dir は向き（北＝(0,-1)、東＝(1,0) など）。
+static func exit_arrow(dir: Vector2i = Vector2i(0, -1)) -> VoxelModel:
+	var key := "exit|%d|%d" % [dir.x, dir.y]
+	if not _cache.has(key):
+		var n := 24
+		var north := {}
+		for y in 12:  # 矢じり
+			for x in range(maxi(0, 11 - y), mini(n, 13 + y)):
+				north[Vector2i(x, y)] = true
+		for y in range(12, 24):  # 軸
+			for x in range(8, 16):
+				north[Vector2i(x, y)] = true
+		var m := VoxelModel.new()
+		m.size = Vector3i(n, n, 1)
+		for q: Vector2i in north:
+			var edge := false
+			for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+				if not north.has(q + d):
+					edge = true
+			var p := q
+			match dir:
+				Vector2i(1, 0):
+					p = Vector2i(n - 1 - q.y, q.x)
+				Vector2i(0, 1):
+					p = Vector2i(n - 1 - q.x, n - 1 - q.y)
+				Vector2i(-1, 0):
+					p = Vector2i(q.y, n - 1 - q.x)
+			m.set_voxel(Vector3i(p.x, p.y, 0), EXIT_ARROW_EDGE if edge else EXIT_ARROW)
+		_cache[key] = m
+	return _cache[key]
+
+## 魔法の弾。無の弾は紫の結晶（とがった玉）、火の玉は外が赤く中が黄色い玉。光っているので影は付けない。
+static func bolt(fire: bool) -> VoxelModel:
+	var key := "bolt|%s" % fire
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(8, 8, 8)
+		var c := Vector3(3.5, 3.5, 3.5)
+		if fire:
+			VoxelDraw.ellipsoid(m, c, Vector3.ONE * 3.7, Color("e8452c"))
+			VoxelDraw.ellipsoid(m, c + Vector3(-0.4, -0.4, 0.4), Vector3.ONE * 2.6, FIRE_BOLT)
+			VoxelDraw.ellipsoid(m, c + Vector3(-0.8, -0.8, 0.8), Vector3.ONE * 1.4, Color("ffe27a"))
+		else:
+			for z in 8:
+				var r := 3.6 - absf(z - 3.5)
+				for y in 8:
+					for x in 8:
+						if absf(x - 3.5) + absf(y - 3.5) <= r + 0.5:
+							m.set_voxel(Vector3i(x, y, z), NULL_BOLT if absf(x - 3.5) + absf(y - 3.5) > r - 1.0 else Color("f1ebff"))
+		_cache[key] = m
+	return _cache[key]
+
+## 撃つ敵の弾：黄色い玉（下は少し暗い）。
+static func bullet() -> VoxelModel:
+	if not _cache.has("bullet"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(6, 6, 6)
+		VoxelDraw.ellipsoid(m, Vector3(2.5, 2.5, 2.5), Vector3.ONE * 2.8, BULLET.darkened(0.25))
+		VoxelDraw.ellipsoid(m, Vector3(2.3, 2.3, 2.9), Vector3.ONE * 2.0, BULLET)
+		m.set_voxel(Vector3i(1, 1, 4), Color("fff6d0"))
+		_cache["bullet"] = m
+	return _cache["bullet"]
+
+## 地面の小さな炎（燃え広がった火・炎の雨）。
+static func flame(frame := 0) -> VoxelModel:
+	var key := "flame|%d" % frame
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(12, 12, 16)
+		_flame(m, Vector3(5.5, 5.5, 0.0), 5.0, 16, frame)
+		_cache[key] = m
+	return _cache[key]
+
+## 火柱：太い炎の柱。上ほど明るく、ところどころふくらむ。
+static func pillar() -> VoxelModel:
+	if not _cache.has("pillar"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(16, 16, 80)
+		for z in 80:
+			var t := z / 80.0
+			var r := 6.8 - 0.6 * float(z % 12) / 12.0 - 1.5 * t
+			for y in 16:
+				for x in 16:
+					var d := Vector2(x - 7.5, y - 7.5).length() / r
+					if d > 1.0:
+						continue
+					var heat := clampf((1.0 - d) * 0.8 + t * 0.5, 0.0, 1.0)
+					m.set_voxel(Vector3i(x, y, z), FLAME_COLORS[clampi(int(heat * FLAME_COLORS.size()), 0, FLAME_COLORS.size() - 1)])
+		_cache["pillar"] = m
+	return _cache["pillar"]
+
+## 炎の雨の降る範囲（地面の上の、すけた輪）。r はゲームの座標のpx。
+static func rain_ring(r: float) -> VoxelModel:
+	var key := "rain|%d" % ceili(r)
+	if not _cache.has(key):
+		var rr := ceili(r) * 2.0  # ボクセルで
+		var n := int(rr) * 2
+		var m := VoxelModel.new()
+		m.size = Vector3i(n, n, 1)
+		for y in n:
+			for x in n:
+				var d := Vector2(x - n / 2.0 + 0.5, y - n / 2.0 + 0.5).length()
+				if d <= rr and d >= rr - 3.0:
+					m.set_voxel(Vector3i(x, y, 0), Color(1.0, 0.55, 0.2, 0.9))
+				elif d < rr - 3.0 and (x + y) % 5 == 0 and (x - y) % 3 == 0:
+					m.set_voxel(Vector3i(x, y, 0), Color(1.0, 0.45, 0.15, 0.5))
+		_cache[key] = m
+	return _cache[key]
+
+## 鉄球の落ちる所に出す、すけた丸い影。
+static func aim_shadow() -> VoxelModel:
+	if not _cache.has("aim_shadow"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(12, 12, 1)
+		for y in 12:
+			for x in 12:
+				var d := Vector2(x - 5.5, y - 5.5).length()
+				if d <= 5.8:
+					m.set_voxel(Vector3i(x, y, 0), Color(0, 0, 0, 0.4 if d < 4.5 else 0.25))
+		_cache["aim_shadow"] = m
+	return _cache["aim_shadow"]
+
+## 魔法の弾で狙う高さに浮かべる、赤い四角の輪（角は空ける）。
+static func aim_ring() -> VoxelModel:
+	if not _cache.has("aim_ring"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(16, 16, 1)
+		for i in 16:
+			for t in 2:
+				for p in [Vector3i(i, t, 0), Vector3i(i, 15 - t, 0), Vector3i(t, i, 0), Vector3i(15 - t, i, 0)]:
+					if (i >= 2 and i <= 13) or t == 0:
+						m.set_voxel(p, Color("ff5050"))
+		_cache["aim_ring"] = m
+	return _cache["aim_ring"]

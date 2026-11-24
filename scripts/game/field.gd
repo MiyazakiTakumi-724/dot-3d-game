@@ -41,6 +41,9 @@ var _pickup_nodes := {}  # 拾いものの番号 → StackSprite
 var _gate_nodes := {}  # 門の id → [StackSprite]
 var _arrows: Array[StackSprite] = []
 var _grave_node: StackSprite
+## たき火（炎の形を時間で替えて、ゆらめかせる）
+var _bonfire_node: StackSprite
+var _bonfire_frame := 0
 var _fade: ColorRect
 ## 切り替えの段階：0 なし、1 暗くしている、2 明るくしている
 var _switch_phase := 0
@@ -95,19 +98,16 @@ func _ready() -> void:
 	aim_marker.camera = camera
 	aim_marker.sort_by_cell = true
 	aim_marker.draw_bias = 1
-	aim_marker.set_model(VoxelModel.box(Vector3i(6, 6, 1), Color(0, 0, 0, 0.35)))
+	aim_marker.voxel_scale = Props.VOXEL_SCALE
+	aim_marker.set_model(Props.aim_shadow())
 	aim_marker.force_hidden = true
 	add_child(aim_marker)
 	aim_reticle = StackSprite.new()
 	aim_reticle.camera = camera
 	aim_reticle.draw_bias = 4
 	aim_reticle.force_hidden = true
-	var ring := VoxelModel.new()
-	ring.size = Vector3i(8, 8, 1)  # 偶数の大きさにする（奇数だと真ん中に置いたとき半ピクセルずれて1列欠ける）
-	for i in 8:
-		for c in [Vector3i(i, 0, 0), Vector3i(i, 7, 0), Vector3i(0, i, 0), Vector3i(7, i, 0)]:
-			ring.set_voxel(c, Color("ff5050"))
-	aim_reticle.set_model(ring)
+	aim_reticle.voxel_scale = Props.VOXEL_SCALE
+	aim_reticle.set_model(Props.aim_ring())
 	add_child(aim_reticle)
 	rng.randomize()
 
@@ -161,12 +161,13 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	map = loaded[0]
 	var info: Dictionary = loaded[1]
 	Terrain.build(map, camera, _area_root, info["deco"])
+	_bonfire_node = null
 	if info.has("checkpoint"):
-		_marker(info["checkpoint"], _bonfire_model(), 1)
+		_bonfire_node = _marker(info["checkpoint"], Props.bonfire(), 1)
 	for i in area.pickups.size():
 		var p = area.pickups[i]
 		if not run.is_picked(area.pickup_id(i)):
-			_pickup_nodes[i] = _marker(p[0], _pickup_model(p[1]), 1)
+			_pickup_nodes[i] = _marker(p[0], Props.pickup(p[1]), 1)
 	for ex in area.exits:
 		if ex.door_id != "" and not run.is_door_open(ex.door_id):
 			_close_gate(ex)
@@ -174,7 +175,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 			_add_arrows(ex)
 	if run.grave != null and run.grave.area_id == id:
 		map.set_blocker(run.grave.cell, HeightMap.Blocker.GRAVE)
-		_grave_node = _marker(run.grave.cell, _grave_model(), 2)
+		_grave_node = _marker(run.grave.cell, Props.grave(), 2)
 	_spawn_enemies()
 
 	if player.mover != null:
@@ -369,6 +370,10 @@ func _process(delta: float) -> void:
 	_notice_time = maxf(0.0, _notice_time - delta)
 	_start_hint_time = maxf(0.0, _start_hint_time - delta)
 	_arrow_blink += delta
+	var frame := int(_arrow_blink * 8.0) % 3
+	if _bonfire_node != null and is_instance_valid(_bonfire_node) and frame != _bonfire_frame:
+		_bonfire_frame = frame
+		_bonfire_node.set_model(Props.bonfire(frame))
 	var a := 0.55 + 0.45 * sin(_arrow_blink * 4.0)
 	for s in _arrows:
 		s.modulate.a = a
@@ -564,7 +569,6 @@ func _stick_arrow(a: Arrow) -> void:
 		return
 	var m := Props.arrow_model(a.kind, -Props.PITCH_MAX)
 	var s := _effect_sprite(m, a.to, map.get_height(c), -Props.ARROW_BOX.z * 0.25 * Props.VOXEL_SCALE, STUCK_ARROW_SECONDS)
-	s.voxel_scale = Props.VOXEL_SCALE
 	s.outline_color = Player.OUTLINE_COLOR
 	s.turn = a.direction().angle() - PI / 2
 	s.set_meta("steady", true)
@@ -736,10 +740,8 @@ func _launch_bolt(spell: int, aim: Dictionary) -> void:
 	s.sort_map = map
 	s.sort_radius = 2.0
 	s.draw_bias = 3
-	if spell == Magic.Spell.FIREBALL:
-		s.set_model(VoxelModel.sphere(2, Color("ff8a3d")))
-	else:
-		s.set_model(VoxelModel.box(Vector3i(2, 2, 2), Color("c8b6ff")))
+	s.voxel_scale = Props.VOXEL_SCALE
+	s.set_model(Props.bolt(spell == Magic.Spell.FIREBALL))
 	_area_root.add_child(s)
 	_bolts.append([p, s, spell, mv.height])
 	_place_bolt(p, s)
@@ -790,7 +792,7 @@ func _explode(pos: Vector2, z: float, from_h: int) -> void:
 	var c := HeightMap.world_to_cell(pos)
 	if map.in_bounds(c) and not map.is_wall(c) and z - map.get_height(c) * StackSprite.LEVEL_PX < 10.0 \
 			and Damage.can_hit(from_h, map.get_height(c)):
-		var s := _effect_sprite(_flame_model(), pos, map.get_height(c), 0.0, Magic.FIRE_PATCH_SECONDS)
+		var s := _effect_sprite(Props.flame(rng.randi() % 3), pos, map.get_height(c), 0.0, Magic.FIRE_PATCH_SECONDS)
 		_fires.append([pos, map.get_height(c), Magic.FIRE_PATCH_SECONDS, s])
 
 ## 燃えている所に入った敵はやけどする。
@@ -822,7 +824,7 @@ func _fire_pillar(point: Vector2) -> void:
 		_remove_grave_marker()
 		run.break_grave()
 	var ground := map.get_height(c) if map.in_bounds(c) else 0
-	_effect_sprite(_pillar_model(), point, ground, 0.0, 0.4)
+	_effect_sprite(Props.pillar(), point, ground, 0.0, 0.4)
 
 ## 炎の雨：狙った点のまわりに降る。自分より高い所の敵には当たらない。高い所から使うほど広い。
 func _fire_rain(point: Vector2) -> void:
@@ -833,12 +835,12 @@ func _fire_rain(point: Vector2) -> void:
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and e.walker.height <= mv.height and e.walker.pos.distance_to(point) < r:
 			_hit_enemy(e, Magic.Spell.FIRE_RAIN, mv.height)
-	_effect_sprite(_rain_model(r), point, ground, 0.0, 0.5)
+	_effect_sprite(Props.rain_ring(r), point, ground, 0.0, 0.5)
 	for k in 5:
 		var off := Vector2.from_angle(rng.randf() * TAU) * rng.randf() * r
 		var fc := HeightMap.world_to_cell(point + off)
 		if map.in_bounds(fc) and not map.is_wall(fc) and map.get_height(fc) <= mv.height:
-			_effect_sprite(_flame_model(), point + off, map.get_height(fc), 0.0, 0.5)
+			_effect_sprite(Props.flame(rng.randi() % 3), point + off, map.get_height(fc), 0.0, 0.5)
 
 ## 少しの間だけ出す絵を置く。
 func _effect_sprite(model: VoxelModel, pos: Vector2, h: int, lift: float, seconds: float) -> StackSprite:
@@ -851,6 +853,7 @@ func _effect_sprite(model: VoxelModel, pos: Vector2, h: int, lift: float, second
 	s.sort_map = map
 	s.sort_radius = 3.0
 	s.draw_bias = 2
+	s.voxel_scale = Props.VOXEL_SCALE
 	s.set_model(model)
 	s.refresh()
 	_area_root.add_child(s)
@@ -869,48 +872,9 @@ func _step_effects(delta: float) -> void:
 		var flicker := 1.0 if s.has_meta("steady") else 0.85 + 0.15 * sin(_arrow_blink * 20.0)  # 炎はゆらめく
 		s.modulate.a = clampf(_effects[i][1] * 4.0, 0.0, 1.0) * flicker
 
-## 小さな炎（下が赤、上が黄色）。
-static func _flame_model() -> VoxelModel:
-	var m := VoxelModel.new()
-	m.size = Vector3i(6, 6, 7)
-	for z in 7:
-		var r := 2.6 - z * 0.35
-		var col := Color("e8452c") if z < 3 else (Color("ff9a2e") if z < 5 else Color("ffd84a"))
-		for y in 6:
-			for x in 6:
-				if Vector2(x - 2.5, y - 2.5).length() <= r:
-					m.set_voxel(Vector3i(x, y, z), col)
-	return m
-
-## 火柱（細い柱。上ほど明るい）。
-static func _pillar_model() -> VoxelModel:
-	var m := VoxelModel.new()
-	m.size = Vector3i(8, 8, 40)
-	for z in 40:
-		var col := Color("e8452c") if z < 12 else (Color("ff9a2e") if z < 28 else Color("ffd84a"))
-		for y in 8:
-			for x in 8:
-				if Vector2(x - 3.5, y - 3.5).length() <= 3.6 - (z % 6) * 0.15:
-					m.set_voxel(Vector3i(x, y, z), col)
-	return m
-
-## 炎の雨の降る範囲（地面の上の、すけた輪）。
-static func _rain_model(r: float) -> VoxelModel:
-	var n := int(ceil(r)) * 2
-	var m := VoxelModel.new()
-	m.size = Vector3i(n, n, 1)
-	for y in n:
-		for x in n:
-			var d := Vector2(x - n / 2.0 + 0.5, y - n / 2.0 + 0.5).length()
-			if d <= r and d >= r - 2.0:
-				m.set_voxel(Vector3i(x, y, 0), Color(1.0, 0.55, 0.2, 0.9))
-			elif d < r - 2.0 and (x + y) % 3 == 0:
-				m.set_voxel(Vector3i(x, y, 0), Color(1.0, 0.45, 0.15, 0.45))
-	return m
-
 ## 敵の落とし物を置く（このエリアにいる間だけ残る）。
 func spawn_drop(cell: Vector2i, kind: RunState.PickupKind, amount: int) -> void:
-	var s := _marker(cell, _pickup_model(kind), 1)
+	var s := _marker(cell, Props.pickup(kind), 1)
 	_drops.append([cell, kind, amount, s])
 
 func drops_left() -> int:
@@ -1013,7 +977,7 @@ func kill_player(fell: bool) -> void:
 	_remove_grave_marker()
 	run.on_death(area.id, c)
 	map.set_blocker(c, HeightMap.Blocker.GRAVE)
-	_grave_node = _marker(c, _grave_model(), 2)
+	_grave_node = _marker(c, Props.grave(), 2)
 	player.controllable = false
 	if fell:
 		player.anim.play_fall()  # 両手を上げて落ちていく
@@ -1065,13 +1029,13 @@ func _close_gate(ex: ExitDef) -> void:
 	var nodes := []
 	for c in ex.cells(area.size()):
 		map.set_blocker(c, HeightMap.Blocker.DOOR)
-		nodes.append(_marker(c, _door_model(), 1))
+		nodes.append(_marker(c, Props.gate(), 1))
 	_gate_nodes[ex.door_id] = nodes
 
 func _add_arrows(ex: ExitDef) -> void:
-	var model := Terrain.arrow_model(ex.outward())
+	var model := Props.exit_arrow(ex.outward())
 	for c in ex.cells(area.size()):
-		var s := _marker(c, model, 0)
+		var s := _marker(c, model, 0, false)
 		s.lift_px = 0.5
 		_arrows.append(s)
 
@@ -1106,7 +1070,8 @@ func _on_enemy_shot(b: Bullet) -> void:
 	s.sort_by_cell = true
 	s.sort_map = map
 	s.sort_radius = 2.0
-	s.set_model(VoxelModel.sphere(2, Color("ffd23f")))
+	s.voxel_scale = Props.VOXEL_SCALE
+	s.set_model(Props.bullet())
 	s.refresh()
 	_area_root.add_child(s)
 	_bullets.append([b, s])
@@ -1137,80 +1102,21 @@ func _remove_grave_marker() -> void:
 		_grave_node.queue_free()
 		_grave_node = null
 
-func _marker(cell: Vector2i, model: VoxelModel, bias: int) -> StackSprite:
+## マスに小物（Props の模型）を置く。outline なら主人公と同じ暗いふちを付ける。
+func _marker(cell: Vector2i, model: VoxelModel, bias: int, outline := true) -> StackSprite:
 	var s := StackSprite.new()
 	s.camera = camera
 	s.world_pos = HeightMap.cell_center(cell)
 	s.base_height = map.get_height(cell)
 	s.sort_by_cell = true
 	s.draw_bias = bias
+	s.voxel_scale = Props.VOXEL_SCALE
+	if outline:
+		s.outline_color = Player.OUTLINE_COLOR
 	s.set_model(model)
 	s.refresh()
 	_area_root.add_child(s)
 	return s
-
-## 墓石：遠くからでも見つけやすい、背の高い白っぽい石。
-func _grave_model() -> VoxelModel:
-	var m := VoxelModel.box(Vector3i(10, 6, 22), Color("d8d4e8"))
-	for z in range(14, 18):
-		for x in range(2, 8):
-			m.set_voxel(Vector3i(x, 0, z), Color("6c5c9a"))
-	for z in range(10, 21):
-		m.set_voxel(Vector3i(4, 0, z), Color("6c5c9a"))
-		m.set_voxel(Vector3i(5, 0, z), Color("6c5c9a"))
-	return m
-
-func _bonfire_model() -> VoxelModel:
-	var m := VoxelModel.new()
-	m.size = Vector3i(10, 10, 9)
-	for y in 10:
-		for x in 10:
-			for z in 2:
-				m.set_voxel(Vector3i(x, y, z), Color("5b3a22"))
-	for z in range(2, 9):
-		var r := 4 - z / 2
-		for y in range(5 - r, 5 + r):
-			for x in range(5 - r, 5 + r):
-				m.set_voxel(Vector3i(x, y, z), Color("ff8c1a") if z < 6 else Color("ffd23f"))
-	return m
-
-func _door_model() -> VoxelModel:
-	var m := VoxelModel.box(Vector3i(14, 14, 20), Color("7a5230"))
-	for z in 20:
-		for y in 14:
-			m.set_voxel(Vector3i(6, y, z), Color("5b3a22"))
-	return m
-
-## 宝箱：茶色の箱に金色の帯。武器が入っている。
-func _chest_model() -> VoxelModel:
-	var m := VoxelModel.box(Vector3i(10, 7, 7), Color("8a5a2b"))
-	for x in 10:
-		for y in 7:
-			m.set_voxel(Vector3i(x, y, 4), Color("ffd23f"))
-	for z in 7:
-		m.set_voxel(Vector3i(4, 6, z), Color("ffd23f"))
-		m.set_voxel(Vector3i(5, 6, z), Color("ffd23f"))
-	return m
-
-func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
-	match kind:
-		RunState.PickupKind.MONEY:
-			return VoxelModel.box(Vector3i(4, 4, 2), Color("ffd23f"))
-		RunState.PickupKind.MATERIAL:
-			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
-		RunState.PickupKind.HEAL:
-			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
-		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.STAFF_FIRE, RunState.PickupKind.ARMOR:
-			return _chest_model()
-		RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS:
-			var m := VoxelModel.box(Vector3i(6, 2, 2), Color("e8d9b0"))
-			var tip := Color("9be36b") if kind == RunState.PickupKind.POISON_ARROWS else Color("9aa0a8")
-			for y in 2:
-				m.set_voxel(Vector3i(5, y, 0), tip)
-				m.set_voxel(Vector3i(5, y, 1), tip)
-			return m
-		_:
-			return VoxelModel.sphere(4, Color("7a2230"))
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()

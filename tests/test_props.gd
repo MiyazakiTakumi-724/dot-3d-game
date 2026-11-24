@@ -35,3 +35,31 @@ func test_arrow_models_are_quantized_and_cached():
 	assert_same(a, Props.arrow_model(Arrow.Kind.NORMAL, 0.0))
 	assert_ne(a, Props.arrow_model(Arrow.Kind.NORMAL, 0.6))
 	assert_same(Props.arrow_model(Arrow.Kind.NORMAL, 5.0), Props.arrow_model(Arrow.Kind.NORMAL, PI / 2))
+
+## 出口の矢印は平たく、北向きなら先が上（y=0）の真ん中にある。向きごとに回して作る
+func test_exit_arrow_points_its_way():
+	var n := Props.exit_arrow(Vector2i(0, -1))
+	assert_eq(n.size.z, 1)
+	assert_ne(n.get_voxel(Vector3i(n.size.x / 2, 0, 0)).a, 0.0)
+	assert_eq(n.get_voxel(Vector3i(0, 0, 0)).a, 0.0)
+	var e := Props.exit_arrow(Vector2i(1, 0))
+	assert_ne(e.get_voxel(Vector3i(e.size.x - 1, e.size.y / 2, 0)).a, 0.0)
+
+## 小物はみな主人公と同じ細かさの模型で、大きさは偶数（真ん中に置いても半ピクセルずれない）。同じものは使い回す
+func test_props_are_even_sized_and_cached():
+	var models := [Props.bonfire(0), Props.bonfire(2), Props.chest(), Props.grave(), Props.gate(), Props.bolt(true), Props.bolt(false),
+		Props.bullet(), Props.flame(1), Props.pillar(), Props.rain_ring(13.0), Props.aim_shadow(), Props.aim_ring()]
+	for k in [RunState.PickupKind.MONEY, RunState.PickupKind.MATERIAL, RunState.PickupKind.HEAL, RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS]:
+		models.append(Props.pickup(k))
+	for m: VoxelModel in models:
+		assert_gt(m.voxels().size(), 0)
+		assert_eq(m.size.x % 2, 0, str(m.size))
+		assert_eq(m.size.y % 2, 0, str(m.size))
+	assert_same(Props.chest(), Props.pickup(RunState.PickupKind.SWORD))
+	assert_same(Props.grave(), Props.grave())
+	assert_ne(Props.bonfire(0), Props.bonfire(1))
+
+## 墓石は背が高く（遠くから見つけやすい）、前に彫った印がある
+func test_grave_is_tall_with_mark():
+	var g := Props.grave()
+	assert_gt(g.size.z, 40)
