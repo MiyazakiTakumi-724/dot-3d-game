@@ -490,3 +490,71 @@ func test_poison_arrow_choice_needs_skill():
 	for i in 3:
 		f.run.stats.allocate(PlayerStats.Stat.BOW)
 	assert_true(f.menu.choose_arrow(Arrow.Kind.POISON))
+
+func _solo_enemy(m: HeightMap, cell: Vector2i) -> Enemy:
+	for e in f.enemies:
+		e.queue_free()
+	f.enemies.clear()
+	var e := Enemy.new()
+	e.setup(m, cell, Vector2.RIGHT, f.player, f.camera, EnemyKind.Kind.MELEE)
+	add_child_autofree(e)
+	e.set_process(false)
+	f.enemies.append(e)
+	return e
+
+func _use_map(m: HeightMap, cell: Vector2i) -> void:
+	f.map = m
+	f.player.mover.map = m
+	f.player.mover.place(cell)
+
+## 野営地でエアガンと弾を拾い、敵にカーソルを重ねて撃つと、その高さへまっすぐ飛んで当たる
+func test_gun_from_camp_auto_aims_enemy():
+	_get_camp_pickup(RunState.PickupKind.GUN)
+	_get_camp_pickup(RunState.PickupKind.AMMO)
+	assert_eq(f.run.inventory.ammo, 40)
+	assert_true(f.hotbar.select_slot(4, f.run.inventory.equipment))
+	var m := HeightMap.new(Vector2i(12, 3))
+	for y in 3:
+		m.set_height(Vector2i(1, y), 2)
+	_use_map(m, Vector2i(1, 1))
+	var e := _solo_enemy(m, Vector2i(6, 1))
+	var screen: Vector2 = f.camera.world_to_screen(e.walker.pos, e.walker.height * StackSprite.LEVEL_PX + 4.0)
+	var aim: Dictionary = f.gun_aim_at(screen)
+	assert_eq(aim["enemy"], e)
+	var hp: int = e.walker.hp
+	assert_true(f.fire_gun(screen))
+	assert_eq(f.run.inventory.ammo, 39)
+	for i in 60:
+		f._step_pellets(1.0 / 60)
+	assert_eq(hp - e.walker.hp, Damage.gun(5, 0))
+	assert_false(f.fire_gun(screen))  # 撃つ間隔
+
+## ホイールで撃つ高さを地面から上げ下げできる
+func test_wheel_offsets_aim_height():
+	f.run.inventory.equipment.gain(Equipment.Slot.GUN, 1)
+	f.hotbar.select_slot(4, f.run.inventory.equipment)
+	var screen := Vector2(200, 90)
+	var base: int = f.gun_aim_at(screen)["level"]
+	f.change_aim_offset(1)
+	assert_eq(f.gun_aim_at(screen)["level"], base + 1)
+	for i in 10:
+		f.change_aim_offset(1)
+	assert_eq(f.aim_offset, AirGun.MAX_OFFSET)
+
+func test_no_ammo_no_fire():
+	f.run.inventory.equipment.gain(Equipment.Slot.GUN, 1)
+	f.hotbar.select_slot(4, f.run.inventory.equipment)
+	assert_false(f.fire_gun(Vector2(200, 90)))
+	assert_string_contains(f.ui_message(), "弾がない")
+
+## 敵が落とした弾は拾える（エリアを出ると消える）
+func test_enemy_drop_ammo_and_pick():
+	var c := Continent.START_CELL + Vector2i(2, 0)
+	f.spawn_drop(c, RunState.PickupKind.AMMO, 5)
+	f.player.mover.place(c)
+	f._process(0.016)
+	assert_eq(f.run.inventory.ammo, 5)
+	assert_eq(f.drops_left(), 0)
+	f.spawn_drop(c, RunState.PickupKind.AMMO, 5)
+	_walk_out(_exit("camp", "hills"))
+	assert_eq(f.drops_left(), 0)

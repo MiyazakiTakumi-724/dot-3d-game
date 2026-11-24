@@ -84,7 +84,7 @@ func _build_equip_page() -> void:
 	_rank_box.position = Vector2(176, 42)
 	_rank_box.add_theme_constant_override("separation", 2)
 	_equip_root.add_child(_rank_box)
-	_items = _label(_equip_root, "", Vector2(176, 128))
+	_items = _label(_equip_root, "", Vector2(176, 120))
 
 func _build_stats_page() -> void:
 	_stats_root = _page_root()
@@ -211,7 +211,8 @@ func _refresh_equip() -> void:
 	if selected_slot == Equipment.Slot.BOW:
 		_add_arrow_choices()
 	var inv := run.inventory
-	_items.text = "回復 ×%d　素材 ×%d\nお金 %d" % [inv.heals, inv.materials, inv.money]
+	_items.text = "回復 ×%d　素材 ×%d\n矢 ×%d　毒矢 ×%d　弾 ×%d\nお金 %d" % [inv.heals, inv.materials,
+		inv.arrow_count(Arrow.Kind.NORMAL), inv.arrow_count(Arrow.Kind.POISON), inv.ammo, inv.money]
 
 func _refresh_stats() -> void:
 	var st := run.stats

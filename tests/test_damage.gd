@@ -40,3 +40,8 @@ func test_bow():
 	assert_eq(Damage.bow(5, 0.3, 1.0, 0), 1)
 	assert_eq(Damage.bow(5, 1.0, 0.5, 0), 2)
 	assert_eq(Damage.bow(5, 1.0, 1.0, 0, 2), 10)  # 高所射撃で2段下
+
+## エアガン：攻撃力 × 0.4 ×（1 ＋ エアガンのポイント × 0.1）。初期状態で2（17.5）
+func test_gun():
+	assert_eq(Damage.gun(5, 0), 2)
+	assert_eq(Damage.gun(10, 5), 6)

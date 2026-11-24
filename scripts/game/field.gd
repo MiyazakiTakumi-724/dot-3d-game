@@ -59,6 +59,17 @@ var _notice_text := ""
 var _notice_time := 0.0
 var sword := Sword.new()
 var bow := Bow.new()
+var gun := AirGun.new()
+## エアガンの撃つ高さを、カーソルの下の地面から何段ずらすか（マウスホイール）
+var aim_offset := 0
+var _pellets: Array = []  # 飛んでいるエアガンの弾 [Pellet, StackSprite, ダメージ]
+## 敵の落とし物（このエリアにいる間だけ）[マス, 種類, 数, StackSprite]
+var _drops: Array = []
+var rng := RandomNumberGenerator.new()
+const AMMO_DROP_CHANCE := 0.4  ## 敵が弾を落とす確率【提案】
+const AMMO_DROP_AMOUNT := 5
+## エアガンの照準（狙う高さに浮かぶ輪）。地面の影は aim_marker
+var aim_reticle: StackSprite
 var _shots: Array = []  # 飛んでいる矢 [Arrow, StackSprite, ダメージ]
 var _arrow_blink := 0.0
 ## まだ作っていない、ほかのエリアのモデルの名前（遊んでいる間に少しずつ作る）
@@ -87,6 +98,18 @@ func _ready() -> void:
 	aim_marker.set_model(VoxelModel.box(Vector3i(6, 6, 1), Color(0, 0, 0, 0.35)))
 	aim_marker.force_hidden = true
 	add_child(aim_marker)
+	aim_reticle = StackSprite.new()
+	aim_reticle.camera = camera
+	aim_reticle.draw_bias = 4
+	aim_reticle.force_hidden = true
+	var ring := VoxelModel.new()
+	ring.size = Vector3i(8, 8, 1)  # 偶数の大きさにする（奇数だと真ん中に置いたとき半ピクセルずれて1列欠ける）
+	for i in 8:
+		for c in [Vector3i(i, 0, 0), Vector3i(i, 7, 0), Vector3i(0, i, 0), Vector3i(7, i, 0)]:
+			ring.set_voxel(c, Color("ff5050"))
+	aim_reticle.set_model(ring)
+	add_child(aim_reticle)
+	rng.randomize()
 
 	enter_area(Continent.START_AREA, Continent.START_CELL)
 	player.setup(map, rules, Continent.START_CELL, camera)
@@ -114,6 +137,8 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_enemy_index.clear()
 	_bullets.clear()
 	_shots.clear()
+	_pellets.clear()
+	_drops.clear()
 	bow.cancel()
 	_pickup_nodes.clear()
 	_gate_nodes.clear()
@@ -194,7 +219,7 @@ func _spawn_enemies() -> void:
 		e.walker.forbidden = safe
 		e.shot.connect(_on_enemy_shot)
 		e.melee_hit.connect(_on_melee_hit.bind(e))
-		e.walker.died.connect(_on_enemy_died.bind(area.id, i, e.kind, lv))
+		e.walker.died.connect(_on_enemy_died.bind(area.id, i, e.kind, lv, e.walker))
 		_area_root.add_child(e)
 		enemies.append(e)
 		_enemy_index[e] = i
@@ -209,8 +234,10 @@ func has_enemy(index: int) -> bool:
 			return true
 	return false
 
-func _on_enemy_died(area_id: String, index: int, kind: EnemyKind.Kind, level: int) -> void:
+func _on_enemy_died(area_id: String, index: int, kind: EnemyKind.Kind, level: int, w: EnemyWalker) -> void:
 	roster.kill(area_id, index)
+	if area_id == area.id and rng.randf() < AMMO_DROP_CHANCE:
+		spawn_drop(w.cell(), RunState.PickupKind.AMMO, AMMO_DROP_AMOUNT)
 	if run.on_enemy_killed(kind, level) > 0:
 		notice("レベル%d になった！\nTab：ポイントを振る" % run.stats.level)
 		apply_stats()
@@ -293,6 +320,7 @@ func _process(delta: float) -> void:
 	roster.tick(delta)
 	sword.update(delta)
 	bow.update(delta)
+	gun.update(delta)
 	player.mover.tick(delta)
 	if bow.charging and (hotbar.selected != Hotbar.Item.BOW or menu.is_open() or area_state.result != AreaState.Result.PLAYING):
 		bow.cancel()
@@ -306,6 +334,7 @@ func _process(delta: float) -> void:
 			respawn()
 		_step_bullets(delta)
 		_step_shots(delta)
+		_step_pellets(delta)
 		_step_poison(delta)
 		if area_state.result == AreaState.Result.PLAYING:
 			if player.hp <= 0 or player.mover.fell:
@@ -345,6 +374,13 @@ func _play_step() -> void:
 		if is_instance_valid(e) and EnemyKind.contact(e.kind) and e.walker.touches(player.mover.pos, player.mover.height):
 			hurt_player(e.attack)
 			break
+	for i in range(_drops.size() - 1, -1, -1):
+		var d = _drops[i]
+		if RunState.can_reach_pickup(player.mover.pos, player.mover.height, d[0], map.get_height(d[0])):
+			run.take_drop(d[1], d[2])
+			d[3].queue_free()
+			_drops.remove_at(i)
+			_on_picked(d[1], d[2])
 	ball.rules_ball.try_pick_up(player.mover)
 	_sync_ball_rank()
 	var ex := world.exit_through(area.id, c, player.mover.edge_push)
@@ -354,7 +390,11 @@ func _play_step() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
 		return
-	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+	if event is InputEventMouseButton and event.pressed and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		if hotbar.selected == Hotbar.Item.GUN:
+			change_aim_offset(1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if bow.charging:
 			release_bow()
 			get_viewport().set_input_as_handled()
@@ -386,6 +426,8 @@ func use_item() -> bool:
 			return swing_sword()
 		Hotbar.Item.BOW:
 			return start_bow()
+		Hotbar.Item.GUN:
+			return fire_gun()
 		Hotbar.Item.HEAL:
 			return use_heal()
 	return false
@@ -527,13 +569,108 @@ func _step_poison(delta: float) -> void:
 
 ## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
 func _hold_to_swing() -> void:
-	if hotbar.selected == Hotbar.Item.SWORD and not menu.is_open() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+	var held := hotbar.selected == Hotbar.Item.SWORD or hotbar.selected == Hotbar.Item.GUN
+	if held and not menu.is_open() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		use_item()
+
+func change_aim_offset(d: int) -> void:
+	aim_offset = clampi(aim_offset + d, -AirGun.MAX_OFFSET, AirGun.MAX_OFFSET)
+
+## エアガンの狙い。画面の点 screen にカーソルがあるとき、撃つ先の点・高さの段・重なっている敵。
+## 敵の体にカーソルを重ねると、その敵の高さに自動で合う。そうでなければ、カーソルの下の地面の高さ＋ホイールの段。
+func gun_aim_at(screen: Vector2) -> Dictionary:
+	var best: Enemy = null
+	var best_d := 8.0
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive:
+			var d := screen.distance_to(camera.world_to_screen(e.walker.pos, e.walker.height * StackSprite.LEVEL_PX + 4.0))
+			if d < best_d:
+				best_d = d
+				best = e
+	if best != null:
+		return {"point": best.walker.pos, "level": best.walker.height, "enemy": best}
+	var ground := camera.pick_ground(screen, map, MAX_HEIGHT)
+	var level := clampi(map.get_height(HeightMap.world_to_cell(ground)) + aim_offset, 0, MAX_HEIGHT)
+	return {"point": camera.screen_to_world(screen, level * StackSprite.LEVEL_PX), "level": level, "enemy": null}
+
+## エアガンを撃つ（押したままで連射）。狙った高さへまっすぐ飛ぶ。弾がなければ false。
+func fire_gun(screen = null) -> bool:
+	var eq := run.inventory.equipment
+	if eq.effective(Equipment.Slot.GUN) == 0:
+		return false
+	if run.inventory.ammo <= 0:
+		if gun.cooldown <= 0.0:
+			notice("弾がない", 1.5)
+		return false
+	var skills := run.stats.skills_in(PlayerStats.Stat.GUN)
+	if not gun.try_fire(skills >= 2):
+		return false
+	run.inventory.ammo -= 1
+	var aim := gun_aim_at(screen if screen != null else get_viewport().get_mouse_position())
+	var mv := player.mover
+	var p := Pellet.new()
+	p.aim(mv.pos, mv.height * StackSprite.LEVEL_PX + 5.0, aim["point"], aim["level"] * StackSprite.LEVEL_PX + 4.0, 1 if skills >= 1 else 0)
+	var dmg := Damage.gun(current_attack(), run.stats.points_in(PlayerStats.Stat.GUN))
+	var s := StackSprite.new()
+	s.camera = camera
+	s.sort_by_cell = true
+	s.sort_map = map
+	s.sort_radius = 2.0
+	s.draw_bias = 3
+	s.set_model(VoxelModel.box(Vector3i(2, 2, 2), Color("9fd8ff")))
+	_area_root.add_child(s)
+	_pellets.append([p, s, dmg])
+	_place_pellet(p, s)
+	return true
+
+func pellets_in_flight() -> int:
+	return _pellets.size()
+
+func _place_pellet(p: Pellet, s: StackSprite) -> void:
+	s.world_pos = p.pos
+	s.base_height = maxi(0, int(floor(p.z / StackSprite.LEVEL_PX)))
+	s.lift_px = p.z - s.base_height * StackSprite.LEVEL_PX
+	s.refresh()
+
+## エアガンの弾を進め、体に当たった敵（狙った高さの敵）にダメージ。墓石に当たれば壊す。
+func _step_pellets(delta: float) -> void:
+	for i in range(_pellets.size() - 1, -1, -1):
+		var p: Pellet = _pellets[i][0]
+		var s: StackSprite = _pellets[i][1]
+		var dmg: int = _pellets[i][2]
+		p.step(delta, map)
+		if p.alive and area_state.result == AreaState.Result.PLAYING:
+			for e in enemies:
+				if is_instance_valid(e) and e.walker.alive and p.hits_body(e.walker.pos, e.walker.height):
+					e.walker.take_damage(dmg)
+					_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
+					p.alive = false
+					break
+		if not p.alive:
+			if run.grave != null and run.grave.area_id == area.id and p.hit_grave == run.grave.cell and area_state.result == AreaState.Result.PLAYING:
+				_remove_grave_marker()
+				run.break_grave()
+			s.queue_free()
+			_pellets.remove_at(i)
+			continue
+		_place_pellet(p, s)
+
+## 敵の落とし物を置く（このエリアにいる間だけ残る）。
+func spawn_drop(cell: Vector2i, kind: RunState.PickupKind, amount: int) -> void:
+	var s := _marker(cell, _pickup_model(kind), 1)
+	_drops.append([cell, kind, amount, s])
+
+func drops_left() -> int:
+	return _drops.size()
 
 func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
 	match kind:
 		RunState.PickupKind.BOW:
 			notice("弓を手に入れた！\n3：持ちかえ　押して溜め、離して撃つ")
+		RunState.PickupKind.GUN:
+			notice("エアガンを手に入れた！\n4：持ちかえ　ホイール：撃つ高さ")
+		RunState.PickupKind.AMMO:
+			notice("弾 ×%d" % amount, 1.5)
 		RunState.PickupKind.ARROWS:
 			notice("矢 ×%d" % amount, 1.5)
 		RunState.PickupKind.POISON_ARROWS:
@@ -570,6 +707,18 @@ func _update_aim() -> void:
 		player.mover.facing = (target - player.mover.pos).normalized()
 	var show := playing and hotbar.selected == Hotbar.Item.IRON_BALL \
 		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map, player.mover.height)
+	var show_reticle := false
+	if playing and hotbar.selected == Hotbar.Item.GUN and run.inventory.equipment.effective(Equipment.Slot.GUN) > 0:
+		# エアガン：狙う高さに輪を浮かべ、その真下の地面に影を出す
+		var aim := gun_aim_at(get_viewport().get_mouse_position())
+		target = aim["point"]
+		var c := HeightMap.world_to_cell(target)
+		show = map.in_bounds(c)
+		show_reticle = show
+		aim_reticle.world_pos = target
+		aim_reticle.base_height = aim["level"]
+		aim_reticle.lift_px = 4.0
+	aim_reticle.force_hidden = not show_reticle
 	if playing and bow.charging:
 		# 弓を溜めている間は、今離したら矢が落ちる点（届かなければ手前）
 		target = Bow.landing(player.mover.pos, player.mover.height, _aim_point(), bow.rate(), map)
@@ -761,8 +910,10 @@ func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
 			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
 		RunState.PickupKind.HEAL:
 			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
-		RunState.PickupKind.SWORD, RunState.PickupKind.BOW:
+		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.GUN:
 			return _chest_model()
+		RunState.PickupKind.AMMO:
+			return VoxelModel.box(Vector3i(4, 3, 3), Color("6f8fa8"))
 		RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS:
 			var m := VoxelModel.box(Vector3i(6, 2, 2), Color("e8d9b0"))
 			var tip := Color("9be36b") if kind == RunState.PickupKind.POISON_ARROWS else Color("9aa0a8")
@@ -830,6 +981,10 @@ func hotbar_text() -> String:
 			name = InventoryMenu.weapon_label(slot, eq.effective(slot))
 			if item == Hotbar.Item.BOW:
 				name += "(矢%d)" % _usable_arrows()
+			elif item == Hotbar.Item.GUN:
+				name += "(弾%d)" % run.inventory.ammo
+				if aim_offset != 0:
+					name += "高さ%+d" % aim_offset
 		var t := "%d %s" % [i + 1, name]
 		parts.append("[%s]" % t if item == hotbar.selected else " %s " % t)
 	return "".join(parts)

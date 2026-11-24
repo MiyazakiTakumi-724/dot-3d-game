@@ -8,6 +8,8 @@ var heals: int = 0
 ## 武器と防具（強い鉄球は鉄球のランク2）
 var equipment := Equipment.new()
 
+## エアガンの弾の数
+var ammo := 0
 ## 矢の数（Arrow.Kind → 数）と、撃つ矢の種類（インベントリで選ぶ）
 var arrows := {}
 var arrow_kind: Arrow.Kind = Arrow.Kind.NORMAL

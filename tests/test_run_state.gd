@@ -170,3 +170,20 @@ func test_take_arrow_falls_back_to_normal():
 	assert_eq(inv.take_arrow(0), Arrow.Kind.NORMAL)  # 技能がないと毒矢は使えない
 	assert_eq(inv.take_arrow(1), Arrow.Kind.POISON)
 	assert_eq(inv.take_arrow(1), -1)
+
+## 弾も持ち物なので、死ぬと墓石に入る
+func test_ammo_goes_to_grave_and_pickups():
+	rs.collect("c:3", RunState.PickupKind.GUN, 1)
+	rs.collect("c:4", RunState.PickupKind.AMMO, 30)
+	assert_eq(rs.inventory.equipment.effective(Equipment.Slot.GUN), 1)
+	assert_eq(rs.inventory.ammo, 30)
+	var g := rs.on_death("hills", Vector2i(2, 2))
+	assert_eq([rs.inventory.ammo, g.ammo], [0, 30])
+	rs.break_grave()
+	assert_eq(rs.inventory.ammo, 30)
+
+## 敵の落とし物は拾い済みとして覚えない（何度でも拾える）
+func test_drop_pickup_not_remembered():
+	rs.take_drop(RunState.PickupKind.AMMO, 5)
+	rs.take_drop(RunState.PickupKind.AMMO, 5)
+	assert_eq(rs.inventory.ammo, 10)

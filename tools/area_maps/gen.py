@@ -366,6 +366,8 @@ def make_camp():
     pickup(g, 15, 8, 'BOW', 1)
     pickup(g, 15, 12, 'ARROWS', 50)
     pickup(g, 9, 12, 'POISON_ARROWS', 10)
+    pickup(g, 12, 6, 'GUN', 1)
+    pickup(g, 14, 6, 'AMMO', 40)
     g.start = (12, 11)
     return g
 
