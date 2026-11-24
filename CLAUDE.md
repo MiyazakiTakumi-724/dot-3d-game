@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を使った、見下ろしアクションゲーム。Godot 4 / GDScript で作り、Steamでのリリースを目指す。開発者は1人で、ゲーム制作は初めて。ユーザーとのやり取りは日本語で行う。
+sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を使った、見下ろしアクションゲーム。Godot 4.7 / GDScript で作り、Steamでのリリースを目指す。開発者は1人で、ゲーム制作は初めて。ユーザーとのやり取りは日本語で行う。
 
 ## まず読むもの
 
@@ -75,7 +75,7 @@ scripts/game/field.gd エリアを入れ替えるメインシーンの中身（e
 scenes/field.tscn     メインシーン（試作3）
 scenes/stage_01.tscn  試作1
 tests/           GUTのテスト（test_*.gd）。tests/helpers/ はテスト用の道具（経路探索など）
-addons/gut/      GUT 9.5.0（同梱。Godot 4.5向け）
+addons/gut/      GUT 9.5.0（同梱。Godot 4.5向けだが、gut_loader.gd の1行を直して 4.7 で動かしている）
 ```
 
 ## 決まりごと
