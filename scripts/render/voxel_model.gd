@@ -19,6 +19,27 @@ func set_voxel(p: Vector3i, c: Color) -> void:
 func voxels() -> Dictionary:
 	return _voxels
 
+## 同じ形の写し（輪切りの画像は作り直す）。
+func copy() -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = size
+	m._voxels = _voxels.duplicate()
+	return m
+
+## 箱 from〜to（両端を含む）の中のボクセルを、offset だけずらす（ずらした先にあったものは上書き）。
+func move_box(from: Vector3i, to: Vector3i, offset: Vector3i) -> void:
+	var moved := {}
+	for z in range(from.z, to.z + 1):
+		for y in range(from.y, to.y + 1):
+			for x in range(from.x, to.x + 1):
+				var p := Vector3i(x, y, z)
+				if _voxels.has(p):
+					moved[p + offset] = _voxels[p]
+					_voxels.erase(p)
+	for q: Vector3i in moved:
+		set_voxel(q, moved[q])
+	_textures = []
+
 ## そのボクセルの色。何もなければ透明。
 func get_voxel(p: Vector3i) -> Color:
 	return _voxels.get(p, Color(0, 0, 0, 0))

@@ -604,15 +604,15 @@ func spin_slash() -> bool:
 			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
 	return true
 
-## 今の装備で持ちかえられる物の姿を、先に作っておく（姿を作るのに1つ50〜80msかかるので、持ちかえたときに止まらないように）。
+## 今の装備で持ちかえられる物の姿（立ち姿・歩く姿・鉄球を放した姿）を、先に作っておく
+## （立ち姿は1つ作るのに50〜80msかかるので、持ちかえたときに止まらないように）。
 func warm_hero_looks() -> void:
 	var eq := run.inventory.equipment
-	var armor := eq.current(Equipment.Slot.ARMOR)
-	HeroModel.build("", armor).textures()
-	HeroModel.build("heal", armor).textures()
+	var helds := ["", "heal"]
 	for slot in [Equipment.Slot.BALL, Equipment.Slot.SWORD, Equipment.Slot.BOW, Equipment.Slot.STAFF]:
 		if eq.current(slot) != "":
-			HeroModel.build(eq.current(slot), armor).textures()
+			helds.append(eq.current(slot))
+	HeroModel.warm(helds, eq.current(Equipment.Slot.ARMOR))
 
 ## 主人公が手に持って見せる物（HeroModel）。鉄球・剣・弓・杖は品物の id、回復は "heal"。
 ## 鉄球は持っている間だけ両手で抱える（落としたあとは何も持たない）。

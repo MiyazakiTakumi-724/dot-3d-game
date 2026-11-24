@@ -263,7 +263,7 @@ func test_ball_landing_while_dying_does_not_break_new_grave():
 	var b: IronBall = f.ball.rules_ball
 	assert_true(b.drop_at(f.player.mover, f.map, f.player.mover.pos + Vector2(6, 0)))
 	f.kill_player(false)
-	b.update(0.1, f.player.mover, f.map, f.rules)
+	b.update(1.0, f.player.mover, f.map, f.rules)
 	assert_not_null(f.run.grave)
 	assert_eq(f.run.inventory.materials, 0)
 
@@ -767,6 +767,10 @@ func test_hero_look_follows_held_item():
 	f.ball._process(0.0)
 	assert_eq(f.player.held_look, "")  # 落としたあとは手に何もない
 	assert_false(f.ball.force_hidden)
+	# 放した直後は、両手を前に出した姿。鉄球は手元から落ちていく
+	assert_eq(f.player.anim.pose(), "release")
+	assert_same(f.player._layers, HeroModel.build("", "", "release").textures())
+	f.player.anim.update(HeroAnim.RELEASE_TIME, 0.0)
 	assert_true(f.hotbar.select_slot(4, eq))
 	f._process(0.016)
 	assert_eq(f.player.held_look, "staff_none_1")
@@ -776,6 +780,34 @@ func test_hero_look_follows_held_item():
 	f._process(0.016)
 	assert_eq([f.player.held_look, f.player.armor_look], ["sword_1", "armor_1"])
 	assert_same(f.player._layers, HeroModel.build("sword_1", "armor_1").textures())
+
+## 放した鉄球は、主人公の手元（体の前、足元より上）から落とした点へ落ちていき、着くと土ぼこりが立つ
+func test_dropped_ball_falls_from_hands_to_target():
+	_walk_out(_exit("camp", "hills"))
+	f.player.mover.place(_open_cell())
+	f.player.mover.facing = Vector2.RIGHT
+	var target: Vector2 = f.player.mover.pos + Vector2(14, 0)
+	var b: IronBall = f.ball.rules_ball
+	assert_true(b.drop_at(f.player.mover, f.map, target))
+	f.ball._process(0.0)
+	assert_almost_eq(f.ball.world_pos, f.player.mover.pos + Vector2(Ball.HAND_FORWARD_PX, 0), Vector2(0.01, 0.01))
+	assert_gt(f.ball.lift_px, 0.0)
+	f.ball._process(IronBall.DROP_TIME * 0.5)
+	assert_gt(f.ball.world_pos.x, f.player.mover.pos.x + Ball.HAND_FORWARD_PX)
+	var dust_before: int = f.get_children().filter(func(n: Node) -> bool: return n is ImpactDust).size()
+	f.ball._process(1.0)
+	assert_eq(f.ball.world_pos, b.pos)
+	assert_eq(f.ball.lift_px, 0.0)
+	assert_eq(f.get_children().filter(func(n: Node) -> bool: return n is ImpactDust).size(), dust_before + 1)
+
+## 歩くと足を交互に出す姿になり、止まると立ち姿に戻る
+func test_walking_switches_step_poses():
+	f.player.anim.update(0.016, 1.0)
+	f.player._apply_model()
+	assert_same(f.player._layers, HeroModel.build(f.player.held_look, f.player.armor_look, "step_l").textures())
+	f.player.anim.update(0.016, 0.0)
+	f.player._apply_model()
+	assert_same(f.player._layers, HeroModel.build(f.player.held_look, f.player.armor_look).textures())
 
 ## 本当の画面は640×360で、ゲームの座標（320×180）を2倍にして描く。主人公はボクセル1つを本当の画面の1pxで、ふちを付けて描く
 func test_pixel_scale_and_fine_hero():

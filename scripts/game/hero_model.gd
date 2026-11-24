@@ -3,15 +3,21 @@ extends RefCounted
 ## 主人公の姿（ボクセル）。頭の大きいちびキャラの勇者で、手に持つ物と防具が姿で分かる。
 ## ほかの物の2倍の細かさで作り、ボクセル1つを本当の画面の1pxで描く（VOXEL_SCALE）。ゲームの座標では 14×14×19 の大きさ。
 ## 前は +y、上は +z。体の真ん中が模型の真ん中（SIZE の半分）に来る。左右の x は 27 − x で写す。
-## build(手に持つ品物の id, 防具の id) で作る。持つ物：鉄球・剣・弓・杖は品物の id、回復は "heal"、何も持たないときは ""。
+## build(手に持つ品物の id, 防具の id, 姿勢) で作る。持つ物：鉄球・剣・弓・杖は品物の id、回復は "heal"、何も持たないときは ""。
+## 姿勢（HeroAnim.pose）：""（立ち）・step_l / step_r（歩く。立ち姿の足と腕をずらして作るので軽い）・release（鉄球を放した、両手を前に出した姿）。
 ## デザインは STYLES の中から style で選ぶ（2026-11-25 にユーザーへ見せた案。選ばれたものを残す）。
 
 const SIZE := Vector3i(28, 28, 38)
 const VOXEL_SCALE := 0.5  ## = 1 / StackCamera.PIXEL_SCALE
 ## 杖の先の玉の、手前の横の1つ（杖を持っているときだけある。玉の色そのまま）
 const STAFF_TIP := Vector3i(20, 16, 33)
-## 両手で持った鉄球の真ん中
+## 両手で持った鉄球の真ん中と半径。地面の鉄球（ball_model）も同じ大きさ
 const BALL_CENTER := Vector3(13.5, 21.0, 11.5)
+const BALL_RADIUS := 5.2
+const BALL_BOX := 12  ## 地面の鉄球の模型の大きさ（偶数）
+## 歩くときに前後へずらす足（x の範囲）と腕。どちらも x の小さい側が先
+const LEG_X := [Vector2i(9, 12), Vector2i(15, 18)]
+const ARM_X := [Vector2i(5, 7), Vector2i(20, 22)]
 
 const SKIN := Color("f7d3b0")
 const CHEEK := Color("f29a9a")
@@ -58,15 +64,25 @@ const STYLES := {
 static var style := "c"
 static var _cache := {}
 
-## 姿を作る（同じ組み合わせは使い回す）。
-static func build(held: String, armor: String) -> VoxelModel:
-	var key := style + "|" + held + "|" + armor
+## 姿を作る（同じ組み合わせは使い回す）。歩く姿は、立ち姿を写して足と腕をずらすだけなので速い。
+static func build(held: String, armor: String, pose := "") -> VoxelModel:
+	var key := "%s|%s|%s|%s" % [style, held, armor, pose]
 	if not _cache.has(key):
-		_cache[key] = _shade(raw(held, armor))
+		if pose == "step_l" or pose == "step_r":
+			_cache[key] = _step(build(held, armor), held, pose == "step_l")
+		else:
+			_cache[key] = _shade(raw(held, armor, pose))
 	return _cache[key]
 
+## 持ちかえたときに止まらないよう、持つ物それぞれの立ち姿と歩く姿、鉄球を放した姿を先に作っておく（輪切りの画像も）。
+static func warm(helds: Array, armor: String) -> void:
+	for h: String in helds:
+		for pose in ["", "step_l", "step_r"]:
+			build(h, armor, pose).textures()
+	build("", armor, "release").textures()
+
 ## 影をつける前の姿。
-static func raw(held: String, armor: String) -> VoxelModel:
+static func raw(held: String, armor: String, pose := "") -> VoxelModel:
 	var s: Dictionary = STYLES[style]
 	var m := VoxelModel.new()
 	m.size = SIZE
@@ -87,7 +103,20 @@ static func raw(held: String, armor: String) -> VoxelModel:
 			_staff(m, orb_color(held))
 	if held == "heal":
 		_potion(m)
+	if pose == "release":
+		_release_arms(m, s)
 	return m
+
+## 地面に落ちている鉄球（手に持つ鉄球と同じ細かさ・同じ大きさ・同じ影の付け方）。
+static func ball_model(strong: bool) -> VoxelModel:
+	var key := "ball|%s" % strong
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i.ONE * BALL_BOX
+		var c := (BALL_BOX - 1) / 2.0
+		_ball(m, Vector3(c, c, c), STRONG_BALL if strong else BALL)
+		_cache[key] = _shade(m)
+	return _cache[key]
 
 ## 杖の先の玉の色（杖の種類で決まる）。
 static func orb_color(staff_id: String) -> Color:
@@ -357,13 +386,40 @@ static func _armor(m: VoxelModel) -> void:
 
 # ---------------------------------------------------------------- 手に持つ物
 
+## 鉄球の玉と、左上の光。
+static func _ball(m: VoxelModel, center: Vector3, c: Color) -> void:
+	_ellipsoid(m, center, Vector3.ONE * BALL_RADIUS, c)
+	m.set_voxel(Vector3i((center + Vector3(-2.5, -2.0, 3.5)).round()), c.lightened(0.5))
+
 ## 鉄球：両手で体の前に抱える。
 static func _iron_ball(m: VoxelModel, s: Dictionary, c: Color) -> void:
-	_ellipsoid(m, BALL_CENTER, Vector3(5.2, 5.2, 5.2), c)
-	m.set_voxel(Vector3i(11, 19, 15), c.lightened(0.5))  # 光
+	_ball(m, BALL_CENTER, c)
 	# 腕を前へ出して、両わきから支える
 	_both(m, Vector3i(6, 15, 11), Vector3i(7, 18, 14), s["tunic"])
 	_both(m, Vector3i(7, 19, 10), Vector3i(8, 22, 13), SKIN)
+
+## 鉄球を放した手：両腕を前と外へ広げ、手を開く（鉄球を抱えていた所が空く。正面から見ても手が体の外に出て分かる）。
+static func _release_arms(m: VoxelModel, s: Dictionary) -> void:
+	_both(m, Vector3i(4, 14, 11), Vector3i(6, 17, 13), s["tunic"])
+	_both(m, Vector3i(2, 17, 10), Vector3i(4, 20, 13), SKIN)
+	_both(m, Vector3i(2, 20, 12), Vector3i(2, 20, 13), SKIN)  # 開いた指
+
+## 歩く姿：立ち姿を写して、片方の足を前へ、もう片方を後ろへずらす（くつは2つ、ズボンは1つ）。
+## 何も持っていなければ、腕を足と逆にふる（手は2つ、そでは1つ）。left_forward は x の小さい側の足が前。
+static func _step(src: VoxelModel, held: String, left_forward: bool) -> VoxelModel:
+	var m := src.copy()
+	for i in 2:
+		var dir := 1 if (i == 0) == left_forward else -1
+		var xr: Vector2i = LEG_X[i]
+		m.move_box(Vector3i(xr.x, 9, 0), Vector3i(xr.y, 18, 3), Vector3i(0, 2 * dir, 0))
+		m.move_box(Vector3i(xr.x, 9, 4), Vector3i(xr.y, 18, 7), Vector3i(0, dir, 0))
+	if held == "":
+		for i in 2:
+			var dir := -1 if (i == 0) == left_forward else 1
+			var xr: Vector2i = ARM_X[i]
+			m.move_box(Vector3i(xr.x, 10, 8), Vector3i(xr.y, 17, 10), Vector3i(0, 2 * dir, 0))
+			m.move_box(Vector3i(xr.x, 10, 11), Vector3i(xr.y, 17, 13), Vector3i(0, dir, 0))
+	return m
 
 ## 剣：右手に持ち、前へ突き出す。
 static func _sword(m: VoxelModel) -> void:

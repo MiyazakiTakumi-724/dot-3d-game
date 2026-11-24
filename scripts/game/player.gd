@@ -31,6 +31,11 @@ const OUTLINE_COLOR := Color(0.09, 0.07, 0.12)  ## 体のまわりのふち（�
 ## 今の姿（手に持つ物と防具）。set_look で変える
 var held_look := ""
 var armor_look := ""
+## 動き（歩く・鉄球を放す・拾う・剣を振る・着地）。姿勢を選び、下げ・ひねり・縮みを決める
+var anim := HeroAnim.new()
+var _shown_model: VoxelModel
+## 1フレームにこれより大きく動いたら、歩いたのではなく置き直した（エリアの切り替えなど）とみなす
+const TELEPORT_PX := 8.0
 ## 回転斬りの見た目
 var _spin_t := 0.0
 ## 弓のチャージ率（0.3〜1.0）。溜めていなければ負。頭の上にバーを出す
@@ -56,7 +61,7 @@ func setup(map: HeightMap, rules: MovementRules, start_cell: Vector2i, cam: Stac
 	shadow_radius = 4.0
 	voxel_scale = HeroModel.VOXEL_SCALE
 	outline_color = OUTLINE_COLOR
-	set_model(HeroModel.build(held_look, armor_look))
+	_apply_model()
 	_sync()
 
 ## 姿を変える（手に持つ物の品物 id と防具の id。HeroModel.build）。同じなら何もしない。
@@ -65,7 +70,16 @@ func set_look(held: String, armor: String) -> void:
 		return
 	held_look = held
 	armor_look = armor
-	set_model(HeroModel.build(held, armor))
+	_apply_model()
+
+## 今の持ち物と動きの姿勢に合う姿にする（鉄球を放した姿は、何も持たない姿から作る）。
+func _apply_model() -> void:
+	var pose := anim.pose()
+	var held := "" if pose == "release" else held_look
+	var m := HeroModel.build(held, armor_look, pose)
+	if m != _shown_model:
+		_shown_model = m
+		set_model(m)
 
 ## amount のダメージを受ける。無敵の間は受けない。受けたら true。
 func take_hit(amount := 1) -> bool:
@@ -79,13 +93,16 @@ func take_hit(amount := 1) -> bool:
 func is_invulnerable() -> bool:
 	return _invulnerable > 0.0
 
-## 剣を振った見た目（向いている方に弧を描く）。
+## 剣を振った見た目（向いている方に弧を描き、体をひねる）。
 func swing(fall: bool) -> void:
 	_swing_t = SWING_SHOW
 	_swing_fall = fall
+	anim.play_swing(SWING_SHOW)
 
+## 回転斬りの見た目（まわりに輪を描き、体を1回転させる）。
 func spin() -> void:
 	_spin_t = SWING_SHOW * 2.0
+	anim.play_spin(SWING_SHOW * 2.0)
 
 func clear_invulnerable() -> void:
 	_invulnerable = 0.0
@@ -128,6 +145,7 @@ func _process(delta: float) -> void:
 	_swing_t = maxf(0.0, _swing_t - delta)
 	_spin_t = maxf(0.0, _spin_t - delta)
 	crouching = can_crouch and hp > 0 and controllable and (Input.is_physical_key_pressed(KEY_C) or Input.is_physical_key_pressed(KEY_CTRL))
+	var before := mover.pos
 	if hp > 0 and controllable:
 		var dir := Vector2.ZERO
 		if Input.is_physical_key_pressed(KEY_LEFT) or Input.is_physical_key_pressed(KEY_A): dir.x -= 1
@@ -139,6 +157,9 @@ func _process(delta: float) -> void:
 			mover.move(camera.screen_dir_to_world(dir.normalized()) * spd * delta, delta)
 		if aim_screen != null:
 			aim_at_screen(aim_screen)
+	var moved := mover.pos.distance_to(before)
+	anim.update(delta, moved if moved < TELEPORT_PX else 0.0)
+	_apply_model()
 	_update_drop_lift(delta)
 	_sync()
 	super._process(delta)
@@ -151,6 +172,8 @@ func _update_drop_lift(delta: float) -> void:
 	if _drop_lift > 0.0:
 		_drop_lift = maxf(0.0, _drop_lift - DROP_SPEED * delta)
 		lift_px = _drop_lift
+		if _drop_lift <= 0.0:
+			anim.play_land()  # 着いた瞬間に少し縮む
 
 func _sync() -> void:
 	world_pos = mover.pos
@@ -163,7 +186,8 @@ func _draw() -> void:
 	# 向いている方向の目印が回るよう、モデルの「前」(+y) を facing に合わせる
 	var face_angle := mover.facing.angle() - PI / 2
 	_draw_shadow()
-	_draw_stack(face_angle - camera.angle, CROUCH_HIDE_LAYERS if crouching else 0)
+	var skip := maxi(CROUCH_HIDE_LAYERS if crouching else 0, anim.dip_layers())
+	_draw_stack(face_angle - camera.angle + anim.twist(), skip, anim.stretch(), Vector2(0, anim.bob()))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if _swing_t > 0.0:
 		# 向いている方（画面の上での向き）に、体の真ん中の高さで弧を描く。落下斬りは橙で太く

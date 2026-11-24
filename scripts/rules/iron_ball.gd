@@ -6,9 +6,12 @@ extends RefCounted
 enum State { HELD, FALLING, ON_GROUND }
 
 signal landed(pos: Vector2, damage: int)
+## 手から放したとき・拾ったとき（主人公の動きに使う）
+signal dropped
+signal picked_up
 
 const SECONDS_PER_LEVEL := 0.1
-const MIN_FALL_TIME := 0.05
+const DROP_TIME := 0.15  ## 手から放して足元の高さまで落ちる時間。落ちる段があれば、1段につき SECONDS_PER_LEVEL 足す
 const RETURN_AFTER := 1.0  ## 登れない所に落ちた鉄球が足元へ戻るまでの秒数
 const REACH_PX := 24.0  ## 届く距離（1.5マス）
 const HIT_RADIUS := 8.0  ## 落ちた点からこの半径の中にいる、同じ高さのものに当たる
@@ -20,6 +23,9 @@ var strong := false
 var pos: Vector2 = Vector2.ZERO
 var height: int = 0
 var fall_levels: int = 0
+## 放したときに立っていた点と高さ（落ちていく鉄球を、手元から描くのに使う）
+var from_pos: Vector2 = Vector2.ZERO
+var from_height: int = 0
 var _timer: float = 0.0
 var _fall_time: float = 0.0
 var _unreachable_for: float = 0.0
@@ -86,11 +92,14 @@ func drop_at(player: PlayerMover, map: HeightMap, target: Vector2) -> bool:
 		return false
 	pos = p
 	height = map.get_height(cell())
+	from_pos = player.pos
+	from_height = player.height
 	fall_levels = player.height - height
-	_fall_time = maxf(MIN_FALL_TIME, fall_levels * SECONDS_PER_LEVEL)
+	_fall_time = DROP_TIME + fall_levels * SECONDS_PER_LEVEL
 	_timer = _fall_time
 	state = State.FALLING
 	_pick_armed = false
+	dropped.emit()
 	return true
 
 func update(delta: float, player: PlayerMover, _map: HeightMap, rules: MovementRules) -> void:
@@ -123,10 +132,14 @@ func try_pick_up(player: PlayerMover) -> bool:
 	if not _pick_armed:
 		return false
 	state = State.HELD
+	picked_up.emit()
 	return true
 
-## 落下中の残り高さ（段、小数）。描画用。
-func remaining_fall_levels() -> float:
-	if state != State.FALLING or _fall_time <= 0.0:
-		return 0.0
-	return maxf(0.0, fall_levels) * (_timer / _fall_time)
+## 放してから着くまでの進み具合（0〜1）。落ちている間だけ動き、地面にあれば1、持っていれば0。描画用。
+func fall_progress() -> float:
+	match state:
+		State.FALLING:
+			return clampf(1.0 - _timer / _fall_time, 0.0, 1.0) if _fall_time > 0.0 else 1.0
+		State.ON_GROUND:
+			return 1.0
+	return 0.0

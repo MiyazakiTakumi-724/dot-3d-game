@@ -70,6 +70,49 @@ func test_every_style_builds():
 		for j in range(i + 1, looks.size()):
 			assert_ne(looks[i], looks[j])
 
+## 一番前のボクセルの y（x が x_min〜x_max、z が z_max 以下の所だけ見る）
+func _front_in(m: VoxelModel, x_min: int, x_max: int, z_max: int) -> int:
+	var best := -1
+	for p: Vector3i in m.voxels():
+		if m.voxels()[p].a > 0.0 and p.x >= x_min and p.x <= x_max and p.z <= z_max:
+			best = maxi(best, p.y)
+	return best
+
+## 歩く姿：step_l は x の小さい側の足を前へ、もう片方を後ろへ出す。step_r はその逆。大きさは同じ
+func test_step_poses_move_legs():
+	for held in ["", "sword_1", "ball_1"]:
+		var stand := HeroModel.build(held, "")
+		var l := HeroModel.build(held, "", "step_l")
+		var r := HeroModel.build(held, "", "step_r")
+		assert_eq(l.size, HeroModel.SIZE)
+		assert_gt(_front_in(l, 9, 12, 3), _front_in(stand, 9, 12, 3), held)
+		assert_lt(_front_in(l, 15, 18, 3), _front_in(stand, 15, 18, 3), held)
+		assert_gt(_front_in(r, 15, 18, 3), _front_in(stand, 15, 18, 3), held)
+		assert_lt(_front_in(r, 9, 12, 3), _front_in(stand, 9, 12, 3), held)
+
+## 何も持たずに歩くときは、腕も足と逆にふる（x の小さい側の足が前なら、同じ側の手は後ろ）
+func test_free_arms_swing_when_walking():
+	var stand := HeroModel.build("", "")
+	var l := HeroModel.build("", "", "step_l")
+	assert_lt(_front_in(l, 5, 7, 10), _front_in(stand, 5, 7, 10))
+	assert_gt(_front_in(l, 20, 22, 10), _front_in(stand, 20, 22, 10))
+
+## 鉄球を放した姿：両手を前と外へ広げていて、鉄球はもうない
+func test_release_pose_has_open_hands_and_no_ball():
+	var m := HeroModel.raw("", "", "release")
+	assert_eq(m.get_voxel(Vector3i(HeroModel.BALL_CENTER)).a, 0.0)
+	assert_gt(_front_in(m, 2, 8, 13), _front_in(HeroModel.raw("", ""), 2, 8, 13))
+	assert_eq(m.get_voxel(Vector3i(3, 18, 11)), HeroModel.SKIN)  # 手は体の外へ広げている
+
+## 地面の鉄球は、手に持つ鉄球と同じ細かさ・同じ色
+func test_ground_ball_matches_held_ball():
+	var m := HeroModel.ball_model(false)
+	assert_eq(m.size, Vector3i.ONE * HeroModel.BALL_BOX)
+	assert_eq(HeroModel.BALL_BOX % 2, 0)  # 偶数（真ん中に置いたとき半ピクセルずれない）
+	assert_gt(HeroModel.BALL_BOX, HeroModel.BALL_RADIUS * 2.0)
+	assert_same(HeroModel.ball_model(false), m)  # 使い回す
+	assert_ne(HeroModel.ball_model(true), m)
+
 ## 防具を着ると、胸に鎧の色が出る
 func test_armor_shows_on_body():
 	assert_eq(_count(HeroModel.build("", ""), HeroModel.ARMOR_COLOR), 0)

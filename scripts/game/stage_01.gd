@@ -47,6 +47,7 @@ func _ready() -> void:
 	add_child(_world)
 	_build_terrain()
 
+	HeroModel.warm(["", "ball_1", "ball_2"], "")  # 主人公の姿を先に作っておく（遊んでいる途中で止まらないように）
 	player = Player.new()
 	player.setup(map, rules, PLAYER_START, camera)
 	player.hp_changed.connect(_on_player_hp)

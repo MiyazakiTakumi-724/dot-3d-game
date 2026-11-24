@@ -69,3 +69,14 @@ func test_pick_ground_falls_to_low_cell():
 	cam.focus = HeightMap.cell_center(Vector2i(2, 2))
 	var screen := cam.world_to_screen(HeightMap.cell_center(Vector2i(2, 2)), 0)
 	assert_eq(cam.pick_ground(screen, m, 8), HeightMap.cell_center(Vector2i(2, 2)))
+
+## 画面のゆれ：ゆれている間も、画面の点とワールドの点の行き来は合っている。時間がたつと止まる
+func test_shake_fades_and_keeps_roundtrip():
+	var c := _cam()
+	c.shake(2.0)
+	c._process(0.01)
+	assert_lte(c.shake_offset.length(), 2.0 * sqrt(2.0) + 0.01)
+	var w := Vector2(30, -12)
+	assert_almost_eq(c.screen_to_world(c.world_to_screen(w, 8), 8), w, Vector2(0.01, 0.01))
+	c._process(StackCamera.SHAKE_TIME)
+	assert_eq(c.shake_offset, Vector2.ZERO)

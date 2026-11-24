@@ -29,3 +29,22 @@ func test_resizing_model_rebuilds_textures():
 	m.textures()
 	m.size = Vector3i(2, 2, 3)
 	assert_eq(m.textures().size(), 3)
+
+## 写しは元と同じ形で、写しを変えても元は変わらない
+func test_copy_is_independent():
+	var m := VoxelModel.box(Vector3i(2, 2, 2), Color.RED)
+	var c := m.copy()
+	assert_eq(c.size, m.size)
+	c.set_voxel(Vector3i(0, 0, 0), Color.BLUE)
+	assert_eq(m.get_voxel(Vector3i(0, 0, 0)), Color.RED)
+
+## 箱の中のボクセルだけをずらす（元の場所は空く）
+func test_move_box_shifts_only_inside():
+	var m := VoxelModel.new()
+	m.size = Vector3i(4, 4, 1)
+	m.set_voxel(Vector3i(0, 0, 0), Color.RED)
+	m.set_voxel(Vector3i(3, 0, 0), Color.BLUE)
+	m.move_box(Vector3i(0, 0, 0), Vector3i(1, 3, 0), Vector3i(0, 2, 0))
+	assert_eq(m.get_voxel(Vector3i(0, 0, 0)).a, 0.0)
+	assert_eq(m.get_voxel(Vector3i(0, 2, 0)), Color.RED)
+	assert_eq(m.get_voxel(Vector3i(3, 0, 0)), Color.BLUE)

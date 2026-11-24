@@ -115,20 +115,26 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## 輪切りを下から重ねて描く。rot は画面の上での回転、skip は描かない下の輪切りの数（その分だけ下げて描く）。
+## stretch は輪切りの間の詰め方（1でそのまま。小さいと縦に縮む）、offset は全体をずらす量（歩くときの上下のゆれなど）。
 ## outline_color があれば、先に全部の輪切りを上下左右へ本当の画面の1pxずらして描き、ふちにする。
-func _draw_stack(rot: float, skip := 0) -> void:
+func _draw_stack(rot: float, skip := 0, stretch := 1.0, offset := Vector2.ZERO) -> void:
 	var s := Vector2.ONE * voxel_scale
 	if outline_color.a > 0.0:
 		var d := 1.0 / StackCamera.PIXEL_SCALE
 		for i in range(skip, _layers.size()):
 			var t := _layers[i]
 			for off in [Vector2(-d, 0), Vector2(d, 0), Vector2(0, -d), Vector2(0, d)]:
-				draw_set_transform(Vector2(0, (skip - i) * voxel_scale) + off, rot, s)
+				draw_set_transform(_layer_pos(i, skip, stretch) + offset + off, rot, s)
 				draw_texture(t, -t.get_size() * 0.5, outline_color)
 	for i in range(skip, _layers.size()):
 		var t := _layers[i]
-		draw_set_transform(Vector2(0, (skip - i) * voxel_scale), rot, s)
+		draw_set_transform(_layer_pos(i, skip, stretch) + offset, rot, s)
 		draw_texture(t, -t.get_size() * 0.5)
+
+## i 枚目の輪切りを描く位置（本当の画面のpxにそろえる。詰めたときに半端な位置でにじまないように）。
+func _layer_pos(i: int, skip: int, stretch: float) -> Vector2:
+	var y := (skip - i) * voxel_scale * stretch
+	return Vector2(0, roundf(y * StackCamera.PIXEL_SCALE) / StackCamera.PIXEL_SCALE)
 
 ## 上の面のふちの明るい線（地面の柱だけ）。
 func _draw_rim() -> void:

@@ -44,8 +44,28 @@ func test_pick_up_returns_to_held():
 	b.drop_at(p, map, _front(p))
 	b.update(1.0, p, map, rules)
 	p.move(Vector2(16, 0))
+	watch_signals(b)
 	assert_true(b.try_pick_up(p))
 	assert_eq(b.state, IronBall.State.HELD)
+	assert_signal_emitted(b, "picked_up")
+
+## 手から放して地面に着くまで、同じ高さでも DROP_TIME かかり、1段につき SECONDS_PER_LEVEL 長くなる。
+## 放した所（立っていた点と高さ）を覚えていて、落ちる途中の進み具合（0〜1）が分かる（描くのに使う）
+func test_fall_takes_time_from_hands():
+	map.set_height(Vector2i(1, 1), 2)
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	watch_signals(b)
+	assert_true(b.drop_at(p, map, _front(p)))
+	assert_signal_emitted(b, "dropped")
+	assert_eq([b.from_pos, b.from_height], [p.pos, 2])
+	assert_eq(b.fall_progress(), 0.0)
+	b.update(IronBall.DROP_TIME, p, map, rules)
+	assert_eq(b.state, IronBall.State.FALLING)
+	assert_almost_eq(b.fall_progress(), IronBall.DROP_TIME / (IronBall.DROP_TIME + 2 * IronBall.SECONDS_PER_LEVEL), 0.001)
+	b.update(2 * IronBall.SECONDS_PER_LEVEL + 0.001, p, map, rules)
+	assert_eq(b.state, IronBall.State.ON_GROUND)
+	assert_eq(b.fall_progress(), 1.0)
 
 func test_cannot_pick_up_from_other_cell():
 	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)

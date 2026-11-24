@@ -19,7 +19,7 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 
 地図は手で書かずに、`tools/area_maps/gen.py` で作る（大陸の上の置き方と出口・高さ・崖・木の列・敵・拾いもの・隠しもの。使い方はそこの README）。`scripts/areas/*.gd` は生成物なので、直すときは gen.py を直して作り直す。出口の両側は高さを高い方にそろえ、生け垣の列は経路づくりで削らない。`tests/test_areas_layout.gd` が、出口のつながり・経路の長さ（強い鉄球まで90秒以上、門からの帰り30秒以内）・くぼみ・平地の広さなどを確かめる。
 
-テストはGUTで348件、すべて通る（20秒くらい）。
+テストはGUTで364件、すべて通る（20秒くらい）。
 
 ゲームシステム（design.md 7・11・17章）を試作3の上に入れた（2026-11-24）：レベル・経験値・振り分けポイントと技能、17章のダメージ式（体力は数値、敵にもレベル）、
 インベントリ画面（装備・ステータス・設定）、剣・弓と矢・杖と魔法（マナ）、防具、簡単モード。武器と矢・防具は、試すために野営地の宝箱に置いてある（本来はボスの落とし物とお店）。
@@ -65,7 +65,8 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
   game_settings.gd   設定（今は簡単モードだけ）
   player_mover.gd    高さを考えた移動。slow_climb（よじ登り：2段を0.6秒押し続けて登る）。段差は自動で登る。edge_push はマップの外へ歩こうとした向き（出口の判定）。
                      last_drop・recent_drop は飛び降りた段数（落下斬り）
-  iron_ball.gd       鉄球の状態（HELD/FALLING/ON_GROUND）、ダメージ、拾い直し。drop_at で好きな点に落とす（24pxまで）、当たりは半径8px
+  iron_ball.gd       鉄球の状態（HELD/FALLING/ON_GROUND）、ダメージ、拾い直し。drop_at で好きな点に落とす（24pxまで）、当たりは半径8px。
+                     手から放して DROP_TIME（0.15秒）＋1段につき0.1秒で着く。from_pos・fall_progress は描画用、dropped・picked_up は主人公の動き用の合図
   bullet.gd          敵の弾。aim で狙った相手の体へまっすぐ飛ぶ（高さ z も一定の傾きで変わる）。壁と弾より高い地面で止まる。当たるのは弾の高さが体の中で、撃った所より高くない相手（hits）。通り道のマスを1つずつ調べて、壁の角でもすり抜けない
   enemy_walker.gd    敵の往復移動と体力と体当たり（touches）、毒とやけど（poison / burn / update_poison、毎秒1）。climb で登れる段数、chase で近くのプレイヤーへ寄る、forbidden に入らない
   stage_state.gd     試作1のクリア・ゲームオーバーの判定
@@ -80,9 +81,9 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
                      stats（PlayerStats、死んでも残る）と bosses_defeated（敵のレベル＝敵ごとのレベル＋この数）
   area_state.gd      PLAYING / DYING と再開のタイミング（CLEAR は試作2の名残で使っていない）
 scripts/render/  描画まわり
-  voxel_model.gd     ボクセルの形から輪切り画像を作る（今の素材はすべてコードで生成）。テクスチャは textures() で共有する
-  stack_camera.gd    カメラの回転、ワールド座標から画面座標への変換、マウス操作。follow() で立っている高さを画面の真ん中にする。pick_ground はカーソルの下の地面の点
-  stack_sprite.gd    輪切りを重ねて描くノード（_draw_stack）。voxel_scale は輪切り1枚の大きさ、outline_color でまわりにふち。shadow_radius で足元に影。動くものは sort_by_cell=true にする。画面外のものは描かない（visible を毎フレーム書き換えるので、隠すときは force_hidden を使う）。描き直すのはカメラの角度が変わったときだけ。地面の段のふちの明るい線は rim_sides で上から描く。向きが変わるもの（プレイヤー・敵）は always_redraw=true
+  voxel_model.gd     ボクセルの形から輪切り画像を作る（今の素材はすべてコードで生成）。テクスチャは textures() で共有する。copy・move_box（歩く姿を作るのに使う）
+  stack_camera.gd    カメラの回転、ワールド座標から画面座標への変換、マウス操作。follow() で立っている高さを画面の真ん中にする。pick_ground はカーソルの下の地面の点。shake で画面をゆらす（shake_offset）
+  stack_sprite.gd    輪切りを重ねて描くノード（_draw_stack。stretch で縦に縮め、offset で全体をずらす）。voxel_scale は輪切り1枚の大きさ、outline_color でまわりにふち。shadow_radius で足元に影。動くものは sort_by_cell=true にする。画面外のものは描かない（visible を毎フレーム書き換えるので、隠すときは force_hidden を使う）。描き直すのはカメラの角度が変わったときだけ。地面の段のふちの明るい線は rim_sides で上から描く。向きが変わるもの（プレイヤー・敵）は always_redraw=true
 scripts/game/    ノード（ルールのクラスを持って描画するだけの薄い層）とステージ
   terrain.gd         文字の地図の読み込みと地形の描画（ステージ共通）。1層の地図（試作1）と2層の地図（高さの層と物の層、箱庭）。
                      記号はファイルの先頭に書いてある。各マスは「隣が低くて見える所までの柱」として描く（column_bottom）。
@@ -95,7 +96,10 @@ scripts/game/    ノード（ルールのクラスを持って描画するだけ
   hero_model.gd      主人公の姿（コードで組んだボクセルのちびキャラ、2倍の細かさで28×28×38、ゲームの座標では14×14×19）。build(手に持つ品物 id, 防具 id) で、持つ物と防具が姿に出る。
                      勇者のデザイン案を STYLES（a 王道・b 若き・c 羽根かぶと・d 外套）に4つ持ち、style で選ぶ（ユーザーが c に決めた。ほかの案も残してある）。鉄球（ball_1・ball_2）は両手で体の前に抱える。
                      影はまわりの空き方から面の向きを出して4段階（影は青紫、光は暖かい白に寄せる）。1つ作るのに50〜80msかかるので、同じ組み合わせは使い回し、field.gd の warm_hero_looks で先に作る。
-                     player.gd の set_look で変え、暗いふちを付けて描く。field.gd の held_look が手に持つ物を決める（鉄球は持っている間だけ。Ball は持っている間は描かず、落ちてから描く）
+                     player.gd の set_look で変え、暗いふちを付けて描く。field.gd の held_look が手に持つ物を決める（鉄球は持っている間だけ。Ball は持っている間は描かず、落ちてから描く）。
+                     姿勢（pose）：step_l・step_r（歩く。立ち姿を写して足と腕をずらすだけなので速い）・release（鉄球を放した、両手を広げた姿）。warm で先に作る。ball_model は地面の鉄球（同じ細かさ）
+  hero_anim.gd       主人公の動き（RefCounted）。歩いた距離で足を出す（5pxごと）、鉄球を放す・拾う（かがむ）・剣のひねり・回転斬りの1回転・着地で縮む。player.gd が姿勢と描き方に使う
+  ball.gd            鉄球の見た目。放すと手元から落とした点へ山なりに落ち、着くと土ぼこり（impact_dust.gd）と画面のゆれ
 fonts/           PixelMplus（M+ FONT LICENSE。商用利用・再配布が自由）とライセンスの文。*.import はぼかさない設定なので git に入れている
 scripts/areas/   4エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）
 scripts/game/field.gd エリアを入れ替えるメインシーンの中身（enter_area・切り替え・死と再開・門・UI）
