@@ -55,9 +55,12 @@ func test_gain_same_rank_twice_is_one():
 	eq.gain(Equipment.Slot.SWORD, 1)
 	assert_eq(eq.ranks(Equipment.Slot.SWORD), [1])
 
-## 防具は最大体力に足される【提案】ランク1つにつき＋2
+## 防具は1つの枠だけ（頭・体・足に分けない）。最大いのちに、ランク1つにつき HP_PER_ARMOR_RANK 足される【提案】
 func test_armor_adds_hp():
+	assert_eq(Equipment.ARMOR, [Equipment.Slot.ARMOR])
 	assert_eq(eq.armor_hp(), 0)
-	eq.gain(Equipment.Slot.HEAD, 1)
-	eq.gain(Equipment.Slot.BODY, 2)
-	assert_eq(eq.armor_hp(), Equipment.HP_PER_ARMOR_RANK * 3)
+	eq.gain(Equipment.Slot.ARMOR, 1)
+	eq.gain(Equipment.Slot.ARMOR, 2)
+	assert_eq(eq.armor_hp(), Equipment.HP_PER_ARMOR_RANK * 1)
+	eq.equip(Equipment.Slot.ARMOR, 2)
+	assert_eq(eq.armor_hp(), Equipment.HP_PER_ARMOR_RANK * 2)

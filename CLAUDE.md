@@ -65,7 +65,7 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
   enemy_walker.gd    敵の往復移動と体力と体当たり（touches）、毒（poison / update_poison、毎秒1）。climb で登れる段数、chase で近くのプレイヤーへ寄る、forbidden に入らない
   stage_state.gd     試作1のクリア・ゲームオーバーの判定
   inventory.gd       持ち物（お金・素材・回復・矢・弾）と equipment。take_arrow は撃つ矢を取り出す
-  equipment.gd       武器（鉄球・剣・弓・エアガン）と防具（頭・体・足、armor_hp はランク1つで最大体力＋2）のランク。持っているランクと装備するランク。
+  equipment.gd       武器（鉄球・剣・弓・エアガン）と防具（1つの枠、armor_hp はランク1つで最大いのち＋4）のランク。持っているランクと装備するランク。
                      死ぬとランク1以外は墓石へ（take_for_grave / restore）。ランク1つで攻撃力＋2（rank_attack）。強い鉄球＝鉄球のランク2
   player_stats.gd    レベル・経験値・振り分けポイント（体力・攻撃力・剣・弓・エアガン・体の動き）。3ポイントごとに技能
   damage.gd          ダメージの式（design.md 17章）。鉄球・敵の攻撃（簡単モードで半分）・敵のレベルでの伸び

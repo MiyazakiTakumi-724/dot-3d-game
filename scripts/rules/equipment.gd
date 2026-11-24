@@ -5,25 +5,24 @@ extends RefCounted
 ## 装備するランクは死んでも好みとして残るので、墓石から取り返すと設定し直さなくても元に戻る。
 ## 鉄球のランク1は最初から持っている。
 
-enum Slot { BALL, SWORD, BOW, GUN, HEAD, BODY, LEGS }
+enum Slot { BALL, SWORD, BOW, GUN, ARMOR }
 
 const NAMES := {
 	Slot.BALL: "鉄球",
 	Slot.SWORD: "剣",
 	Slot.BOW: "弓",
 	Slot.GUN: "エアガン",
-	Slot.HEAD: "頭",
-	Slot.BODY: "体",
-	Slot.LEGS: "足",
+	Slot.ARMOR: "防具",
 }
 const WEAPONS := [Slot.BALL, Slot.SWORD, Slot.BOW, Slot.GUN]
-const ARMOR := [Slot.HEAD, Slot.BODY, Slot.LEGS]
+## 防具は頭・体・足に分けず、1つの枠だけ（2026-11-24 まさのりさんの指示）
+const ARMOR := [Slot.ARMOR]
 const MIN_RANK := 1
-## ランクが1上がるごとに足される攻撃力【提案】（ランク2の鉄球＝前の「強い鉄球」で＋2）
+## ランクが1上がるごとに足されるつよさ【提案】（ランク2の鉄球＝前の「強い鉄球」で＋2）
 const ATTACK_PER_RANK := 2
 
-## 防具のランク1つにつき足される最大体力【提案】（部位と守りの値は未定。design.md 16章）
-const HP_PER_ARMOR_RANK := 2
+## 防具のランク1つにつき足される最大いのち【提案】（守りの値は未定。design.md 16章）
+const HP_PER_ARMOR_RANK := 4
 
 var _owned := {}  # Slot → Array[int]（小さい順）
 var _equipped := {}  # Slot → int
@@ -31,7 +30,7 @@ var _equipped := {}  # Slot → int
 func _init() -> void:
 	gain(Slot.BALL, MIN_RANK)
 
-## 武器のランクで足される攻撃力。持っていない（0）とランク1は0。
+## 武器のランクで足されるつよさ。持っていない（0）とランク1は0。
 static func rank_attack(rank: int) -> int:
 	return maxi(0, rank - 1) * ATTACK_PER_RANK
 
@@ -69,7 +68,7 @@ func effective(slot: Slot) -> int:
 	var c := chosen(slot)
 	return c if r.has(c) else r[0]
 
-## 装備している防具で足される最大体力。
+## 装備している防具で足される最大いのち。
 func armor_hp() -> int:
 	var total := 0
 	for slot in ARMOR:

@@ -84,7 +84,7 @@ func _build_equip_page() -> void:
 		_slot_buttons[slot] = _button(_equip_root, "", Vector2(4, 26 + i * 20), func(): select_slot(slot))
 	for i in Equipment.ARMOR.size():
 		var slot: Equipment.Slot = Equipment.ARMOR[i]
-		_slot_buttons[slot] = _button(_equip_root, "", Vector2(124, 36 + i * 20), func(): select_slot(slot))
+		_slot_buttons[slot] = _button(_equip_root, "", Vector2(124, 56 + i * 20), func(): select_slot(slot))
 	_detail_title = _label(_equip_root, "", Vector2(176, 26))
 	_rank_box = VBoxContainer.new()
 	_rank_box.position = Vector2(176, 42)
@@ -151,7 +151,7 @@ func select_slot(slot: Equipment.Slot) -> void:
 func choose(rank: int) -> bool:
 	if not run.inventory.equipment.equip(selected_slot, rank):
 		return false
-	stats_changed.emit()  # 防具なら最大体力が変わる
+	stats_changed.emit()  # 防具なら最大いのちが変わる
 	refresh()
 	return true
 
@@ -219,7 +219,7 @@ func _refresh_equip() -> void:
 		var b: Button = _slot_buttons[slot]
 		b.text = weapon_label(slot, eq.effective(slot))
 		b.modulate = Color(1.0, 0.9, 0.5) if slot == selected_slot else Color.WHITE
-	_detail_title.text = Equipment.NAMES[selected_slot] + ("（武器）" if Equipment.WEAPONS.has(selected_slot) else "の防具")
+	_detail_title.text = Equipment.NAMES[selected_slot] + ("（武器）" if Equipment.WEAPONS.has(selected_slot) else "")
 	for c in _rank_box.get_children():
 		_rank_box.remove_child(c)
 		c.queue_free()
@@ -232,9 +232,9 @@ func _refresh_equip() -> void:
 		l.modulate.a = 0.7
 	for rank in ranks:
 		var mark := "●" if rank == eq.effective(selected_slot) else "○"
-		var text := "%s ランク%d　攻撃＋%d" % [mark, rank, Equipment.rank_attack(rank)]
+		var text := "%s ランク%d　つよさ＋%d" % [mark, rank, Equipment.rank_attack(rank)]
 		if Equipment.ARMOR.has(selected_slot):
-			text = "%s ランク%d　体力＋%d" % [mark, rank, rank * Equipment.HP_PER_ARMOR_RANK]
+			text = "%s ランク%d　いのち＋%d" % [mark, rank, rank * Equipment.HP_PER_ARMOR_RANK]
 		var t: String = TRAITS.get(selected_slot, {}).get(rank, "")
 		if t != "":
 			text += "\n　" + t
@@ -264,9 +264,9 @@ func _effect_text(stat: PlayerStats.Stat) -> String:
 	var st := run.stats
 	match stat:
 		PlayerStats.Stat.VITALITY:
-			return "最大体力 %d" % st.max_hp()
+			return "最大いのち %d" % st.max_hp()
 		PlayerStats.Stat.ATTACK:
-			return "攻撃力 %d" % st.attack()
+			return "つよさ %d" % st.attack()
 		PlayerStats.Stat.MOVE:
 			return "足の速さ＋%d%%" % roundi((st.move_speed_mult() - 1.0) * 100.0)
 	return "威力＋%d%%" % (st.points_in(stat) * 10)

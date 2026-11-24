@@ -8,8 +8,8 @@ extends RefCounted
 enum Stat { VITALITY, ATTACK, SWORD, BOW, GUN, MOVE }
 
 const NAMES := {
-	Stat.VITALITY: "体力",
-	Stat.ATTACK: "攻撃力",
+	Stat.VITALITY: "いのち",
+	Stat.ATTACK: "つよさ",
 	Stat.SWORD: "剣",
 	Stat.BOW: "弓",
 	Stat.GUN: "エアガン",

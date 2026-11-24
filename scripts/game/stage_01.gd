@@ -86,7 +86,7 @@ func _build_ui() -> void:
 	_update_ui()
 
 func _update_ui() -> void:
-	var text := "体力 %d　　残りの敵 %d\n矢印:移動　X:鉄球を落とす　Z:拾う　右ドラッグ/Q・E:カメラ" % [player.hp, state.enemies_left]
+	var text := "いのち %d　　残りの敵 %d\n矢印:移動　X:鉄球を落とす　Z:拾う　右ドラッグ/Q・E:カメラ" % [player.hp, state.enemies_left]
 	match state.result:
 		StageState.Result.CLEAR:
 			text += "\n\nクリア！　R:もう一度"

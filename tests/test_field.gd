@@ -584,10 +584,10 @@ func test_crouch_dodges_bullets():
 	f._step_bullets(0.016)
 	assert_eq(f.player.hp, f.player.max_hp)
 
-## 防具一式を拾うと最大体力が増え、死ぬとランク1は残る
-func test_armor_set_from_camp():
-	_get_camp_pickup(RunState.PickupKind.ARMOR_SET)
-	assert_eq(f.player.max_hp, 10 + 3 * Equipment.HP_PER_ARMOR_RANK)
+## 防具を拾うと最大いのちが増える
+func test_armor_from_camp():
+	_get_camp_pickup(RunState.PickupKind.ARMOR)
+	assert_eq(f.player.max_hp, 10 + Equipment.HP_PER_ARMOR_RANK)
 
 ## 回転斬り：剣の技能を3つ覚えると、Space で後ろの敵にも当たる
 func test_spin_slash_needs_skill():

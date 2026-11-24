@@ -709,8 +709,8 @@ func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
 			notice("弓を手に入れた！\n3：持ちかえ　押して溜め、離して撃つ")
 		RunState.PickupKind.GUN:
 			notice("エアガンを手に入れた！\n4：持ちかえ　ホイール：撃つ高さ")
-		RunState.PickupKind.ARMOR_SET:
-			notice("防具一式を手に入れた！\n最大体力が増えた")
+		RunState.PickupKind.ARMOR:
+			notice("防具を手に入れた！\n最大いのちが増えた")
 		RunState.PickupKind.AMMO:
 			notice("弾 ×%d" % amount, 1.5)
 		RunState.PickupKind.ARROWS:
@@ -953,7 +953,7 @@ func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
 			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
 		RunState.PickupKind.HEAL:
 			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
-		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.GUN, RunState.PickupKind.ARMOR_SET:
+		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.GUN, RunState.PickupKind.ARMOR:
 			return _chest_model()
 		RunState.PickupKind.AMMO:
 			return VoxelModel.box(Vector3i(4, 3, 3), Color("6f8fa8"))
@@ -1001,7 +1001,7 @@ func _update_ui() -> void:
 func status_text() -> String:
 	var inv := run.inventory
 	var st := run.stats
-	var text := "Lv%d　体力 %d/%d　経験 %d/%d　お金 %d　素材 %d" % [st.level, player.hp, player.max_hp, st.exp_in_level(), st.exp_level_span(), inv.money, inv.materials]
+	var text := "Lv%d　いのち %d/%d　経験 %d/%d　お金 %d　素材 %d" % [st.level, player.hp, player.max_hp, st.exp_in_level(), st.exp_level_span(), inv.money, inv.materials]
 	if run.grave != null:
 		text += "　墓石：%s" % world.area(run.grave.area_id).title
 	return text + "\n" + hotbar_text()
