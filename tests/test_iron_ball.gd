@@ -195,11 +195,24 @@ func test_touches_cell_within_radius():
 	assert_true(IronBall.touches_cell(Vector2(26, 24), Vector2i(2, 1)))
 	assert_false(IronBall.touches_cell(Vector2(20, 24), Vector2i(2, 1)))
 
-func test_pick_up_within_6px():
+## 拾う範囲は 12px（ユーザーの指示で 6px から広げた 2026-11-24）
+func test_pick_up_within_12px():
 	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
 	var b := IronBall.new()
-	b.drop_at(p, map, p.pos + Vector2(10, 0))
+	b.drop_at(p, map, p.pos + Vector2(20, 0))
 	b.update(1.0, p, map, rules)
 	assert_false(b.try_pick_up(p))
-	p.pos += Vector2(5, 0)
+	p.pos += Vector2(9, 0)
+	assert_true(b.try_pick_up(p))
+
+## すぐそばに落としても、すぐには拾わない。一度範囲の外へ出てから戻ると拾う。
+func test_ball_dropped_close_is_not_picked_until_player_steps_away():
+	var p := _player_at(Vector2i(1, 1), Vector2.RIGHT)
+	var b := IronBall.new()
+	b.drop_at(p, map, p.pos + Vector2(8, 0))
+	b.update(1.0, p, map, rules)
+	assert_false(b.try_pick_up(p))
+	p.pos -= Vector2(6, 0)  # 14px 離れる
+	assert_false(b.try_pick_up(p))
+	p.pos += Vector2(6, 0)
 	assert_true(b.try_pick_up(p))

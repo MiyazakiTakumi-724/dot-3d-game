@@ -127,3 +127,11 @@ func test_checkpoint_only_in_its_area():
 	var run := RunState.new("camp", Vector2i(5, 5))
 	assert_true(run.is_near_checkpoint("camp", Vector2i(6, 5)))
 	assert_false(run.is_near_checkpoint("hills", Vector2i(6, 5)))
+
+## 落ちているものは、マスの中心から 14px まで近づけば拾える（同じ高さだけ）。ユーザーの指示 2026-11-24。
+func test_pickup_reach_is_14px_same_height():
+	var c := Vector2i(3, 3)
+	var center := HeightMap.cell_center(c)
+	assert_true(RunState.can_reach_pickup(center + Vector2(13, 0), 1, c, 1))  # となりのマスのふち
+	assert_false(RunState.can_reach_pickup(center + Vector2(15, 0), 1, c, 1))
+	assert_false(RunState.can_reach_pickup(center + Vector2(4, 0), 2, c, 1))  # 高さがちがう

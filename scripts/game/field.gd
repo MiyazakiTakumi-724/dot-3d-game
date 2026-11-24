@@ -259,7 +259,8 @@ func _play_step() -> void:
 	var c := player.mover.cell()
 	for i in _pickup_nodes.keys():
 		var p = area.pickups[i]
-		if p[0] == c and run.collect(area.pickup_id(i), p[1], p[2]):
+		var reach := RunState.can_reach_pickup(player.mover.pos, player.mover.height, p[0], map.get_height(p[0]))
+		if reach and run.collect(area.pickup_id(i), p[1], p[2]):
 			_pickup_nodes[i].queue_free()
 			_pickup_nodes.erase(i)
 	if run.is_near_checkpoint(area.id, c) and player.hp < Player.MAX_HP:

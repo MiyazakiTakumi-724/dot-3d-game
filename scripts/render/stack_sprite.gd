@@ -13,7 +13,7 @@ var draw_bias: int = 0  ## 同じ奥行きのとき、大きい方を後に描�
 ## マスの奥側に立っても、足元の床より後に描かれるようにするため。
 var sort_by_cell := false
 ## sort_by_cell のとき、これがあれば足元の円（半径 sort_radius）がかかるマスのうち、
-## 自分以下の高さのマスの一番手前で奥行きを決める（sort_depth）。マスの手前のふちに立っても、
+## 同じ高さのマスの一番手前で奥行きを決める（sort_depth）。マスの手前のふちに立っても、
 ## 手前のマスの地面が上にかぶらないようにするため。
 var sort_map: HeightMap
 var sort_radius := 5.0
@@ -39,14 +39,15 @@ const VISIBLE_MARGIN := 24.0
 ## 地面 0、目印 1、敵・墓石 2、プレイヤー 2、鉄球・弾 3、木や岩 5（Terrain.DECO_BIAS）。
 const Z_PER_PX := 8
 
-## 足元の円がかかるマスのうち、高さ h 以下で壁でないマス（と自分のマス）の、一番手前の中心の奥行き。
-## それより高いマスや壁は、手前にあればキャラを隠すのが正しいので数えない。
+## 足元の円がかかるマスのうち、高さが h と同じで壁でないマス（と自分のマス）の、一番手前の中心の奥行き。
+## 高いマスや壁は、手前にあればキャラを隠すのが正しいので数えない。低いマスは上の面がキャラにかからないので
+## 数えなくてよく、数えると崖の上の鉄球が下に立つプレイヤーより後に描かれてしまう。
 static func sort_depth(cam: StackCamera, map: HeightMap, pos: Vector2, h: int, radius: float) -> float:
 	var own := HeightMap.world_to_cell(pos)
 	var best := cam.depth_key(HeightMap.cell_center(own))
 	for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 		var c := HeightMap.world_to_cell(pos + corner * radius)
-		if c == own or not map.in_bounds(c) or map.is_wall(c) or map.get_height(c) > h:
+		if c == own or not map.in_bounds(c) or map.is_wall(c) or map.get_height(c) != h:
 			continue
 		best = maxf(best, cam.depth_key(HeightMap.cell_center(c)))
 	return best

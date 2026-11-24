@@ -12,7 +12,7 @@ const MIN_FALL_TIME := 0.05
 const RETURN_AFTER := 1.0  ## 登れない所に落ちた鉄球が足元へ戻るまでの秒数
 const REACH_PX := 24.0  ## 届く距離（1.5マス）
 const HIT_RADIUS := 8.0  ## 落ちた点からこの半径の中にいる、同じ高さのものに当たる
-const PICK_RADIUS := 6.0  ## 体の中心がこの距離まで近づくと拾う
+const PICK_RADIUS := 12.0  ## 体の中心がこの距離まで近づくと拾う
 
 var state: State = State.HELD
 ## 強い鉄球か。ダメージが「落ちた段数＋2」になる。切り替えは手に持っているときだけ。
@@ -23,6 +23,9 @@ var fall_levels: int = 0
 var _timer: float = 0.0
 var _fall_time: float = 0.0
 var _unreachable_for: float = 0.0
+## false の間は拾わない。すぐそばに落としたとき、落ちたとたんに拾い直さないように。
+## 一度 PICK_RADIUS の外へ出ると true になる。
+var _pick_armed := true
 
 static func damage_for(levels: int, is_strong: bool = false) -> int:
 	if is_strong:
@@ -83,6 +86,7 @@ func drop_at(player: PlayerMover, map: HeightMap, target: Vector2) -> bool:
 	_fall_time = maxf(MIN_FALL_TIME, fall_levels * SECONDS_PER_LEVEL)
 	_timer = _fall_time
 	state = State.FALLING
+	_pick_armed = false
 	return true
 
 func update(delta: float, player: PlayerMover, _map: HeightMap, rules: MovementRules) -> void:
@@ -92,6 +96,8 @@ func update(delta: float, player: PlayerMover, _map: HeightMap, rules: MovementR
 			if _timer <= 0.0:
 				state = State.ON_GROUND
 				_unreachable_for = 0.0
+				# 落ちた時にもう離れていれば、近づいたらすぐ拾える
+				_pick_armed = player.pos.distance_to(pos) > PICK_RADIUS or player.height != height
 				landed.emit(pos, damage_for(fall_levels, strong))
 		State.ON_GROUND:
 			if rules.can_step(player.height, height):
@@ -106,7 +112,11 @@ func update(delta: float, player: PlayerMover, _map: HeightMap, rules: MovementR
 func try_pick_up(player: PlayerMover) -> bool:
 	if state != State.ON_GROUND:
 		return false
-	if player.pos.distance_to(pos) > PICK_RADIUS or player.height != height:
+	var near := player.pos.distance_to(pos) <= PICK_RADIUS and player.height == height
+	if not near:
+		_pick_armed = true
+		return false
+	if not _pick_armed:
 		return false
 	state = State.HELD
 	return true

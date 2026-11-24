@@ -285,3 +285,15 @@ func test_fade_in_not_skipped_by_long_frame():
 	f._process(0.25)  # 暗くなりきって、エリアを作る
 	f._process(3.0)   # 重いフレームの後
 	assert_true(f.is_switching())
+
+func test_pickup_collected_from_next_cell_edge():
+	_walk_out(_exit("camp", "hills"))
+	var p = f.area.pickups[0]
+	var c: Vector2i = p[0]
+	f.player.mover.place(c)
+	f.player.mover.pos += Vector2(13, 0)
+	f._process(0.016)
+	if f.player.mover.cell() == c or f.map.get_height(f.player.mover.cell()) != f.map.get_height(c):
+		pending("となりのマスが同じ高さでない")
+		return
+	assert_true(f.run.is_picked(f.area.pickup_id(0)))

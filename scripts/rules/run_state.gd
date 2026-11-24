@@ -76,5 +76,12 @@ func is_door_open(id: String) -> bool:
 	return _open_doors.has(id)
 
 ## チェックポイントのマスか、その周り8マスにいるか。ここにいると全回復する。
+## 落ちているものを拾える距離（マスの中心から）。
+const PICK_RADIUS := 14.0
+
+## pos（高さ h）に立って、cell（高さ cell_h）に落ちているものに手が届くか。
+static func can_reach_pickup(pos: Vector2, h: int, cell: Vector2i, cell_h: int) -> bool:
+	return h == cell_h and pos.distance_to(HeightMap.cell_center(cell)) <= PICK_RADIUS
+
 func is_near_checkpoint(area_id: String, cell: Vector2i) -> bool:
 	return area_id == checkpoint_area and absi(cell.x - checkpoint_cell.x) <= 1 and absi(cell.y - checkpoint_cell.y) <= 1
