@@ -59,4 +59,7 @@ const ENEMIES := [
 ]
 const PICKUPS := [
 	[Vector2i(9, 8), RunState.PickupKind.SWORD, 1],
+	[Vector2i(15, 8), RunState.PickupKind.BOW, 1],
+	[Vector2i(15, 12), RunState.PickupKind.ARROWS, 50],
+	[Vector2i(9, 12), RunState.PickupKind.POISON_ARROWS, 10],
 ]

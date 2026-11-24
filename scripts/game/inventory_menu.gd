@@ -133,6 +133,26 @@ func choose(rank: int) -> bool:
 	refresh()
 	return true
 
+## 撃つ矢の種類を選ぶ。使えない種類（技能がない）は選べない。
+func choose_arrow(kind: Arrow.Kind) -> bool:
+	if not Arrow.usable(kind, run.stats.skills_in(PlayerStats.Stat.BOW)):
+		return false
+	run.inventory.arrow_kind = kind
+	refresh()
+	return true
+
+func _add_arrow_choices() -> void:
+	var inv := run.inventory
+	_label(_rank_box, "撃つ矢", Vector2.ZERO)
+	for k in [Arrow.Kind.NORMAL, Arrow.Kind.POISON]:
+		var kind: Arrow.Kind = k
+		var mark := "●" if inv.arrow_kind == kind else "○"
+		var text := "%s %s ×%d" % [mark, Arrow.NAMES[kind], inv.arrow_count(kind)]
+		if not Arrow.usable(kind, run.stats.skills_in(PlayerStats.Stat.BOW)):
+			text += "（技能で使える）"
+		var b := _button(_rank_box, text, Vector2.ZERO, func(): choose_arrow(kind))
+		b.disabled = not Arrow.usable(kind, run.stats.skills_in(PlayerStats.Stat.BOW))
+
 func allocate(stat: PlayerStats.Stat) -> bool:
 	if not run.stats.allocate(stat):
 		return false
@@ -188,6 +208,8 @@ func _refresh_equip() -> void:
 	for rank in grave_ranks:
 		var l := _label(_rank_box, "× ランク%d：墓石の中にある" % rank, Vector2.ZERO)
 		l.modulate.a = 0.7
+	if selected_slot == Equipment.Slot.BOW:
+		_add_arrow_choices()
 	var inv := run.inventory
 	_items.text = "回復 ×%d　素材 ×%d\nお金 %d" % [inv.heals, inv.materials, inv.money]
 

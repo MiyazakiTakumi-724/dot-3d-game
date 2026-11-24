@@ -25,6 +25,8 @@ var alive := true
 var climb := 0
 ## 入らないマス（出口の近くなど）。Vector2i → true
 var forbidden := {}
+var _poison_left := 0.0
+var _poison_clock := 0.0
 var _chasing := false
 var _chase_target := Vector2.ZERO
 
@@ -91,6 +93,34 @@ func _try_axis(v: Vector2, delta: float) -> bool:
 ## pos に立っている、高さ h のものに触れているか。
 func touches(p: Vector2, h: int) -> bool:
 	return alive and h == height and pos.distance_to(p) < TOUCH_RADIUS
+
+## 毒にする（毒矢）。seconds 秒の間、毎秒1ダメージ。もう毒なら長い方にする。
+func poison(seconds: float) -> void:
+	if not alive:
+		return
+	if _poison_left <= 0.0:
+		_poison_clock = 0.0
+	_poison_left = maxf(_poison_left, seconds)
+
+func is_poisoned() -> bool:
+	return alive and _poison_left > 0.0
+
+## 毒の時間を進める。この間に入ったダメージを返す。
+func update_poison(delta: float) -> int:
+	if not is_poisoned():
+		return 0
+	var dmg := 0
+	var step := minf(delta, _poison_left)
+	_poison_left -= step
+	_poison_clock += step
+	while _poison_clock >= 1.0 - 0.0001:
+		_poison_clock -= 1.0
+		dmg += 1
+	if dmg > 0:
+		take_damage(dmg)
+	if _poison_left <= 0.0001:
+		_poison_left = 0.0
+	return dmg
 
 func take_damage(n: int) -> void:
 	if not alive:

@@ -33,3 +33,10 @@ func test_sword():
 func test_falling_slash():
 	assert_eq(Damage.sword(5, 0, 2), 6)
 	assert_eq(Damage.sword(5, 0, 2, true), 7)  # 3 × 2.5 = 7.5
+
+## 弓：攻撃力 × チャージ率 × 矢の倍率 ×（1 ＋ 弓のポイント × 0.1）。フルチャージで5（17.4）
+func test_bow():
+	assert_eq(Damage.bow(5, 1.0, 1.0, 0), 5)
+	assert_eq(Damage.bow(5, 0.3, 1.0, 0), 1)
+	assert_eq(Damage.bow(5, 1.0, 0.5, 0), 2)
+	assert_eq(Damage.bow(5, 1.0, 1.0, 0, 2), 10)  # 高所射撃で2段下

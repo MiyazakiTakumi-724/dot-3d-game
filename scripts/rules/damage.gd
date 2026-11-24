@@ -17,6 +17,11 @@ static func sword(attack: int, points: int, fall_levels: int, strong_fall := fal
 	var fall_rate := 0.75 if strong_fall else 0.5
 	return _floor(attack * 0.6 * (1.0 + points * 0.1) * (1.0 + maxi(0, fall_levels) * fall_rate))
 
+## 弓：攻撃力 × チャージ率 × 矢の倍率 ×（1 ＋ 弓のポイント × 0.1）。
+## lower_levels は技能「高所射撃」で数える、自分より低い段数（×（1 ＋ 段数 × 0.5））。
+static func bow(attack: int, rate: float, mult: float, points: int, lower_levels := 0) -> int:
+	return _floor(attack * rate * mult * (1.0 + points * 0.1) * (1.0 + maxi(0, lower_levels) * 0.5))
+
 ## 敵の攻撃が主人公に与えるダメージ。簡単モードでは半分。
 static func enemy_hit(enemy_attack: int, easy := false) -> int:
 	return _floor(enemy_attack * (0.5 if easy else 1.0))

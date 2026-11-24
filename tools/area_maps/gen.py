@@ -363,6 +363,9 @@ def make_camp():
     scatter(g, [('F', 3), ('T', 1), ('B', 1)], 0.10, 5)
     # 試すための武器の宝箱（本来はボスの落とし物。ボスができたら移す）
     pickup(g, 9, 8, 'SWORD', 1)
+    pickup(g, 15, 8, 'BOW', 1)
+    pickup(g, 15, 12, 'ARROWS', 50)
+    pickup(g, 9, 12, 'POISON_ARROWS', 10)
     g.start = (12, 11)
     return g
 

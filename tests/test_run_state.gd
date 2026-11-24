@@ -142,3 +142,31 @@ func test_pickup_reach_is_14px_same_height():
 	assert_true(RunState.can_reach_pickup(center + Vector2(13, 0), 1, c, 1))  # となりのマスのふち
 	assert_false(RunState.can_reach_pickup(center + Vector2(15, 0), 1, c, 1))
 	assert_false(RunState.can_reach_pickup(center + Vector2(4, 0), 2, c, 1))  # 高さがちがう
+
+## 矢は持ち物なので、死ぬとすべて墓石に入り、壊すと戻る
+func test_arrows_go_to_grave():
+	rs.inventory.arrows = {Arrow.Kind.NORMAL: 12, Arrow.Kind.POISON: 3}
+	var g := rs.on_death("hills", Vector2i(2, 2))
+	assert_eq(rs.inventory.arrow_count(Arrow.Kind.NORMAL), 0)
+	assert_eq(g.arrows, {Arrow.Kind.NORMAL: 12, Arrow.Kind.POISON: 3})
+	rs.inventory.arrows = {Arrow.Kind.NORMAL: 1}
+	rs.break_grave()
+	assert_eq(rs.inventory.arrow_count(Arrow.Kind.NORMAL), 13)
+	assert_eq(rs.inventory.arrow_count(Arrow.Kind.POISON), 3)
+
+func test_bow_and_arrow_pickups():
+	rs.collect("c:0", RunState.PickupKind.BOW, 1)
+	rs.collect("c:1", RunState.PickupKind.ARROWS, 30)
+	rs.collect("c:2", RunState.PickupKind.POISON_ARROWS, 5)
+	assert_eq(rs.inventory.equipment.effective(Equipment.Slot.BOW), 1)
+	assert_eq(rs.inventory.arrow_count(Arrow.Kind.NORMAL), 30)
+	assert_eq(rs.inventory.arrow_count(Arrow.Kind.POISON), 5)
+
+## 撃つ矢：選んだ種類が使えて残っていればそれ、なければ普通の矢
+func test_take_arrow_falls_back_to_normal():
+	var inv := rs.inventory
+	inv.arrows = {Arrow.Kind.NORMAL: 1, Arrow.Kind.POISON: 1}
+	inv.arrow_kind = Arrow.Kind.POISON
+	assert_eq(inv.take_arrow(0), Arrow.Kind.NORMAL)  # 技能がないと毒矢は使えない
+	assert_eq(inv.take_arrow(1), Arrow.Kind.POISON)
+	assert_eq(inv.take_arrow(1), -1)

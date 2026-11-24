@@ -61,6 +61,10 @@ func _process(delta: float) -> void:
 			melee_hit.emit()
 		# ためている間は体を明るく光らせる（よけるための合図）
 		self_modulate = Color(1.8, 1.8, 1.8) if melee.is_winding_up() else Color.WHITE
+	if walker.is_poisoned() and not melee.is_winding_up():
+		self_modulate = Color(0.7, 1.3, 0.6)
+	elif kind != EnemyKind.Kind.MELEE:
+		self_modulate = Color.WHITE
 	if can_shoot and target.hp > 0:
 		_cooldown -= delta
 		var to_player := target.mover.pos - walker.pos

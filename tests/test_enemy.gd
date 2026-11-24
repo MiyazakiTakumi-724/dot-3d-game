@@ -176,3 +176,15 @@ func test_walker_remembers_max_hp():
 	var w := EnemyWalker.new(_flat(), Vector2i(1, 1), Vector2.UP, 7, 0)
 	w.take_damage(3)
 	assert_eq([w.hp, w.max_hp], [4, 7])
+
+## 毒：5秒間、毎秒1ダメージ（17.4）
+func test_poison_ticks_once_per_second_for_five_seconds():
+	var w := EnemyWalker.new(_flat(), Vector2i(1, 1), Vector2.UP, 20, 0)
+	w.poison(5.0)
+	assert_true(w.is_poisoned())
+	var total := 0
+	for i in 70:
+		total += w.update_poison(0.1)
+	assert_eq(total, 5)
+	assert_eq(w.hp, 15)
+	assert_false(w.is_poisoned())

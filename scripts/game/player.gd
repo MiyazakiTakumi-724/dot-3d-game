@@ -22,6 +22,8 @@ var aim_screen = null
 
 var _invulnerable := 0.0
 ## 剣を振った跡を見せる残り時間と、落下斬りか
+## 弓のチャージ率（0.3〜1.0）。溜めていなければ負。頭の上にバーを出す
+var charge := -1.0
 var _swing_t := 0.0
 var _swing_fall := false
 ## 飛び降りたときに、少しの間だけ上に浮かせて「落ちていく」ように見せる量（px）
@@ -152,3 +154,8 @@ func _draw() -> void:
 		var a := mover.facing.rotated(-camera.angle).angle()
 		var col := Color("ffb347") if _swing_fall else Color(1, 1, 1, 0.9)
 		draw_arc(Vector2(0, -5), 14.0, a - Sword.HALF_ARC, a + Sword.HALF_ARC, 9, col, 3.0 if _swing_fall else 2.0)
+	if charge >= 0.0:
+		var y := -_layers.size() - 24.0  # 頭の上の鉄球よりさらに上
+		var k := (charge - Bow.MIN_RATE) / (1.0 - Bow.MIN_RATE)
+		draw_rect(Rect2(-7, y, 14, 3), Color(0.05, 0.05, 0.08))
+		draw_rect(Rect2(-6, y + 1, 12.0 * k, 1), Color("ffd23f") if k >= 1.0 else Color("e8d9b0"))

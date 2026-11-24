@@ -58,6 +58,8 @@ var _popups: Control  ## ダメージの数字を置く所（エリアを切り�
 var _notice_text := ""
 var _notice_time := 0.0
 var sword := Sword.new()
+var bow := Bow.new()
+var _shots: Array = []  # 飛んでいる矢 [Arrow, StackSprite, ダメージ]
 var _arrow_blink := 0.0
 ## まだ作っていない、ほかのエリアのモデルの名前（遊んでいる間に少しずつ作る）
 var _warm_queue: Array[String] = []
@@ -111,6 +113,8 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	enemies.clear()
 	_enemy_index.clear()
 	_bullets.clear()
+	_shots.clear()
+	bow.cancel()
 	_pickup_nodes.clear()
 	_gate_nodes.clear()
 	_arrows.clear()
@@ -288,7 +292,11 @@ func _update_switch(delta: float) -> void:
 func _process(delta: float) -> void:
 	roster.tick(delta)
 	sword.update(delta)
+	bow.update(delta)
 	player.mover.tick(delta)
+	if bow.charging and (hotbar.selected != Hotbar.Item.BOW or menu.is_open() or area_state.result != AreaState.Result.PLAYING):
+		bow.cancel()
+	player.charge = bow.rate() if bow.charging else -1.0
 	if not _warm_queue.is_empty() and not is_switching():
 		Terrain.warm(_warm_queue, WARM_BUDGET_MS)
 	if is_switching():
@@ -297,6 +305,8 @@ func _process(delta: float) -> void:
 		if area_state.update(delta):
 			respawn()
 		_step_bullets(delta)
+		_step_shots(delta)
+		_step_poison(delta)
 		if area_state.result == AreaState.Result.PLAYING:
 			if player.hp <= 0 or player.mover.fell:
 				kill_player(player.mover.fell)
@@ -328,7 +338,7 @@ func _play_step() -> void:
 		if reach and run.collect(area.pickup_id(i), p[1], p[2]):
 			_pickup_nodes[i].queue_free()
 			_pickup_nodes.erase(i)
-			_on_picked(p[1])
+			_on_picked(p[1], p[2])
 	if run.is_near_checkpoint(area.id, c) and player.hp < player.max_hp:
 		player.set_hp(player.max_hp)
 	for e in enemies:
@@ -344,7 +354,11 @@ func _play_step() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
 		return
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if bow.charging:
+			release_bow()
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		use_item()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
@@ -370,6 +384,8 @@ func use_item() -> bool:
 			return ball.rules_ball.drop_at(player.mover, map, _aim_point())
 		Hotbar.Item.SWORD:
 			return swing_sword()
+		Hotbar.Item.BOW:
+			return start_bow()
 		Hotbar.Item.HEAL:
 			return use_heal()
 	return false
@@ -396,13 +412,132 @@ func swing_sword() -> bool:
 			run.break_grave()
 	return true
 
+## 今撃てる矢の数（選んだ種類が使えて残っていればその数、なければ普通の矢の数）。
+func _usable_arrows() -> int:
+	var inv := run.inventory
+	if Arrow.usable(inv.arrow_kind, _bow_skills()) and inv.arrow_count(inv.arrow_kind) > 0:
+		return inv.arrow_count(inv.arrow_kind)
+	return inv.arrow_count(Arrow.Kind.NORMAL)
+
+func _bow_skills() -> int:
+	return run.stats.skills_in(PlayerStats.Stat.BOW)
+
+## 弓を溜め始める（左ボタンを押した）。弓か、使える矢がなければ false。
+func start_bow() -> bool:
+	if run.inventory.equipment.effective(Equipment.Slot.BOW) == 0 or bow.charging:
+		return false
+	var inv := run.inventory
+	if inv.arrow_count(Arrow.Kind.NORMAL) <= 0 and not (Arrow.usable(inv.arrow_kind, _bow_skills()) and inv.arrow_count(inv.arrow_kind) > 0):
+		notice("矢がない", 1.5)
+		return false
+	bow.start()
+	return true
+
+## 離して撃つ。カーソルの所へ（届かなければ手前に）山なりに飛ぶ。技能「連射」なら2本。
+func release_bow() -> bool:
+	var r := bow.release()
+	if r <= 0.0:
+		return false
+	var shots := 2 if _bow_skills() >= 3 else 1
+	var fired := false
+	for i in shots:
+		var k := run.inventory.take_arrow(_bow_skills())
+		if k < 0:
+			break
+		var target := _aim_point()
+		if i == 1:  # 2本目は少し横にずらす
+			var side := (target - player.mover.pos).normalized().orthogonal() * 6.0
+			target += side
+		_fire_arrow(k, r, target)
+		fired = true
+	return fired
+
+func _fire_arrow(kind: Arrow.Kind, r: float, target: Vector2) -> void:
+	var mv := player.mover
+	var land := Bow.landing(mv.pos, mv.height, target, r, map)
+	var land_h := map.get_height(HeightMap.world_to_cell(land))
+	var a := Arrow.new()
+	a.kind = kind
+	a.rate = r
+	a.from_h = mv.height
+	a.launch(mv.pos, mv.height * StackSprite.LEVEL_PX + 6.0, land, land_h * StackSprite.LEVEL_PX)
+	var lower := maxi(0, mv.height - land_h) if _bow_skills() >= 2 else 0
+	var dmg := Damage.bow(current_attack(), r, Arrow.MULT[kind], run.stats.points_in(PlayerStats.Stat.BOW), lower)
+	var s := StackSprite.new()
+	s.camera = camera
+	s.sort_by_cell = true
+	s.sort_map = map
+	s.sort_radius = 2.0
+	s.draw_bias = 3
+	s.shadow_radius = 1.5
+	s.always_redraw = true
+	s.set_model(VoxelModel.box(Vector3i(2, 2, 2), Color("9be36b") if kind == Arrow.Kind.POISON else Color("e8d9b0")))
+	_area_root.add_child(s)
+	_shots.append([a, s, dmg])
+	_place_shot(a, s)
+
+func shots_in_flight() -> int:
+	return _shots.size()
+
+func _place_shot(a: Arrow, s: StackSprite) -> void:
+	var hp := a.height_px()
+	s.world_pos = a.pos()
+	s.base_height = int(floor(hp / StackSprite.LEVEL_PX))
+	s.lift_px = hp - s.base_height * StackSprite.LEVEL_PX
+	s.refresh()
+
+## 飛んでいる矢を進め、落ちた所の敵（同じ高さ）に当てる。墓石にも当たる。
+func _step_shots(delta: float) -> void:
+	for i in range(_shots.size() - 1, -1, -1):
+		var a: Arrow = _shots[i][0]
+		var s: StackSprite = _shots[i][1]
+		var dmg: int = _shots[i][2]
+		if not a.update(delta):
+			_place_shot(a, s)
+			continue
+		s.queue_free()
+		_shots.remove_at(i)
+		_arrow_landed(a, dmg)
+
+func _arrow_landed(a: Arrow, dmg: int) -> void:
+	if area_state.result != AreaState.Result.PLAYING:
+		return
+	var c := HeightMap.world_to_cell(a.to)
+	if not map.in_bounds(c) or map.is_water(c) or map.is_pit(c):
+		return
+	var land_h := map.get_height(c)
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and Arrow.hits(a.to, land_h, e.walker.pos, e.walker.height):
+			e.walker.take_damage(dmg)
+			_popup(e.walker.pos, e.walker.height, dmg, Color.WHITE)
+			if a.kind == Arrow.Kind.POISON:
+				e.walker.poison(Arrow.POISON_SECONDS)
+			break  # 1本の矢は1体だけ
+	if run.grave != null and run.grave.area_id == area.id and IronBall.touches_cell(a.to, run.grave.cell):
+		_remove_grave_marker()
+		run.break_grave()
+
+## 毒のダメージ（毎秒1）。
+func _step_poison(delta: float) -> void:
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive:
+			var d := e.walker.update_poison(delta)
+			if d > 0:
+				_popup(e.walker.pos, e.walker.height, d, Color("9be36b"))
+
 ## 剣は左ボタンを押したままでも、振れるようになるたびに振る。
 func _hold_to_swing() -> void:
 	if hotbar.selected == Hotbar.Item.SWORD and not menu.is_open() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		use_item()
 
-func _on_picked(kind: RunState.PickupKind) -> void:
+func _on_picked(kind: RunState.PickupKind, amount: int) -> void:
 	match kind:
+		RunState.PickupKind.BOW:
+			notice("弓を手に入れた！\n3：持ちかえ　押して溜め、離して撃つ")
+		RunState.PickupKind.ARROWS:
+			notice("矢 ×%d" % amount, 1.5)
+		RunState.PickupKind.POISON_ARROWS:
+			notice("毒矢 ×%d\n（弓の技能「矢の種類」で使える）" % amount)
 		RunState.PickupKind.SWORD:
 			notice("剣を手に入れた！\n2：持ちかえ　クリック：振る")
 		RunState.PickupKind.STRONG_BALL:
@@ -435,6 +570,10 @@ func _update_aim() -> void:
 		player.mover.facing = (target - player.mover.pos).normalized()
 	var show := playing and hotbar.selected == Hotbar.Item.IRON_BALL \
 		and ball.rules_ball.state == IronBall.State.HELD and IronBall.can_drop_at(target, map, player.mover.height)
+	if playing and bow.charging:
+		# 弓を溜めている間は、今離したら矢が落ちる点（届かなければ手前）
+		target = Bow.landing(player.mover.pos, player.mover.height, _aim_point(), bow.rate(), map)
+		show = map.in_bounds(HeightMap.world_to_cell(target))
 	aim_marker.force_hidden = not show
 	if show:
 		aim_marker.world_pos = target
@@ -622,8 +761,15 @@ func _pickup_model(kind: RunState.PickupKind) -> VoxelModel:
 			return VoxelModel.box(Vector3i(4, 4, 4), Color("a0785a"))
 		RunState.PickupKind.HEAL:
 			return VoxelModel.box(Vector3i(4, 4, 5), Color("ff6fa8"))
-		RunState.PickupKind.SWORD:
+		RunState.PickupKind.SWORD, RunState.PickupKind.BOW:
 			return _chest_model()
+		RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS:
+			var m := VoxelModel.box(Vector3i(6, 2, 2), Color("e8d9b0"))
+			var tip := Color("9be36b") if kind == RunState.PickupKind.POISON_ARROWS else Color("9aa0a8")
+			for y in 2:
+				m.set_voxel(Vector3i(5, y, 0), tip)
+				m.set_voxel(Vector3i(5, y, 1), tip)
+			return m
 		_:
 			return VoxelModel.sphere(4, Color("7a2230"))
 
@@ -682,6 +828,8 @@ func hotbar_text() -> String:
 			if eq.effective(slot) == 0:
 				continue
 			name = InventoryMenu.weapon_label(slot, eq.effective(slot))
+			if item == Hotbar.Item.BOW:
+				name += "(矢%d)" % _usable_arrows()
 		var t := "%d %s" % [i + 1, name]
 		parts.append("[%s]" % t if item == hotbar.selected else " %s " % t)
 	return "".join(parts)

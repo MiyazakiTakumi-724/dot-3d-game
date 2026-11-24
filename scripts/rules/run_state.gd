@@ -4,7 +4,7 @@ extends RefCounted
 ## 死んでも変わらないもの：拾い済みのもの、開けた扉、レベル・経験値・振り分け（stats）、お金の半分。
 
 ## 武器（SWORD など）の amount はランク
-enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL, SWORD }
+enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL, SWORD, BOW, ARROWS, POISON_ARROWS }
 
 const ENEMY_MONEY := 10
 
@@ -33,6 +33,8 @@ func on_death(area_id: String, death_cell: Vector2i) -> Gravestone:
 	g.materials = inventory.materials
 	g.heals = inventory.heals
 	g.equipment = inventory.equipment.take_for_grave()
+	g.arrows = inventory.arrows
+	inventory.arrows = {}
 	inventory.money -= g.money
 	inventory.materials = 0
 	inventory.heals = 0
@@ -46,6 +48,8 @@ func break_grave() -> void:
 	inventory.materials += grave.materials
 	inventory.heals += grave.heals
 	inventory.equipment.restore(grave.equipment)
+	for k in grave.arrows:
+		inventory.add_arrows(k, grave.arrows[k])
 	grave = null
 
 ## 敵を倒したときのお金と経験値。上がったレベルの数を返す。
@@ -73,6 +77,12 @@ func collect(id: String, kind: PickupKind, amount: int) -> bool:
 			inventory.equipment.gain(Equipment.Slot.BALL, 2)
 		PickupKind.SWORD:
 			inventory.equipment.gain(Equipment.Slot.SWORD, amount)
+		PickupKind.BOW:
+			inventory.equipment.gain(Equipment.Slot.BOW, amount)
+		PickupKind.ARROWS:
+			inventory.add_arrows(Arrow.Kind.NORMAL, amount)
+		PickupKind.POISON_ARROWS:
+			inventory.add_arrows(Arrow.Kind.POISON, amount)
 	return true
 
 func is_picked(id: String) -> bool:

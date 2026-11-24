@@ -429,3 +429,64 @@ func test_falling_slash_after_drop():
 	var hp: int = e.walker.hp
 	assert_true(f.swing_sword())
 	assert_eq(hp - e.walker.hp, Damage.sword(5, 0, 2))
+
+func _get_camp_pickup(kind) -> void:
+	for i in f.area.pickups.size():
+		var p = f.area.pickups[i]
+		if p[1] == kind:
+			f.player.mover.place(p[0])
+			f._process(0.016)
+			return
+	fail_test("野営地にない: %s" % kind)
+
+## 野営地で弓と矢を拾い、溜めて離すと、壁の向こうの敵にも山なりで当たる
+func test_bow_from_camp_hits_over_wall():
+	_get_camp_pickup(RunState.PickupKind.BOW)
+	_get_camp_pickup(RunState.PickupKind.ARROWS)
+	assert_eq(f.run.inventory.arrow_count(Arrow.Kind.NORMAL), 50)
+	assert_true(f.hotbar.select_slot(3, f.run.inventory.equipment))
+	var m := HeightMap.new(Vector2i(10, 3))
+	m.set_wall(Vector2i(3, 1), true)
+	f.map = m
+	f.player.mover.map = m
+	f.player.mover.place(Vector2i(1, 1))
+	for e in f.enemies:
+		e.queue_free()
+	f.enemies.clear()
+	var e := Enemy.new()
+	e.setup(m, Vector2i(5, 1), Vector2.RIGHT, f.player, f.camera, EnemyKind.Kind.MELEE)
+	add_child_autofree(e)
+	e.set_process(false)
+	f.enemies.append(e)
+	assert_true(f.start_bow())
+	f.bow.update(1.0)
+	var r: float = f.bow.release()
+	f._fire_arrow(Arrow.Kind.NORMAL, r, e.walker.pos)
+	var hp: int = e.walker.hp
+	for i in 30:
+		f._step_shots(0.05)
+	assert_eq(hp - e.walker.hp, Damage.bow(5, 1.0, 1.0, 0))
+
+func test_release_uses_one_arrow():
+	f.run.inventory.equipment.gain(Equipment.Slot.BOW, 1)
+	f.run.inventory.add_arrows(Arrow.Kind.NORMAL, 2)
+	f.hotbar.select_slot(3, f.run.inventory.equipment)
+	assert_true(f.use_item())
+	assert_true(f.release_bow())
+	assert_eq(f.run.inventory.arrow_count(Arrow.Kind.NORMAL), 1)
+	assert_eq(f.shots_in_flight(), 1)
+
+func test_no_arrows_no_charge():
+	f.run.inventory.equipment.gain(Equipment.Slot.BOW, 1)
+	f.hotbar.select_slot(3, f.run.inventory.equipment)
+	assert_false(f.start_bow())
+	assert_string_contains(f.ui_message(), "矢がない")
+
+func test_poison_arrow_choice_needs_skill():
+	f.open_inventory()
+	f.menu.select_slot(Equipment.Slot.BOW)
+	assert_false(f.menu.choose_arrow(Arrow.Kind.POISON))
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(3))
+	for i in 3:
+		f.run.stats.allocate(PlayerStats.Stat.BOW)
+	assert_true(f.menu.choose_arrow(Arrow.Kind.POISON))
