@@ -44,6 +44,9 @@ var shade_on := false
 var shade_cell := Vector2i.ZERO
 var shade_height := 0
 var shade_layer := 0
+## 上の面に立てる草の葉（2026-11-26 の4回目の直し。Terrain.add_tufts が作る線の形）。
+## 頂点はマスの中心からのワールドのずれ、UV は画面でのずれ。shadow.gdshader がカメラの角度で回して立て、先を風でゆらす
+var tuft_mesh: ArrayMesh
 
 ## 画面（320×180）から、これだけ外にはみ出したものは描かない。広いエリアで描画を軽くするため。
 ## 輪切りを回すと、マスより少し大きく見えるので、その分の余裕。
@@ -124,10 +127,34 @@ func _draw() -> void:
 		return
 	_drawn_angle = camera.angle
 	_draw_shadow()
-	_draw_stack(turn - camera.angle)
-	_draw_shade()
-	_draw_rim()
+	if shade_on:
+		# 地面の柱：上の面までの輪切り → 上の面の模様と影 → ふちの線 → 上の面の上に立つもの（花）→ 草の葉
+		_draw_layers(turn - camera.angle, 0, mini(shade_layer + 1, _layers.size()))
+		_draw_shade()
+		_draw_rim()
+		_draw_layers(turn - camera.angle, shade_layer + 1, _layers.size())
+		_draw_tufts()
+	else:
+		_draw_stack(turn - camera.angle)
+		_draw_rim()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## from 枚目から to 枚目の手前までの輪切りを描く（ふちなし、詰めない）。
+func _draw_layers(rot: float, from: int, to: int) -> void:
+	var s := Vector2.ONE * voxel_scale
+	for i in range(from, to):
+		var t := _layers[i]
+		draw_set_transform(_layer_pos(i, 0, 1.0), rot, s)
+		draw_texture(t, -t.get_size() * 0.5)
+
+## 草の葉を線で描く（本当の画面の1pxの線）。根もとはワールドに付いて回り、葉は画面の上へ立つ（shadow.gdshader の頂点）。
+func _draw_tufts() -> void:
+	if tuft_mesh == null:
+		return
+	if material is ShaderMaterial:
+		(material as ShaderMaterial).set_shader_parameter("cam_angle", camera.angle)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_mesh(tuft_mesh, null)
 
 ## 輪切りを下から重ねて描く。rot は画面の上での回転、skip は描かない下の輪切りの数（その分だけ下げて描く）。
 ## stretch は輪切りの間の詰め方（1でそのまま。小さいと縦に縮む）、offset は全体をずらす量（歩くときの上下のゆれなど）。

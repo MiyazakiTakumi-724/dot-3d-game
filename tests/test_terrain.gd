@@ -153,7 +153,8 @@ func test_terrain_is_fine_but_keeps_layer_count():
 	var m := Terrain.ground_model(2, 2, 0)
 	assert_eq(m.size.x, 16 * Terrain.FINE)
 	assert_eq(m.size.y, 16 * Terrain.FINE)
-	assert_eq(m.size.z, 2 * StackSprite.LEVEL_PX + 1 + 2)  # 柱と、草むらの2枚
+	assert_eq(m.size.z, 2 * StackSprite.LEVEL_PX + 1)  # 柱だけ（草むらは線で描く。2026-11-26）
+	assert_eq(Terrain.ground_model(2, 2, 0, true).size.z, 2 * StackSprite.LEVEL_PX + 1 + 2, "花のマスは花の2枚")
 	var map := HeightMap.new(Vector2i(3, 3))
 	map.set_height(Vector2i(1, 1), 1)
 	var cam := StackCamera.new()

@@ -43,6 +43,12 @@ var _arrows: Array[StackSprite] = []
 var _grave_node: StackSprite
 ## たき火（炎の形を時間で替えて、ゆらめかせる）
 var _bonfire_node: StackSprite
+## 暗い地方の石の壁や柱の上のかがり火（2026-11-26 の4回目の直し）：[スプライト, マス, 高さのpx]
+var _braziers: Array = []
+## かがり火を置く地方と、置く物の上の高さ（px）
+const BRAZIER_THEMES := ["castle", "tower"]
+const BRAZIER_ON := {"stonewall": 20.0, "column": 32.0}
+const MAX_BRAZIERS := 10
 var _bonfire_frame := 0
 ## このエリアのたき火のマス（なければ (-1, -1)）。近づくと、死んだときに戻る所がここになる
 var _campfire_cell := Vector2i(-1, -1)
@@ -183,6 +189,9 @@ func _ready() -> void:
 ## 地面の見た目ごとの足音（2026-11-26）
 const STEP_SOUNDS := {"grass": "step_grass", "mountain": "step_gravel", "lava": "step_gravel", "castle": "step_stone", "tower": "step_stone", "town": "step_stone"}
 
+## 土の道を描く地方（町と塔は石畳）
+const TRAIL_THEMES := ["grass", "mountain", "lava", "castle"]
+
 func enter_area(id: String, cell: Vector2i) -> void:
 	for e in enemies:
 		if is_instance_valid(e):
@@ -237,6 +246,9 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	for g in area.gimmicks:
 		if run.is_gimmick_open(g.id):
 			_apply_open(g)
+	if area.theme in TRAIL_THEMES and not _deco.has("paths"):
+		# 出口とたき火をつなぐ土の道（見た目だけ。2026-11-26 の4回目の直し）
+		_deco["paths"] = Trails.cells(map, area.exits, info.get("checkpoint", Vector2i(-1, -1)))
 	_terrain_root = Node2D.new()
 	_area_root.add_child(_terrain_root)
 	Terrain.build(map, camera, _terrain_root, _deco)
@@ -245,6 +257,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	if info.has("checkpoint"):
 		_campfire_cell = info["checkpoint"]
 		_bonfire_node = _marker(info["checkpoint"], Props.bonfire(), 1)
+	_place_braziers()
 	_place_gimmicks()
 	_place_talkers(info)
 	for i in area.pickups.size():
@@ -908,9 +921,13 @@ func _process(delta: float) -> void:
 	_start_hint_time = maxf(0.0, _start_hint_time - delta)
 	_arrow_blink += delta
 	var frame := int(_arrow_blink * 8.0) % 3
-	if _bonfire_node != null and is_instance_valid(_bonfire_node) and frame != _bonfire_frame:
+	if frame != _bonfire_frame:
 		_bonfire_frame = frame
-		_bonfire_node.set_model(Props.bonfire(frame))
+		if _bonfire_node != null and is_instance_valid(_bonfire_node):
+			_bonfire_node.set_model(Props.bonfire(frame))
+		for b in _braziers:
+			if is_instance_valid(b[0]):
+				b[0].set_model(Props.brazier((frame + b[1].x) % 3))
 	var a := 0.55 + 0.45 * sin(_arrow_blink * 4.0)
 	for s in _arrows:
 		s.modulate.a = a
@@ -1979,7 +1996,9 @@ func _update_lights() -> void:
 		list.append([HeightMap.cell_center(_campfire_cell), map.get_height(_campfire_cell) * StackSprite.LEVEL_PX + 6.0, 100.0 * flick, 1.0])
 	if atmosphere.is_dark():
 		var mv := player.mover
-		list.append([mv.pos, mv.height * StackSprite.LEVEL_PX + 8.0, 64.0, 0.8])
+		list.append([mv.pos, mv.height * StackSprite.LEVEL_PX + 8.0, 64.0, 0.8, 0.0])
+	for b in _braziers:
+		list.append([HeightMap.cell_center(b[1]), b[2], 72.0 * flick, 0.9, 0.7])
 	for f in _fires:
 		list.append([f[0], f[1] * StackSprite.LEVEL_PX + 4.0, 44.0 * flick, 0.9])
 	for b in _bolts:
@@ -1997,6 +2016,23 @@ func _update_lights() -> void:
 			var c: Vector2i = e[1]
 			list.append([HeightMap.cell_center(c), map.get_height(c) * StackSprite.LEVEL_PX, 40.0 * flick, 0.55])
 	atmosphere.set_lights(list)
+
+## 暗い地方の石の壁と柱の上に、ところどころかがり火を置く（マスで決まる。MAX_BRAZIERS まで）。
+func _place_braziers() -> void:
+	_braziers.clear()
+	if not area.theme in BRAZIER_THEMES:
+		return
+	for y in map.size.y:
+		for x in map.size.x:
+			var c := Vector2i(x, y)
+			var kind: String = _deco.get(c, "")
+			if not BRAZIER_ON.has(kind) or (x * 7 + y * 13) % 11 != 0:
+				continue
+			var s := _marker(c, Props.brazier(x % 3), 6, false)
+			s.lift_px = BRAZIER_ON[kind]
+			_braziers.append([s, c, map.get_height(c) * StackSprite.LEVEL_PX + BRAZIER_ON[kind] + 6.0])
+			if _braziers.size() >= MAX_BRAZIERS:
+				return
 
 ## 魔法（弾・炎・雷）が point のまわり radius に当たった。水晶が光る。
 func _magic_gimmicks(point: Vector2, radius: float) -> void:
@@ -2390,6 +2426,8 @@ func _maybe_screenshot() -> void:
 		elif a.begins_with("--exp="):
 			run.stats.add_exp(int(a.trim_prefix("--exp=")))
 			apply_stats()
+		elif a == "--notitle":
+			_title_time = 0.0
 	if place != null:
 		player.mover.place(place)
 		player.mover.pos += offset

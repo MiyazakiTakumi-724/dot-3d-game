@@ -39,23 +39,35 @@ static func occluder_height(map: HeightMap, deco: Dictionary, q: Vector2) -> flo
 			return h + o[0]
 	return h
 
-## エリアの、物のてっぺんの高さの絵（R8、RES×RES で1マス、値は 高さ ÷ HEIGHT_RANGE）。
-## 地面はマスごとに四角く塗り（速い）、木や岩などは丸く塗る。
+## 地面の模様の種類（shadow.gdshader の S_*）。Terrain.surface_at の名前から決める。
+const SURFACE_IDS := {"grass": 1, "alpine": 2, "snow": 3, "ash": 4, "stone": 5, "water": 7, "lava": 8}
+## マスの印（shadow.gdshader の F_*）。1 = 土の道
+const FLAG_PATH := 1
+
+## エリアの、物のてっぺんの高さの絵（RGBA8、RES×RES で1マス）。
+## r：物のてっぺんの高さ ÷ HEIGHT_RANGE（影に使う。地面はマスごとに四角く、木や岩などは丸く塗る）
+## g：地面の模様の種類（SURFACE_IDS）、b：マスの印（道）、a：地面の高さ ÷ HEIGHT_RANGE（水は水面の高さ。暗がりに使う）
+## g・b・a はマスの中で同じ。
 static func height_image(map: HeightMap, deco: Dictionary) -> Image:
-	var img := Image.create(map.size.x * RES, map.size.y * RES, false, Image.FORMAT_R8)
-	img.fill(Color(0, 0, 0))
+	var img := Image.create(map.size.x * RES, map.size.y * RES, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var paths: Dictionary = deco.get("paths", {})
 	for y in map.size.y:
 		for x in map.size.x:
 			var c := Vector2i(x, y)
 			if map.is_void(c) or map.is_pit(c):
 				continue
 			var h := float(map.get_height(c))
-			img.fill_rect(Rect2i(x * RES, y * RES, RES, RES), Color(h / HEIGHT_RANGE, 0, 0))
+			var surf: int = SURFACE_IDS.get(Terrain.surface_at(map, deco, c), 0)
+			var flags := FLAG_PATH if paths.has(c) else 0
+			var ground := h - (0.25 if map.is_water(c) or deco.get(c, "") == "lava" else 0.0)
+			var base := Color(h / HEIGHT_RANGE, surf / 255.0, flags / 255.0, maxf(0.0, ground) / HEIGHT_RANGE)
+			img.fill_rect(Rect2i(x * RES, y * RES, RES, RES), base)
 			var kind: String = deco.get(c, "")
 			if not OCCLUDERS.has(kind):
 				continue
 			var o: Array = OCCLUDERS[kind]
-			var top := Color(minf(1.0, (h + o[0]) / HEIGHT_RANGE), 0, 0)
+			var top := Color(minf(1.0, (h + o[0]) / HEIGHT_RANGE), base.g, base.b, base.a)
 			if kind in SQUARE:
 				img.fill_rect(Rect2i(x * RES, y * RES, RES, RES), top)
 				continue
@@ -75,6 +87,7 @@ static func material(map: HeightMap, deco: Dictionary) -> ShaderMaterial:
 	m.set_shader_parameter("cells_per_level", CELLS_PER_LEVEL)
 	m.set_shader_parameter("height_range", HEIGHT_RANGE)
 	m.set_shader_parameter("shade_color", SHADE_COLOR)
+	m.set_shader_parameter("res", RES)
 	return m
 
 ## 柱の上の面に影を描くときに渡す色（シェーダーはこの色でマスと高さを知る。a=0.5 が目印）。

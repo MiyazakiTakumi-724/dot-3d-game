@@ -186,18 +186,108 @@ static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dic
 			var h := map.get_height(cell)
 			var bottom := 0 if keys[0] == "wall" else column_bottom(map, cell, deco)
 			var s := _place(parent, camera, cell, bottom, 0, _cached(keys[0]))
-			if keys[0].begins_with("ground/"):
-				# 段のふちの明るい線は、モデルを増やさずにスプライトが上の面に描く
-				s.rim_sides = lower_sides(map, cell)
-				s.rim_layer = (h - bottom) * StackSprite.LEVEL_PX
-				s.rim_color = top_color(h).lightened(0.38)
+			var ground := keys[0].begins_with("ground/")
+			if ground or keys[0].begins_with("water/") or keys[0].begins_with("lava/"):
+				# 上の面の模様と影（ShadowMap・shadow.gdshader）。水と溶岩の面は WATER_DROP_PX 低い
 				s.material = shade
 				s.shade_on = true
 				s.shade_cell = cell
 				s.shade_height = h
-				s.shade_layer = s.rim_layer
+				s.shade_layer = (h - bottom) * StackSprite.LEVEL_PX - (0 if ground else WATER_DROP_PX)
+			if ground:
+				# 段のふちの明るい線は、モデルを増やさずにスプライトが上の面に描く
+				s.rim_sides = lower_sides(map, cell)
+				s.rim_layer = (h - bottom) * StackSprite.LEVEL_PX
+				s.rim_color = top_color(h).lightened(0.38)
+				add_tufts(s, map, deco, cell)
 			if keys.size() > 1:
 				_place(parent, camera, cell, h, DECO_BIAS, _cached(keys[1]))
+
+## 草の葉の線の色の目印（shadow.gdshader）：根もと（ゆれない）と先（風でゆれる）
+const TUFT_BASE_A := 0.70
+const TUFT_TIP_A := 0.75
+const REED_BASE := Color("3f5a22")
+const REED_TIP := Color("93a04a")
+const CATTAIL := Color("6b3a22")
+const WILD_PETALS := [Color("fbf6ea"), Color("ffd84a"), Color("ff8fb3"), Color("e8473c"), Color("b9a6ff")]
+
+## 草の葉・水辺の葦・野の花を、地面の柱の上の面に立てる（2026-11-26 の4回目の直し。添付の映像の草むらのように）。
+## 線で描き、shadow.gdshader が先を風でゆらす。物のあるマス・道・草でない地面には立てない。マスごとに毎回同じ。
+static func add_tufts(s: StackSprite, map: HeightMap, deco: Dictionary, cell: Vector2i) -> void:
+	var kind: String = deco.get(cell, "")
+	if (kind != "" and kind != "flower") or map.is_wall(cell):
+		return
+	var surf := surface_at(map, deco, cell)
+	if surf != "grass" and surf != "alpine":
+		return
+	var paths: Dictionary = deco.get("paths", {})
+	if paths.has(cell):
+		return
+	var h := map.get_height(cell)
+	var g := top_color(h, surf)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = absi((cell.x * 73856093) ^ (cell.y * 19349663)) + 11
+	var t := _Tufts.new()
+	t.top = Vector2(0, -s.shade_layer)
+	for d in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var n: Vector2i = cell + d
+		if not map.is_water(n) or map.get_height(n) > h:
+			continue
+		for k in 2:
+			var side := Vector2(-d.y, d.x) * rng.randf_range(-6.0, 6.0)
+			var base := Vector2(d) * rng.randf_range(4.0, 6.5) + side
+			t.clump(base, 4, rng.randf_range(3.2, 5.2), REED_BASE, REED_TIP, rng, 0.45)
+	var clumps := rng.randi_range(0, 2) if surf == "grass" else rng.randi_range(0, 1)
+	for k in clumps:
+		t.clump(Vector2(rng.randf_range(-6.0, 6.0), rng.randf_range(-6.0, 6.0)), 3, rng.randf_range(1.5, 2.7),
+			g.darkened(0.4), g.lightened(0.16), rng, 0.0)
+	if surf == "grass" and rng.randf() < 0.18:
+		for k in rng.randi_range(1, 2):
+			var base := Vector2(rng.randf_range(-6.0, 6.0), rng.randf_range(-6.0, 6.0))
+			var l := rng.randf_range(1.5, 2.6)
+			var lean := rng.randf_range(-0.4, 0.4)
+			var petal: Color = WILD_PETALS[rng.randi() % WILD_PETALS.size()]
+			t.blade(base, Vector2.ZERO, Vector2(lean, -l), g.darkened(0.45), g.darkened(0.2))
+			t.blade(base, Vector2(lean, -l), Vector2(lean, -l - 0.6), petal, petal, true)
+	s.tuft_mesh = t.mesh()
+
+## 草の葉の線を集めて、1つの線の形（ArrayMesh）にする。
+class _Tufts:
+	var top := Vector2.ZERO
+	var verts := PackedVector2Array()
+	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
+
+	## 根もと base から立つ blades 本の草の葉。cattail の割合で、真ん中の葉の先に穂（がま）を付ける。
+	func clump(base: Vector2, blades: int, length: float, cb: Color, ct: Color, rng: RandomNumberGenerator, cattail: float) -> void:
+		for b in blades:
+			var x := (b - (blades - 1) * 0.5) * 0.5
+			var l := length * rng.randf_range(0.7, 1.1)
+			var lean := rng.randf_range(-0.6, 0.6) + x * 0.6
+			blade(base + Vector2(x, 0), Vector2.ZERO, Vector2(lean, -l), cb, ct)
+			if b == blades / 2 and rng.randf() < cattail:
+				blade(base + Vector2(x, 0), Vector2(lean, -l + 0.6), Vector2(lean, -l - 1.2), CATTAIL, CATTAIL, true)
+
+	## 線を1本足す（from・to は根もとからの画面のずれ）。both_tip なら両方の点を風でゆらす（花びら・穂）。
+	func blade(base: Vector2, from: Vector2, to: Vector2, cb: Color, ct: Color, both_tip := false) -> void:
+		verts.append(base)
+		verts.append(base)
+		uvs.append(from + top)
+		uvs.append(to + top)
+		cols.append(Color(cb.r, cb.g, cb.b, TUFT_TIP_A if both_tip else TUFT_BASE_A))
+		cols.append(Color(ct.r, ct.g, ct.b, TUFT_TIP_A))
+
+	func mesh() -> ArrayMesh:
+		if verts.is_empty():
+			return null
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
+		arrays[Mesh.ARRAY_COLOR] = cols
+		var m := ArrayMesh.new()
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays, [], {}, Mesh.ARRAY_FLAG_USE_2D_VERTICES)
+		return m
 
 ## そのマスに置くモデルの名前（地面と、木などの物）。描かないマスは空。
 static func _cell_keys(map: HeightMap, cell: Vector2i, deco: Dictionary) -> Array[String]:
@@ -222,9 +312,7 @@ static func _cell_keys(map: HeightMap, cell: Vector2i, deco: Dictionary) -> Arra
 			across_ns = false
 		out.append("bridge/%d/%d/%d" % [h, h - bottom, int(across_ns)])
 	else:
-		var surf := surface(theme, h, kind)
-		if kind in ["", "npc"] and surf != "stone" and _paved_around(deco, cell):
-			surf = "stone"  # 石畳の広場の中のたき火・商人の下も石畳
+		var surf := surface_at(map, deco, cell)
 		out.append("ground/%d/%d/%d/%d/%d/%s" % [h, h - bottom, v, int(kind == "flower"), bottom, surf])
 	if kind in ["rock", "tree", "pine", "bush", "tallgrass", "stonewall", "column", "well"]:
 		out.append("%s/%d" % [kind, v])
@@ -243,6 +331,24 @@ static func surface(theme: String, h: int, kind: String = "") -> String:
 		"lava":
 			return "ash"
 	return "grass"
+
+## そのマスの上の面の模様の名前（ShadowMap.SURFACE_IDS）。水 water・溶岩 lava。描かないマス・壁・橋は ""。
+static func surface_at(map: HeightMap, deco: Dictionary, cell: Vector2i) -> String:
+	if map.is_void(cell) or map.is_pit(cell):
+		return ""
+	var kind: String = deco.get(cell, "")
+	if kind == "lava":
+		return "lava"
+	if map.is_water(cell):
+		return "water"
+	if kind == "bridge":
+		return ""
+	if map.is_wall(cell) and map.get_blocker(cell) == HeightMap.Blocker.NONE and kind == "":
+		return ""
+	var surf := surface(deco.get("theme", "grass"), map.get_height(cell), kind)
+	if kind in ["", "npc"] and surf != "stone" and _paved_around(deco, cell):
+		surf = "stone"  # 石畳の広場の中のたき火・商人の下も石畳
+	return surf
 
 static func _paved_around(deco: Dictionary, cell: Vector2i) -> bool:
 	var n := 0
@@ -452,7 +558,7 @@ static func _side(c: Color, face: int) -> Color:
 static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0, surf: String = "grass") -> VoxelModel:
 	var layers := depth * StackSprite.LEVEL_PX + 1
 	var grass: Color = top_color(h, surf)
-	grass = [grass, grass.lightened(0.05), grass.darkened(0.05)][v] as Color
+	grass = [grass, grass.lightened(0.012), grass.darkened(0.012)][v] as Color  # 模様は shadow.gdshader がワールドに続けて描く
 	var base_px := bottom * StackSprite.LEVEL_PX
 	var images: Array[Image] = []
 	for z in layers:
@@ -477,12 +583,10 @@ static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, 
 				var c := _cliff_color(grass, vf, from_top * FINE - r[2], r[4] + r[3] * 37, r[3], v, surf)
 				img.set_pixel(r[0], r[1], _side(c, r[3]))
 		images.append(img)
-	# 上の面の上に、草むらか花を立てる（2枚）
-	var tuft_a := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
-	var tuft_b := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
-	if surf == "snow" or surf == "ash" or surf == "stone":
-		pass  # 草むらは立てない
-	elif flowers:
+	# 花のマスは、上の面の上に花を立てる（2枚）。草むらは線で描く（add_tufts、風でゆれる）
+	if flowers and surf != "snow" and surf != "ash" and surf != "stone":
+		var tuft_a := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
+		var tuft_b := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
 		var petals := [Color("f6f1e4"), Color("ffd84a"), Color("ff8fb3"), Color("b9a6ff")]
 		for i in 7:
 			var px := (3 + i * 9 + v * 7) % 27 + 2
@@ -491,37 +595,13 @@ static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, 
 			tuft_a.set_pixel(px, py, grass.darkened(0.25))
 			for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				tuft_b.set_pixel(px + d.x, py + d.y, pc if d != Vector2i.ZERO else Color("ffe27a"))
-	elif v != 2:
-		var tuft := grass.darkened(0.2)
-		for i in 4:
-			var px := (5 + i * 9 + v * 8) % 27 + 2
-			var py := (3 + i * 13 + v * 10) % 27 + 2
-			for dx in [-1, 0, 1, 2]:
-				tuft_a.set_pixel(px + dx, py, tuft)
-			tuft_b.set_pixel(px - 1, py, tuft.lightened(0.1))
-			tuft_b.set_pixel(px + 1, py, tuft.lightened(0.18))
-			tuft_b.set_pixel(px + 2, py, tuft.lightened(0.1))
-	images.append(tuft_a)
-	images.append(tuft_b)
+		images.append(tuft_a)
+		images.append(tuft_b)
 	return VoxelModel.from_images(images)
 
-## 上の面の草：まだらの色・草の葉・小さな石。
-static func _grass_top(img: Image, grass: Color, v: int, h: int) -> void:
-	var light := grass
-	img.fill(light)
-	for y in TEX:
-		for x in TEX:
-			var k := _hash3(x / 2 + v * 17, y / 2 + h * 5, 3, 11)
-			if k == 0:
-				img.set_pixel(x, y, light.lightened(0.06))
-			elif k == 1:
-				img.set_pixel(x, y, light.darkened(0.06))
-	# 草の葉（暗い根もとと、明るい先）
-	for i in 14:
-		var px := (i * 7 + v * 11 + h * 3) % 30 + 1
-		var py := (i * 11 + v * 5 + h * 7) % 29 + 2
-		img.set_pixel(px, py, light.darkened(0.16))
-		img.set_pixel(px, py - 1, light.lightened(0.1))
+## 上の面の草。模様（まだら・草の葉）は shadow.gdshader がワールドに続けて描くので、ここは色と小さな石だけ。
+static func _grass_top(img: Image, grass: Color, v: int, _h: int) -> void:
+	img.fill(grass)
 	if v == 1:
 		img.set_pixel(9, 21, STONE_COLOR.lightened(0.2))
 		img.set_pixel(10, 21, STONE_COLOR)
@@ -570,42 +650,13 @@ static func _rock_side(surf: String, vf: int, from_top: int, along: int, face: i
 				c = Color("6a6c73")
 	return c.darkened(clampf(from_top * 0.003, 0.0, 0.2))
 
-## 雪や黒い土の上の面：まだらの色と、小さな粒。
-static func _plain_top(img: Image, base: Color, v: int, h: int, surf: String) -> void:
+## 雪や黒い土の上の面。模様は shadow.gdshader が描く。
+static func _plain_top(img: Image, base: Color, _v: int, _h: int, _surf: String) -> void:
 	img.fill(base)
-	for y in TEX:
-		for x in TEX:
-			var k := _hash3(x / 2 + v * 17, y / 2 + h * 5, 4, 13)
-			if k == 0:
-				img.set_pixel(x, y, base.lightened(0.05))
-			elif k == 1:
-				img.set_pixel(x, y, base.darkened(0.05))
-	for i in 6:
-		var px := (i * 9 + v * 11 + h * 3) % 30 + 1
-		var py := (i * 13 + v * 7 + h * 5) % 30 + 1
-		if surf == "snow":
-			img.set_pixel(px, py, Color("ffffff"))  # 雪のきらめき
-		else:
-			img.set_pixel(px, py, Color("e8742c") if i % 3 == 0 else base.darkened(0.2))  # 燃えかす
 
-## 石畳の上の面：四角い石を並べ、継ぎ目を暗く。ときどき草が生える。
-static func _stone_top(img: Image, base: Color, v: int, h: int) -> void:
+## 石畳の上の面。石の形とふちの光は shadow.gdshader がマスごとに描く（大きさの違う石）。
+static func _stone_top(img: Image, base: Color, _v: int, _h: int) -> void:
 	img.fill(base)
-	for y in TEX:
-		for x in TEX:
-			var row := y / 8
-			var seam := y % 8 == 0 or (x + (row % 2) * 8 + v * 4) % 16 == 0
-			var c := base
-			if seam:
-				c = base.darkened(0.22)
-			elif _hash3((x + (row % 2) * 8 + v * 4) / 16, row + h * 3, 6, 5) == 0:
-				c = base.darkened(0.07)
-			elif _hash3(x / 2, y / 2, v, 17) == 0:
-				c = base.lightened(0.05)
-			img.set_pixel(x, y, c)
-	if v == 2:
-		for d in [Vector2i(5, 9), Vector2i(6, 8), Vector2i(7, 9), Vector2i(22, 24), Vector2i(23, 23)]:
-			img.set_pixel(d.x, d.y, Color("6fa040"))  # 継ぎ目の草
 
 ## 水の柱。上の面は水面（地面より WATER_DROP_PX 低い）、側面は滝（縦の筋）。
 ## foam：上の段から滝が落ちてくる所なので、水面に白い泡を出す。

@@ -48,3 +48,44 @@ func test_dark_regions():
 		assert_gt(float(Atmosphere.config(t)["clouds"]), 0.0, t)
 	assert_eq(Atmosphere.config("lava")["particles"], "embers")
 	assert_eq(Atmosphere.config("mountain")["particles"], "snow")
+
+## 2026-11-26（4回目）：高さの絵に、地面の模様の種類（g）・道の印（b）・地面の高さ（a）も入る。
+func test_height_image_carries_surface_and_paths():
+	var m := HeightMap.new(Vector2i(4, 3))
+	for y in 3:
+		for x in 4:
+			m.set_height(Vector2i(x, y), 2)
+	m.set_water(Vector2i(3, 1), true)
+	var deco := {"theme": "grass", "paths": {Vector2i(1, 1): true}}
+	var img := ShadowMap.height_image(m, deco)
+	var R := ShadowMap.RES
+	var grass := img.get_pixel(R / 2, R / 2)
+	assert_eq(int(round(grass.g * 255.0)), ShadowMap.SURFACE_IDS["grass"])
+	assert_eq(int(round(grass.b * 255.0)), 0)
+	var path := img.get_pixel(R + R / 2, R + R / 2)
+	assert_eq(int(round(path.b * 255.0)), ShadowMap.FLAG_PATH, "道の印")
+	var water := img.get_pixel(3 * R + R / 2, R + R / 2)
+	assert_eq(int(round(water.g * 255.0)), ShadowMap.SURFACE_IDS["water"])
+	assert_lt(water.a, grass.a, "水面は少し低い")
+
+## 草の葉は草地にだけ立ち、道や水のマスには立たない。
+func test_tufts_only_on_grass():
+	var m := HeightMap.new(Vector2i(6, 6))
+	for y in 6:
+		for x in 6:
+			m.set_height(Vector2i(x, y), 1)
+	var with_tufts := 0
+	for y in 6:
+		for x in 6:
+			var s := StackSprite.new()
+			Terrain.add_tufts(s, m, {"theme": "grass"}, Vector2i(x, y))
+			if s.tuft_mesh != null:
+				with_tufts += 1
+			s.free()
+	assert_gt(with_tufts, 5, "草地には草の葉がある")
+	var s2 := StackSprite.new()
+	Terrain.add_tufts(s2, m, {"theme": "grass", "paths": {Vector2i(2, 2): true}}, Vector2i(2, 2))
+	assert_null(s2.tuft_mesh, "道には立てない")
+	Terrain.add_tufts(s2, m, {"theme": "lava"}, Vector2i(3, 3))
+	assert_null(s2.tuft_mesh, "黒い土には立てない")
+	s2.free()

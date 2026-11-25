@@ -7,6 +7,7 @@ extends CanvasLayer
 ## 世界（レイヤー0）より上、画面の文字（UI のレイヤー2）より下に描く。
 
 const SHADER := preload("res://scripts/render/atmosphere.gdshader")
+const GLOW_SHADER := preload("res://scripts/render/glow.gdshader")
 const MAX_LIGHTS := 16
 ## 地方ごとの空気：雲の影の濃さ・明るさ（1 で暗くしない）・色・舞うもの
 const THEMES := {
@@ -24,6 +25,9 @@ var camera: StackCamera
 var theme := "grass"
 var _rect: ColorRect
 var _mat: ShaderMaterial
+## 光の輝き（glow.gdshader をたし算で重ねる。2026-11-26 の4回目の直し）
+var _glow_rect: ColorRect
+var _glow_mat: ShaderMaterial
 var _motes: Motes
 var _time := 0.0
 
@@ -40,6 +44,14 @@ func setup(cam: StackCamera) -> void:
 	_mat.shader = SHADER
 	_rect.material = _mat
 	add_child(_rect)
+	_glow_rect = ColorRect.new()
+	_glow_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_glow_rect.position = Vector2.ZERO
+	_glow_rect.size = Vector2(320, 180)
+	_glow_mat = ShaderMaterial.new()
+	_glow_mat.shader = GLOW_SHADER
+	_glow_rect.material = _glow_mat
+	add_child(_glow_rect)
 	_motes = Motes.new()
 	_motes.camera = cam
 	add_child(_motes)
@@ -62,9 +74,11 @@ func set_theme(t: String) -> void:
 func is_dark() -> bool:
 	return float(config(theme)["ambient"]) < 1.0
 
-## 明かり：[ワールドの位置, 高さのpx, 半径のpx, 強さ] の並び。画面の外のものは使わない。
+## 明かり：[ワールドの位置, 高さのpx, 半径のpx, 強さ, (輝き)] の並び。画面の外のものは使わない。
+## 輝き（0〜1、なければ1）は、明かりのまわりをほんのり光らせる強さ（主人公のまわりの明かりは 0）。
 func set_lights(list: Array) -> void:
 	var packed: Array[Vector4] = []
+	var glows := PackedFloat32Array()
 	for l in list:
 		if packed.size() >= MAX_LIGHTS:
 			break
@@ -73,11 +87,16 @@ func set_lights(list: Array) -> void:
 		if p.x < -r or p.y < -r or p.x > 320.0 + r or p.y > 180.0 + r:
 			continue
 		packed.append(Vector4(p.x, p.y, r, l[3]))
+		glows.append(float(l[4]) if l.size() > 4 else 1.0)
 	var n := packed.size()
 	while packed.size() < MAX_LIGHTS:
 		packed.append(Vector4.ZERO)
+		glows.append(0.0)
 	_mat.set_shader_parameter("lights", packed)
 	_mat.set_shader_parameter("light_count", n)
+	_glow_mat.set_shader_parameter("lights", packed)
+	_glow_mat.set_shader_parameter("glows", glows)
+	_glow_mat.set_shader_parameter("light_count", n)
 
 func _process(delta: float) -> void:
 	_time += delta

@@ -116,6 +116,21 @@ static func bonfire(frame := 0) -> VoxelModel:
 		_cache[key] = shaded
 	return _cache[key]
 
+## かがり火（2026-11-26 の4回目の直し）：鉄の器に燃える炎。暗い地方の石の壁や柱の上に置き、まわりを照らす。frame（0〜2）でゆらめく。
+static func brazier(frame := 0) -> VoxelModel:
+	var key := "brazier|%d" % frame
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(14, 14, 20)
+		var c := Vector2(6.5, 6.5)
+		VoxelDraw.cylinder(m, c, 2.0, 0, 1, IRON.darkened(0.2))
+		VoxelDraw.cylinder(m, c, 4.5, 2, 4, IRON)
+		VoxelDraw.cylinder(m, c, 3.5, 4, 4, ASH)
+		var shaded := VoxelShade.apply(m)
+		_flame(shaded, Vector3(c.x, c.y, 5.0), 3.2, 13, frame)
+		_cache[key] = shaded
+	return _cache[key]
+
 ## 炎（下が赤く、上ほど黄色く、真ん中は白っぽい）。base の高さから height だけ、半径 r から細くなる。
 static func _flame(m: VoxelModel, base: Vector3, r: float, height: int, frame: int) -> void:
 	for dz in height:
