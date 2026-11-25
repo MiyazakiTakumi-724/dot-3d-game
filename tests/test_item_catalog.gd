@@ -38,11 +38,46 @@ func test_rank5_is_crafted_only():
 			assert_false(Shop.sells(id), id)
 			assert_false(id in Loot.gear_pool("神秘の塔"), id)
 
-func test_boss_drops_are_rank4():
+## ボスは装備を落とさず、ランク4の装備の素材を落とす（2026-11-25 夜）。どのボスの素材も、ランク4の装備のどれかに使う
+func test_bosses_drop_rank4_materials_not_gear():
 	for b in BossKind.DATA:
+		var used := false
 		for d in BossKind.drops(b):
-			if ItemCatalog.exists(d[0]):
-				assert_eq(ItemCatalog.rank(d[0]), 4, b)
+			assert_false(ItemCatalog.exists(d[0]), b + " は装備を落とさない")
+			if ItemCatalog.is_material(d[0]):
+				for r in Recipes.LIST:
+					if ItemCatalog.rank(r[0]) >= 4 and r[2].has(d[0]):
+						used = true
+		assert_true(used, b + " の素材でランク4を作れる")
+
+## ランクが高い装備は、レベルが上がってから使える
+func test_required_level_by_rank():
+	assert_eq(ItemCatalog.required_level("sword_1"), 1)
+	assert_eq(ItemCatalog.required_level("sword_light"), 1)
+	assert_eq(ItemCatalog.required_level("sword_long"), 6)
+	assert_eq(ItemCatalog.required_level("sword_flame"), 12)
+	assert_eq(ItemCatalog.required_level("sword_star"), 18)
+	assert_eq(ItemCatalog.required_level("herb"), 1)
+
+## 地方の印（ボスの間の門の鍵）は数で持ち、素材ではない
+func test_region_seals_are_key_items():
+	for r in ["mt", "gr", "cs", "lv"]:
+		var id: String = "seal_" + r
+		assert_true(ItemCatalog.is_key(id), id)
+		assert_true(ItemCatalog.is_counted(id), id)
+		assert_false(ItemCatalog.is_material(id), id)
+		assert_ne(ItemCatalog.name_of(id), "")
+
+## どの品物にも説明（カーソルを合わせたときに出す）がある
+func test_every_item_has_description():
+	var ids: Array = []
+	ids.append_array(ItemCatalog.ITEMS.keys())
+	ids.append_array(ItemCatalog.MATERIALS.keys())
+	ids.append_array(ItemCatalog.TOOLS.keys())
+	ids.append_array(ItemCatalog.ARROWS.keys())
+	ids.append_array(ItemCatalog.KEYS.keys())
+	for id in ids:
+		assert_ne(ItemCatalog.describe(id), "", id)
 
 func test_no_chest_only_gear_and_sources_are_real():
 	var boss_items := {}
@@ -58,7 +93,7 @@ func test_no_chest_only_gear_and_sources_are_real():
 		assert_false(src == ["chest"], id)
 		assert_eq("shop" in src, Shop.sells(id), id + " shop")
 		assert_eq("craft" in src, Recipes.makes(id), id + " craft")
-		assert_eq("boss" in src, boss_items.has(id), id + " boss")
+		assert_false("boss" in src, id + " ボスは装備を落とさない")
 		assert_eq("drop" in src, dropped.has(id), id + " drop")
 		assert_true(src.size() > 0, id)
 
@@ -68,7 +103,7 @@ func test_some_gear_has_one_source_and_some_many():
 	var many := 0
 	for id in ItemCatalog.ITEMS:
 		var src := ItemCatalog.sources(id).filter(func(x): return x != "chest" and x != "start")
-		if src.size() == 1 and (src[0] == "boss" or src[0] == "craft"):
+		if src.size() == 1 and src[0] == "craft":
 			few += 1
 		if src.size() >= 3:
 			many += 1

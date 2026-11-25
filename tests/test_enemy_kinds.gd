@@ -52,7 +52,7 @@ func test_gear_pool_by_region():
 	assert_true("sword_frost" in Loot.gear_pool("神秘の塔"))
 	assert_false("sword_frost" in Loot.gear_pool("山岳"))
 
-func test_bosses_drop_rank4_and_material():
+func test_bosses_drop_materials():
 	for b in BossKind.DATA:
 		var drops := BossKind.drops(b)
 		assert_gt(drops.size(), 0, b)

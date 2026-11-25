@@ -27,9 +27,20 @@ const SEAL_BOSSES := 4
 ## ブライトを倒した（ゲームの終わり）
 var cleared := false
 
+## ボスの間の前の門（地方の印が SEALS_PER_DOOR 個あると開く）。門の id → 印の id
+const BOSS_DOORS := {"mt_boss": "seal_mt", "gr_boss": "seal_gr", "cs_boss": "seal_cs", "lv_boss": "seal_lv"}
+const SEALS_PER_DOOR := 3
+
 func _init(cp_area: String, checkpoint: Vector2i) -> void:
 	checkpoint_area = cp_area
 	checkpoint_cell = checkpoint
+	inventory.equipment.stats = stats
+
+## ボスの間の前の門を開けるのに、あと何個の印が要るか（ほかの門は0）。
+func seals_left(door_id: String) -> int:
+	if not BOSS_DOORS.has(door_id):
+		return 0
+	return maxi(0, SEALS_PER_DOOR - inventory.count(BOSS_DOORS[door_id]))
 
 ## 死んだときの持ち物の移し替え。お金は半分（切り捨て）、ほかの持ち物（素材・道具・矢・ランク2以上の装備）はすべて墓石へ。
 ## 古い墓石は中身ごと消え、新しい墓石だけが残る。
@@ -38,8 +49,14 @@ func on_death(area_id: String, death_cell: Vector2i) -> Gravestone:
 	g.area_id = area_id
 	g.cell = death_cell
 	g.money = inventory.money / 2
-	g.counts = inventory.counts
-	inventory.counts = {}
+	g.counts = {}
+	var keep := {}
+	for id in inventory.counts:
+		if ItemCatalog.is_key(id):
+			keep[id] = inventory.counts[id]  # 地方の印は墓石に入れない
+		else:
+			g.counts[id] = inventory.counts[id]
+	inventory.counts = keep
 	g.equipment = inventory.equipment.take_for_grave()
 	inventory.money -= g.money
 	grave = g
@@ -96,9 +113,11 @@ func open_door(id: String) -> void:
 func is_door_open(id: String) -> bool:
 	return _open_doors.has(id)
 
-## その門を今開けられるか。封印の門だけは、ボスを倒した数で決まる。
+## その門を今開けられるか。封印の門はボスを倒した数、ボスの間の前の門は地方の印の数で決まる。
 func can_open_door(id: String) -> bool:
-	return id != SEAL_DOOR or seal_bosses_left() == 0
+	if id == SEAL_DOOR:
+		return seal_bosses_left() == 0
+	return seals_left(id) == 0
 
 ## 封印を解くのに、あと何体の地方のボスを倒せばよいか。
 func seal_bosses_left() -> int:

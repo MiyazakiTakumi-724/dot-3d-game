@@ -64,10 +64,13 @@ var _title_time := 0.0
 var _grave_hint_time := 0.0
 ## 始めたときに、どうすればよいかを出しておく残り秒数
 var _start_hint_time := 8.0
+var _play_time := 0.0  ## 始めてからの秒数（操作の説明を出す間）
 var _boss_bar: Control  ## 下：戦っているボスの名前と体力
 var _boss_fill: ColorRect
 var _boss_label: Label
-var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・墓石のあるエリア
+var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・墓石のあるエリア（文字。画面には出さず、hud が描く）
+var hud: Hud  ## いのちとマナのバー・手に持つ物の箱・杖の魔法の待ち時間
+const GUIDE_SECONDS := 30.0  ## 操作の説明を出しておく時間
 var _message: Label  ## 真ん中：エリアの名前・門のヒント・やられた
 var _guide: Label  ## 下：操作の説明
 var _popups: Control  ## ダメージの数字を置く所（エリアを切り替えると片付ける）
@@ -601,6 +604,7 @@ func _process(delta: float) -> void:
 	_grave_hint_time = maxf(0.0, _grave_hint_time - delta)
 	_notice_time = maxf(0.0, _notice_time - delta)
 	_start_hint_time = maxf(0.0, _start_hint_time - delta)
+	_play_time += delta
 	_arrow_blink += delta
 	var frame := int(_arrow_blink * 8.0) % 3
 	if _bonfire_node != null and is_instance_valid(_bonfire_node) and frame != _bonfire_frame:
@@ -977,7 +981,7 @@ func cast_spell(screen = null) -> bool:
 	var spell := current_spell()
 	if spell < 0:
 		return false
-	var cost_mult := float(run.inventory.equipment.trait_of(Equipment.Slot.STAFF, "cost", 1.0))
+	var cost_mult := spell_cost_mult()
 	if mana.value < Magic.cost_of(spell, cost_mult):
 		if magic.cooldown <= 0.0:
 			notice("マナが足りない", 1.0)
@@ -1001,6 +1005,10 @@ func cast_spell(screen = null) -> bool:
 			player.set_hp(mini(player.max_hp, player.hp + Magic.HEAL_AMOUNT))
 			_popup_text(player.mover.pos, player.mover.height, "+%d" % Magic.HEAL_AMOUNT, Color("7ee081"))
 	return true
+
+## 杖の特色で変わる、魔法のマナの倍率。
+func spell_cost_mult() -> float:
+	return float(run.inventory.equipment.trait_of(Equipment.Slot.STAFF, "cost", 1.0))
 
 ## 雷：狙った点に落ちる。自分と同じか低い所の敵に当たる（高い所からでなくてもよい）。
 func _thunder(point: Vector2) -> void:
@@ -1624,16 +1632,22 @@ func _build_ui() -> void:
 	add_child(layer)
 	_status = UiText.label()
 	_status.position = Vector2(4, 2)
+	_status.visible = false  # 文字の表示はテスト用に残し、画面には Hud（バーと箱）を出す
 	layer.add_child(_status)
+	hud = Hud.new()
+	hud.field = self
+	layer.add_child(hud)
 	_message = UiText.label(true)
-	_message.position = Vector2(0, 112)
+	_message.position = Vector2(0, 92)
 	_message.size = Vector2(320, 40)
 	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	layer.add_child(_message)
 	_guide = UiText.label()
-	_guide.position = Vector2(4, 166)
-	_guide.modulate.a = 0.8
-	_guide.text = "クリック:使う　1〜5:持ちかえ　Tab:持ち物　M:地図　右ドラッグ:カメラ"
+	_guide.position = Vector2(116, 2)
+	_guide.size = Vector2(200, 24)
+	_guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_guide.modulate.a = 0.85
+	_guide.text = "クリック:使う　1〜5:持ちかえ\nTab:持ち物　M:地図　右ドラッグ:カメラ"
 	layer.add_child(_guide)
 	_boss_bar = Control.new()
 	_boss_bar.position = Vector2(80, 24)
@@ -1671,6 +1685,7 @@ func _build_ui() -> void:
 
 func _update_ui() -> void:
 	_status.text = status_text()
+	_guide.visible = _play_time < GUIDE_SECONDS
 	_message.text = ui_message()
 	var b := active_boss()
 	_boss_bar.visible = b != null
@@ -1696,6 +1711,37 @@ func status_text() -> String:
 	if run.grave != null:
 		text += "　墓石：%s" % world.area(run.grave.area_id).title
 	return text + "\n" + hotbar_text()
+
+## 手に持つ物の箱の中身（Hud が描く）：id（アイコン）、name（選んだとき箱の上に出す名前）、count（右下の数）、ok（使えるか）。
+## 持っていない武器は id が空。
+func hotbar_slot(item: Hotbar.Item) -> Dictionary:
+	var eq := run.inventory.equipment
+	match item:
+		Hotbar.Item.TOOL:
+			var tool := run.inventory.current_tool()
+			if tool == "":
+				return {"name": "道具（なし）"}
+			return {"id": tool, "name": "%s ×%d　ホイール：替える" % [ItemCatalog.name_of(tool), run.inventory.count(tool)],
+				"count": run.inventory.count(tool)}
+		Hotbar.Item.IRON_BALL:
+			var bid := ball.rules_ball.item
+			var held := ball.rules_ball.state == IronBall.State.HELD
+			return {"id": bid, "name": ItemCatalog.label(bid) + ("" if held else "（拾いに行く）"), "ok": held}
+	var slot: Equipment.Slot = Hotbar.WEAPON_SLOT[item]
+	if eq.effective(slot) == 0:
+		return {}
+	var id := eq.current(slot)
+	var out := {"id": id, "name": ItemCatalog.label(id)}
+	if item == Hotbar.Item.BOW:
+		out["count"] = _usable_arrows()
+		out["ok"] = _usable_arrows() > 0
+		out["name"] += "　矢%d" % _usable_arrows()
+	elif item == Hotbar.Item.STAFF and current_spell() >= 0:
+		var spell := current_spell()
+		out["name"] += "：" + Magic.NAMES[spell]
+		if usable_spells().size() > 1:
+			out["name"] += "（ホイール）"
+	return out
 
 ## 手に持つアイテムの並び。持っている武器だけ出し、選んでいるものを [ ] で囲む。
 func hotbar_text() -> String:
@@ -1788,11 +1834,15 @@ func _maybe_screenshot() -> void:
 				for id in ["hide", "bone", "herb", "potion", "bomb", "iron_ore", "star_shard"]:
 					run.inventory.add(id, 3)
 			elif a == "--inventory=staff":
+				run.stats.add_exp(PlayerStats.exp_to_reach(8))
 				for id in ["staff_none_1", "staff_fire_3", "staff_storm"]:
 					run.inventory.equipment.gain(id)
 				menu.selected_slot = Equipment.Slot.STAFF
 			get_tree().create_timer(0.05).timeout.connect(open_inventory)
 		elif a == "--gear":
+			run.stats.add_exp(PlayerStats.exp_to_reach(8))  # ランク3の杖を使えるように
+			for i in 3:
+				run.stats.allocate(PlayerStats.Stat.MAGIC)
 			for id in ["sword_1", "bow_1", "staff_fire_3", "armor_1"]:
 				run.inventory.equipment.gain(id)
 			run.inventory.add_arrows(Arrow.Kind.NORMAL, 20)

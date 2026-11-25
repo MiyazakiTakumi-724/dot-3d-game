@@ -89,3 +89,26 @@ func test_items_sorted_by_rank_then_catalog():
 	eq.gain("staff_fire_2")
 	eq.gain("staff_none_1")
 	assert_eq(eq.items(Equipment.Slot.STAFF), ["staff_none_1", "staff_fire_2", "staff_ice_2", "staff_star"])
+
+## レベルが足りない装備は持てるが、装備できない（2026-11-25 夜）。持ち主のステータスがなければ制限しない
+func test_level_gates_equipping():
+	var st := PlayerStats.new()
+	var eq := Equipment.new()
+	eq.stats = st
+	assert_true(eq.gain("sword_1"))
+	assert_true(eq.gain("sword_flame"))
+	assert_false(eq.usable("sword_flame"))
+	assert_false(eq.equip("sword_flame"))
+	assert_eq(eq.current(Equipment.Slot.SWORD), "sword_1")
+	st.level = 12
+	assert_true(eq.equip("sword_flame"))
+	assert_eq(eq.current(Equipment.Slot.SWORD), "sword_flame")
+	st.level = 1
+	assert_eq(eq.current(Equipment.Slot.SWORD), "sword_1", "下がったら使えない（念のため）")
+
+func test_first_gear_too_high_is_not_equipped():
+	var eq := Equipment.new()
+	eq.stats = PlayerStats.new()
+	eq.gain("bow_wind")
+	assert_eq(eq.current(Equipment.Slot.BOW), "")
+	assert_eq(eq.effective(Equipment.Slot.BOW), 0)

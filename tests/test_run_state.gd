@@ -233,3 +233,25 @@ func test_bosses_are_remembered():
 	assert_false(rs.cleared)
 	rs.on_boss_killed("ブライト", 10)
 	assert_true(rs.cleared)
+
+## 地方の印は死んでも墓石に入らない（鍵なので）。装備のレベルの制限は、冒険のステータスに合わせる
+func test_seals_stay_on_death_and_equipment_knows_level():
+	var rs := RunState.new("town", Vector2i(1, 1))
+	rs.inventory.add("seal_mt", 2)
+	rs.inventory.add("herb", 3)
+	rs.on_death("town", Vector2i(2, 2))
+	assert_eq(rs.inventory.count("seal_mt"), 2)
+	assert_eq(rs.inventory.count("herb"), 0)
+	rs.inventory.equipment.gain("sword_flame")
+	assert_false(rs.inventory.equipment.usable("sword_flame"))
+	rs.stats.add_exp(PlayerStats.exp_to_reach(12))
+	assert_true(rs.inventory.equipment.usable("sword_flame"))
+
+## ボスの間の門は、その地方の印が3つあると開く
+func test_boss_doors_need_three_seals():
+	var rs := RunState.new("town", Vector2i(1, 1))
+	assert_false(rs.can_open_door("mt_boss"))
+	assert_eq(rs.seals_left("mt_boss"), 3)
+	rs.inventory.add("seal_mt", 3)
+	assert_true(rs.can_open_door("mt_boss"))
+	assert_true(rs.can_open_door("forest_gate"))

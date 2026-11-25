@@ -381,6 +381,7 @@ func test_choose_ball_rank_in_menu():
 ## 杖の枠は1つで、持っている杖（無の杖・炎の杖…）の中から選ぶ
 func test_choose_staff_in_menu():
 	f.run.inventory.equipment.gain("staff_none_1")
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	f.run.inventory.equipment.gain("staff_fire_3")
 	f.open_inventory()
 	f.menu.select_slot(Equipment.Slot.STAFF)
@@ -603,6 +604,7 @@ func test_no_mana_no_cast():
 func test_fire_staff_and_wheel():
 	var eq: Equipment = f.run.inventory.equipment
 	eq.gain("staff_none_1")
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	eq.gain("staff_fire_3")
 	assert_eq(eq.current(Equipment.Slot.STAFF), "staff_none_1")
 	assert_true(eq.equip("staff_fire_3"))
@@ -632,6 +634,7 @@ func test_fireball_does_not_burn_higher_ground():
 ## 火柱は下の敵に当たってやけどにする。崖の上（自分より高い所）の敵には当たらない
 func test_fire_pillar_only_hits_at_or_below():
 	var eq: Equipment = f.run.inventory.equipment
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	eq.gain("staff_fire_3")
 	eq.equip("staff_fire_3")
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
@@ -680,6 +683,7 @@ func test_fireball_burns():
 ## 炎の雨：高い所から使うほど広い。自分より高い所の敵には当たらない
 func test_fire_rain_from_high_ground():
 	var eq: Equipment = f.run.inventory.equipment
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	eq.gain("staff_star")
 	eq.equip("staff_star")
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(8))
@@ -830,6 +834,7 @@ func test_pixel_scale_and_fine_hero():
 
 ## インベントリの姿は、選んでいる枠の品物を持つ
 func test_portrait_holds_selected_slot_item():
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	f.run.inventory.equipment.gain("staff_fire_3")
 	f.run.inventory.equipment.equip("staff_fire_3")
 	f.open_inventory()
@@ -1051,7 +1056,7 @@ func test_tools_cycle_and_power_potion():
 	f._process(31.0)
 	assert_eq(f.current_attack(), before)
 
-## ボス：ボスの間に入るといて、倒すと覚えられ、ランク4の品物とボスの素材を落とす。入り直しても戻らない
+## ボス：ボスの間に入るといて、倒すと覚えられ、ボスの素材（装備ではない）を落とす。入り直しても戻らない
 func test_boss_defeat_is_remembered():
 	f.enter_area("mt_5", Vector2i(10, 18))
 	assert_eq(f.bosses.size(), 1)
@@ -1060,7 +1065,7 @@ func test_boss_defeat_is_remembered():
 	b.walker.take_damage(9999)
 	assert_true(f.run.is_boss_defeated("岩転がしの巨人"))
 	var ids: Array = f._drops.map(func(d): return d[1])
-	assert_true("sword_giant" in ids)
+	assert_false("sword_giant" in ids)
 	assert_true("giant_core" in ids)
 	f.enter_area("mt_5", Vector2i(10, 18))
 	assert_eq(f.bosses.size(), 0)

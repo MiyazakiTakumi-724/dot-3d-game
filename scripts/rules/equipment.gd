@@ -25,6 +25,8 @@ const ATTACK_PER_RANK := 2
 const HP_PER_ARMOR_RANK := 4
 
 var _owned: Array[String] = []
+## 持ち主のステータス（レベルで装備できる品物が決まる）。なければ制限しない
+var stats: PlayerStats
 var _equipped := {}  # Slot → id（好み）
 
 func _init() -> void:
@@ -40,9 +42,13 @@ func gain(id: String) -> bool:
 		return false
 	_owned.append(id)
 	var s := ItemCatalog.slot(id)
-	if not _equipped.has(s):
+	if not _equipped.has(s) and usable(id):
 		_equipped[s] = id
 	return true
+
+## 今のレベルで装備できるか（ItemCatalog.required_level）。
+func usable(id: String) -> bool:
+	return stats == null or ItemCatalog.required_level(id) <= stats.level
 
 func has(id: String) -> bool:
 	return _owned.has(id)
@@ -58,7 +64,7 @@ func items(slot: Slot) -> Array:
 	return out
 
 func equip(id: String) -> bool:
-	if not has(id):
+	if not has(id) or not usable(id):
 		return false
 	_equipped[ItemCatalog.slot(id)] = id
 	return true
@@ -68,12 +74,15 @@ func chosen(slot: Slot) -> String:
 	return _equipped.get(slot, "")
 
 ## 実際に使う品物。選んだものが手元になければ（墓石の中など）、持っている一番低いランクのもの。何もなければ空。
+## レベルが足りない品物は使わない。
 func current(slot: Slot) -> String:
 	var c := chosen(slot)
-	if has(c):
+	if has(c) and usable(c):
 		return c
-	var list := items(slot)
-	return list[0] if not list.is_empty() else ""
+	for id in items(slot):
+		if usable(id):
+			return id
+	return ""
 
 ## 実際に使う品物のランク。何もなければ0。
 func effective(slot: Slot) -> int:
@@ -112,5 +121,5 @@ func restore(taken: Array) -> void:
 		var s := ItemCatalog.slot(id)
 		var c := chosen(s)
 		gain(id)
-		if c != "":
+		if c != "" and has(c):
 			_equipped[s] = c  # gain で好みが変わらないように
