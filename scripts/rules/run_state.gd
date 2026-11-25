@@ -18,6 +18,13 @@ var checkpoint_cell: Vector2i
 ## 拾い済みの id（"エリア:番号"）と、開けた門の id。エリアをまたいで覚える
 var _picked := {}
 var _open_doors := {}
+## 開けた仕掛け（Gimmick の id）と、行ったことのあるエリア（全体マップに出す）
+var _open_gimmicks := {}
+var _visited := {}
+
+## 神秘の塔の封印の門。地方のボスを SEAL_BOSSES 体倒すと開けられる（2026-11-25 の設計）
+const SEAL_DOOR := "tower_seal"
+const SEAL_BOSSES := 4
 
 func _init(cp_area: String, checkpoint: Vector2i) -> void:
 	checkpoint_area = cp_area
@@ -101,6 +108,38 @@ func open_door(id: String) -> void:
 
 func is_door_open(id: String) -> bool:
 	return _open_doors.has(id)
+
+## その門を今開けられるか。封印の門だけは、ボスを倒した数で決まる。
+func can_open_door(id: String) -> bool:
+	return id != SEAL_DOOR or bosses_defeated >= SEAL_BOSSES
+
+## 封印を解くのに、あと何体のボスを倒せばよいか。
+func seal_bosses_left() -> int:
+	return maxi(0, SEAL_BOSSES - bosses_defeated)
+
+func open_gimmick(id: String) -> void:
+	_open_gimmicks[id] = true
+
+func is_gimmick_open(id: String) -> bool:
+	return _open_gimmicks.has(id)
+
+func visit(area_id: String) -> void:
+	_visited[area_id] = true
+
+func has_visited(area_id: String) -> bool:
+	return _visited.has(area_id)
+
+func visited_ids() -> Array:
+	return _visited.keys()
+
+## たき火で休むと、死んだときに戻る所がそこになる。
+func set_checkpoint(area_id: String, cell: Vector2i) -> void:
+	checkpoint_area = area_id
+	checkpoint_cell = cell
+
+## 死んだあと再開するマス（たき火のすぐ南。地図を作るときに空けておく）。
+func respawn_cell() -> Vector2i:
+	return checkpoint_cell + Vector2i(0, 1)
 
 ## チェックポイントのマスか、その周り8マスにいるか。ここにいると全回復する。
 ## 落ちているものを拾える距離（マスの中心から）。

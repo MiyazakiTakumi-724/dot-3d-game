@@ -67,7 +67,8 @@ static func can_drop_at(point: Vector2, map: HeightMap, from_height: int) -> boo
 		return false
 	if map.get_height(target) > from_height:
 		return false
-	return map.is_grave(target) or not map.is_wall(target)
+	# 墓石と、ひびの入った岩（仕掛け）の上には落とせる
+	return map.is_grave(target) or map.get_blocker(target) == HeightMap.Blocker.CRACK or not map.is_wall(target)
 
 ## ランクごとの当たる半径。ランク2の特性は「当たる範囲が広い」（design.md 7章）。
 static func hit_radius(rank: int) -> float:

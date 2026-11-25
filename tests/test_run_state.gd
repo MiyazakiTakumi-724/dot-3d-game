@@ -187,3 +187,39 @@ func test_drop_pickup_not_remembered():
 	rs.take_drop(RunState.PickupKind.HEAL, 1)
 	rs.take_drop(RunState.PickupKind.HEAL, 1)
 	assert_eq(rs.inventory.heals, 2)
+
+# ---- 全体の地図（2026-11-25）：たき火・仕掛け・行ったエリア・封印の門
+
+func test_resting_at_a_bonfire_moves_the_checkpoint():
+	rs.set_checkpoint("grass_2", Vector2i(12, 10))
+	assert_eq(rs.checkpoint_area, "grass_2")
+	assert_eq(rs.checkpoint_cell, Vector2i(12, 10))
+	assert_true(rs.is_near_checkpoint("grass_2", Vector2i(13, 11)))
+	assert_false(rs.is_near_checkpoint("hills", Vector2i(1, 1)))
+
+func test_respawn_is_just_south_of_the_bonfire():
+	rs.set_checkpoint("camp", Vector2i(12, 10))
+	assert_eq(rs.respawn_cell(), Vector2i(12, 11))
+
+func test_opened_gimmicks_are_remembered():
+	assert_false(rs.is_gimmick_open("mt_1:0"))
+	rs.open_gimmick("mt_1:0")
+	assert_true(rs.is_gimmick_open("mt_1:0"))
+	rs.on_death("mt_1", Vector2i(2, 2))
+	assert_true(rs.is_gimmick_open("mt_1:0"))
+
+func test_visited_areas():
+	assert_false(rs.has_visited("town"))
+	rs.visit("town")
+	assert_true(rs.has_visited("town"))
+	assert_eq(rs.visited_ids(), ["town"])
+
+func test_tower_seal_needs_four_bosses():
+	assert_false(rs.can_open_door(RunState.SEAL_DOOR))
+	assert_eq(rs.seal_bosses_left(), 4)
+	rs.bosses_defeated = 3
+	assert_false(rs.can_open_door(RunState.SEAL_DOOR))
+	assert_eq(rs.seal_bosses_left(), 1)
+	rs.bosses_defeated = 4
+	assert_true(rs.can_open_door(RunState.SEAL_DOOR))
+	assert_true(rs.can_open_door("forest_gate"))

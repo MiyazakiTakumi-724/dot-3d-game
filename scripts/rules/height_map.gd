@@ -5,7 +5,8 @@ extends RefCounted
 const CELL_PX := 16
 
 ## 壁のように通れなくするもの。NONE に戻すと元の地形になる。
-enum Blocker { NONE, GRAVE, DOOR }
+## CRACK・THORNS・VINES は武器で開く仕掛け（Gimmick）。
+enum Blocker { NONE, GRAVE, DOOR, CRACK, THORNS, VINES }
 
 var size: Vector2i
 var _heights: PackedInt32Array
