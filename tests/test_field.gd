@@ -1124,3 +1124,41 @@ func test_map_toggles_with_m():
 	assert_eq(f.map_view.current_id, "town")
 	f.toggle_map()
 	assert_false(f.map_view.visible)
+
+## 持ち物のページ：持っている品物がアイコンで並び、カーソルを合わせると説明が出る（2026-11-25 夜）
+func test_items_page_lists_icons_with_tips():
+	var inv: Inventory = f.run.inventory
+	inv.money = 12
+	inv.add("herb", 3)
+	inv.add("potion", 2)
+	inv.add("seal_mt", 1)
+	inv.equipment.gain("sword_flame")
+	var ids: Array = f.menu.grid_items().map(func(r): return r[0])
+	assert_eq(ids, ["money", "ball_1", "sword_flame", "seal_mt", "potion", "herb"])
+	f.open_inventory()
+	f.menu.show_page(InventoryMenu.Page.ITEMS)
+	assert_eq(f.menu._items_box.get_child_count(), 6)
+	var slot: Button = f.menu._items_box.get_child(2)
+	slot.mouse_entered.emit()
+	assert_true(f.menu.tip.visible)
+	assert_eq(f.menu.tip.item_id, "sword_flame")
+	var t: Array = f.menu.tip.texts("sword_flame")
+	assert_string_contains(t[0], "炎の剣")
+	assert_string_contains(t[1], "やけど")
+	assert_string_contains(t[1], "Lv12")
+	slot.mouse_exited.emit()
+	assert_false(f.menu.tip.visible)
+
+## 手に持つ物の箱：持っている武器だけアイコンが出て、弓は矢の数、杖は魔法の名前
+func test_hotbar_slots_show_icons_and_counts():
+	assert_eq(f.hotbar_slot(Hotbar.Item.IRON_BALL)["id"], "ball_1")
+	assert_eq(f.hotbar_slot(Hotbar.Item.SWORD), {})
+	f.run.inventory.equipment.gain("bow_1")
+	f.run.inventory.add_arrows(Arrow.Kind.NORMAL, 7)
+	assert_eq(f.hotbar_slot(Hotbar.Item.BOW)["count"], 7)
+	f.run.inventory.equipment.gain("staff_none_1")
+	f.hotbar.select_slot(4, f.run.inventory.equipment)
+	assert_string_contains(f.hotbar_slot(Hotbar.Item.STAFF)["name"], "無の弾")
+	f.run.inventory.add("bomb", 2)
+	assert_eq(f.hotbar_slot(Hotbar.Item.TOOL)["id"], "bomb")
+	assert_eq(f.hotbar_slot(Hotbar.Item.TOOL)["count"], 2)

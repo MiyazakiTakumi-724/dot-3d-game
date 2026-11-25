@@ -4,7 +4,7 @@ extends CanvasLayer
 ## 「装備」のページ：真ん中に主人公の姿、その左に武器の枠（鉄球・剣・弓・杖）、右に防具の枠。枠を選ぶと、右側に
 ## その種類の持っている品物が並び、クリックで装備するものを決める（杖なら、無の杖・炎の杖…から選ぶ）。下に持ち物（所持数は無限）。
 ## 「ステータス」のページ：レベルアップでもらったポイントを、6つの項目に振る。3ポイントごとに技能を覚える。
-## 「持ち物」のページ：お金・道具・矢・素材の数と説明（2026-11-25 に足した）。
+## 「持ち物」のページ：持っている品物すべてをアイコンで並べる。カーソルを合わせると詳しい説明が出る（2026-11-25 夜）。
 
 signal close_requested
 ## ポイントを振った・防具を替えた（体力の最大や足の速さを反映してもらう）
@@ -37,6 +37,8 @@ var _stats_header: Label
 var _stat_rows := {}  # Stat → [points Label, + Button, effect Label, skill Label]
 var _portrait_cam: StackCamera
 var _portrait: StackSprite
+## カーソルを合わせた品物の説明
+var tip: ItemTip
 
 func setup(r: RunState, s: GameSettings = null) -> void:
 	run = r
@@ -58,6 +60,9 @@ func setup(r: RunState, s: GameSettings = null) -> void:
 	_build_stats_page()
 	_build_items_page()
 	_build_settings_page()
+	tip = ItemTip.new()
+	tip.stats = run.stats
+	add_child(tip)
 	_panel.hide()
 
 func _build_equip_page() -> void:
@@ -117,18 +122,42 @@ var _settings_root: Control
 var _difficulty_buttons := {}
 var _flash_buttons := {}
 var _items_root: Control
-var _items_box: VBoxContainer
+var _items_box: GridContainer
+var _items_hint: Label
 
 func _build_items_page() -> void:
 	_items_root = _page_root()
 	var scroll := ScrollContainer.new()
 	scroll.position = Vector2(6, 24)
-	scroll.size = Vector2(292, 140)
+	scroll.size = Vector2(294, 128)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_items_root.add_child(scroll)
-	_items_box = VBoxContainer.new()
-	_items_box.add_theme_constant_override("separation", 1)
+	_items_box = GridContainer.new()
+	_items_box.columns = 13
+	_items_box.add_theme_constant_override("h_separation", 2)
+	_items_box.add_theme_constant_override("v_separation", 2)
 	scroll.add_child(_items_box)
+	_items_hint = _label(_items_root, "カーソルを合わせると説明　道具は 5 で持ってクリックで使う", Vector2(6, 154))
+	_items_hint.modulate.a = 0.7
+
+## 持ち物のページに並べる品物 [[id, 数], ...]：お金・装備（枠とランクの順）・大事な物・道具・矢・素材。
+func grid_items() -> Array:
+	var inv := run.inventory
+	var out: Array = []
+	if inv.money > 0:
+		out.append([ItemCatalog.MONEY, inv.money])
+	for slot in Equipment.WEAPONS + Equipment.ARMOR:
+		for id in inv.equipment.items(slot):
+			out.append([id, 1])
+	for id in inv.ids(ItemCatalog.is_key):
+		out.append([id, inv.count(id)])
+	for id in inv.tools():
+		out.append([id, inv.count(id)])
+	for id in inv.ids(ItemCatalog.is_arrow):
+		out.append([id, inv.count(id)])
+	for id in inv.materials():
+		out.append([id, inv.count(id)])
+	return out
 
 ## 持ち物のページの行（テスト用にも使う）：お金、道具、矢、素材の順。
 func item_lines() -> Array[String]:
@@ -147,11 +176,10 @@ func _refresh_items() -> void:
 	for c in _items_box.get_children():
 		_items_box.remove_child(c)
 		c.queue_free()
-	for line in item_lines():
-		_label(_items_box, line, Vector2.ZERO)
-	if run.inventory.tools().size() > 0:
-		var hint := _label(_items_box, "道具は 5 で持ち、ホイールで替えてクリックで使う", Vector2.ZERO)
-		hint.modulate.a = 0.7
+	for row in grid_items():
+		var id: String = row[0]
+		var dim: bool = ItemCatalog.exists(id) and not run.inventory.equipment.usable(id)
+		_items_box.add_child(ItemTip.make_slot(id, row[1], tip, Callable(), dim))
 
 func _build_settings_page() -> void:
 	_settings_root = _page_root()
@@ -189,10 +217,12 @@ func open() -> void:
 	_panel.show()
 
 func close() -> void:
+	tip.hide_tip()
 	_panel.hide()
 
 func show_page(p: Page) -> void:
 	page = p
+	tip.hide_tip()
 	refresh()
 
 func select_slot(slot: Equipment.Slot) -> void:
@@ -202,6 +232,8 @@ func select_slot(slot: Equipment.Slot) -> void:
 ## 品物 id を装備する。持っていなければ false。
 func choose(id: String) -> bool:
 	if not run.inventory.equipment.equip(id):
+		if run.inventory.equipment.has(id):
+			_detail_title.text = "Lv%dから装備できる" % ItemCatalog.required_level(id)
 		return false
 	stats_changed.emit()  # 防具なら最大いのちが変わる
 	refresh()
@@ -317,7 +349,14 @@ func _refresh_equip() -> void:
 		if t != "":
 			text += "\n　" + t
 		var item_id: String = id
-		_button(_rank_box, text, Vector2.ZERO, func(): choose(item_id))
+		if not eq.usable(id):
+			text += "\n　Lv%dから" % ItemCatalog.required_level(id)
+		var b := _button(_rank_box, text, Vector2.ZERO, func(): choose(item_id))
+		b.icon = ItemIcons.texture(id)
+		if not eq.usable(id):
+			b.modulate = Color(1.0, 0.6, 0.6, 0.8)
+		b.mouse_entered.connect(func(): tip.show_item(item_id, 1, b.global_position + Vector2(-174, 0)))
+		b.mouse_exited.connect(tip.hide_tip)
 	for id in in_grave:
 		var l := _label(_rank_box, "× %s：墓石の中" % ItemCatalog.label(id), Vector2.ZERO)
 		l.modulate.a = 0.7

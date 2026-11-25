@@ -1831,8 +1831,11 @@ func _maybe_screenshot() -> void:
 				menu.page = InventoryMenu.Page.SETTINGS
 			elif a == "--inventory=items":
 				menu.page = InventoryMenu.Page.ITEMS
-				for id in ["hide", "bone", "herb", "potion", "bomb", "iron_ore", "star_shard"]:
+				for id in ["hide", "bone", "herb", "potion", "bomb", "iron_ore", "star_shard", "giant_core", "seal_mt", "arrow", "ether", "feather"]:
 					run.inventory.add(id, 3)
+				run.inventory.money = 120
+				for id in ["sword_1", "sword_light", "bow_long", "staff_fire_3", "armor_leather", "sword_flame"]:
+					run.inventory.equipment.gain(id)
 			elif a == "--inventory=staff":
 				run.stats.add_exp(PlayerStats.exp_to_reach(8))
 				for id in ["staff_none_1", "staff_fire_3", "staff_storm"]:
@@ -1854,6 +1857,11 @@ func _maybe_screenshot() -> void:
 			for id in ["wood", "scrap", "hide", "herb", "iron_ore"]:
 				run.inventory.add(id, 5)
 			get_tree().create_timer(0.05).timeout.connect(shop_menu.open.bind(shop))
+		elif a.begins_with("--tip="):
+			var n := int(a.trim_prefix("--tip="))
+			get_tree().create_timer(0.2).timeout.connect(func():
+				if menu.is_open() and n < menu._items_box.get_child_count():
+					menu._items_box.get_child(n).mouse_entered.emit())
 		elif a == "--boss":
 			for b in bosses:
 				b.wake()

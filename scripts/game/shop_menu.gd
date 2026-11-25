@@ -16,6 +16,8 @@ var _money: Label
 var _box: VBoxContainer
 var _info: Label
 var _info_time := 0.0
+## カーソルを合わせた品物の説明
+var tip: ItemTip
 
 func setup(r: RunState) -> void:
 	run = r
@@ -37,6 +39,9 @@ func setup(r: RunState) -> void:
 	_box.add_theme_constant_override("separation", 1)
 	scroll.add_child(_box)
 	_info = _label(_panel, "", Vector2(6, PANEL_SIZE.y - 15))
+	tip = ItemTip.new()
+	tip.stats = run.stats
+	add_child(tip)
 	_panel.hide()
 
 func is_open() -> bool:
@@ -48,6 +53,7 @@ func open(id: String) -> void:
 	_panel.show()
 
 func close() -> void:
+	tip.hide_tip()
 	_panel.hide()
 
 ## 並んでいる行（テスト用）：[品物の id, 説明, 買える・作れるか]
@@ -88,6 +94,8 @@ func _item_text(id: String, n: int) -> String:
 	if ItemCatalog.exists(id):
 		if run.inventory.equipment.has(id):
 			text += "（持っている）"
+		if ItemCatalog.required_level(id) > run.stats.level:
+			text += "（Lv%dから）" % ItemCatalog.required_level(id)
 		var t := ItemCatalog.trait_of(id)
 		if ItemCatalog.slot(id) == Equipment.Slot.STAFF:
 			var names: Array[String] = []
@@ -109,8 +117,12 @@ func refresh() -> void:
 	var rs := rows()
 	for i in rs.size():
 		var idx := i
+		var id: String = rs[i][0]
 		var b := _button(_box, rs[i][1], func(): choose(idx))
+		b.icon = ItemIcons.texture(id)
 		b.modulate = Color.WHITE if rs[i][2] else Color(1, 1, 1, 0.45)
+		b.mouse_entered.connect(func(): tip.show_item(id, 1, Vector2(PANEL_POS.x + PANEL_SIZE.x, b.global_position.y)))
+		b.mouse_exited.connect(tip.hide_tip)
 
 func _say(text: String) -> void:
 	_info.text = text
