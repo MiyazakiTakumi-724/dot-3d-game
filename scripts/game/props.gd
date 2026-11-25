@@ -374,3 +374,120 @@ static func aim_ring() -> VoxelModel:
 						m.set_voxel(p, Color("ff5050"))
 		_cache["aim_ring"] = m
 	return _cache["aim_ring"]
+
+# ---------------------------------------------------------------- 全体の地図（2026-11-25）で足した物
+
+## 商人：大きな荷物を背負い、つばの広い帽子をかぶった人。v で服の色を変える（0 道具屋・1 武器屋・2 旅の商人）。前は +y。
+static func merchant(v := 0) -> VoxelModel:
+	var key := "merchant/%d" % v
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(24, 24, 40)
+		var cloth: Color = [Color("4f7a3a"), Color("8a3a3a"), Color("5a4a8a")][v]
+		var skin := Color("f0c49a")
+		VoxelDraw.fill(m, Vector3i(8, 9, 0), Vector3i(10, 12, 5), Color("4a3020"))  # 足
+		VoxelDraw.fill(m, Vector3i(13, 9, 0), Vector3i(15, 12, 5), Color("4a3020"))
+		VoxelDraw.ellipsoid(m, Vector3(11.5, 11, 12), Vector3(6, 5, 7.5), cloth)  # 胴（長い服）
+		VoxelDraw.fill(m, Vector3i(6, 10, 15), Vector3i(17, 12, 16), Color("c9a66b"))  # 帯
+		VoxelDraw.ellipsoid(m, Vector3(11.5, 11.5, 25), Vector3(5, 5, 5), skin)  # 頭
+		m.set_voxel(Vector3i(9, 16, 25), Color("2a1a10"))
+		m.set_voxel(Vector3i(14, 16, 25), Color("2a1a10"))
+		VoxelDraw.fill(m, Vector3i(9, 16, 22), Vector3i(14, 16, 22), Color("d79a7a"))  # ほほえみ
+		VoxelDraw.cylinder(m, Vector2(11.5, 11.5), 9.0, 30, 30, Color("b08a4a"))  # 帽子のつば
+		VoxelDraw.cylinder(m, Vector2(11.5, 11.5), 5.0, 31, 34, Color("a07a3a"))
+		VoxelDraw.fill(m, Vector3i(6, 1, 8), Vector3i(17, 5, 26), Color("9a6a3a"))  # 背負った荷物
+		VoxelDraw.fill(m, Vector3i(6, 1, 15), Vector3i(17, 5, 16), Color("6e4526"))
+		VoxelDraw.fill(m, Vector3i(8, 0, 27), Vector3i(15, 4, 29), Color("d9d0b8"))  # 荷物の上の巻いた布
+		_cache[key] = VoxelShade.apply(m)
+	return _cache[key]
+
+## ボスの像：台の上の、フードをかぶった大きな石の像。ボスがまだいないので、居場所の目印に置く。
+## tint でボスごとに石の色を変える。前は +y。
+static func statue(tint := Color("9a968e")) -> VoxelModel:
+	var key := "statue/" + tint.to_html()
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(30, 30, 62)
+		VoxelDraw.fill(m, Vector3i(1, 1, 0), Vector3i(28, 28, 7), Color("8a857c"))
+		VoxelDraw.fill(m, Vector3i(3, 3, 8), Vector3i(26, 26, 9), Color("a39e94"))
+		VoxelDraw.ellipsoid(m, Vector3(14.5, 14.5, 26), Vector3(10, 8, 17), tint)  # 体
+		VoxelDraw.ellipsoid(m, Vector3(14.5, 14.5, 46), Vector3(7, 7, 8), tint.darkened(0.08))  # 頭（フード）
+		VoxelDraw.fill(m, Vector3i(11, 21, 44), Vector3i(18, 22, 48), Color("2a2530"))  # 顔の影
+		m.set_voxel(Vector3i(12, 22, 46), Color("ffd23f"))  # 目が光る
+		m.set_voxel(Vector3i(17, 22, 46), Color("ffd23f"))
+		VoxelDraw.rod(m, Vector3(4, 16, 18), Vector3(6, 20, 34), tint.darkened(0.12), 3)  # 腕
+		VoxelDraw.rod(m, Vector3(25, 16, 18), Vector3(23, 20, 34), tint.darkened(0.12), 3)
+		_cache[key] = VoxelShade.apply(m)
+	return _cache[key]
+
+## ひびの入った岩：上から鉄球を落とすと砕ける（仕掛け）。黒い割れ目が上から入っている。
+static func crack_rock() -> VoxelModel:
+	if not _cache.has("crack"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(30, 30, 26)
+		VoxelDraw.ellipsoid(m, Vector3(14.5, 14.5, 9), Vector3(14, 14, 15), Color("9a8f82"), func(p): return p.z >= 0)
+		for p: Vector3i in m.voxels().keys():
+			var on_crack := absi(p.x - 15 - int(sin(p.y * 0.5) * 2.0)) <= 0 or absi(p.y - 9 - p.x / 3) <= 0
+			if on_crack and p.z > 4:
+				m.set_voxel(p, Color("2a2420"))
+			elif (p.x + p.y + p.z) % 7 == 0:
+				m.set_voxel(p, Color("8a8074"))
+		_cache["crack"] = VoxelShade.apply(m)
+	return _cache["crack"]
+
+## 茨：とげのある黒っぽい枝のからまり。炎の魔法で燃える（仕掛け）。
+static func thorns() -> VoxelModel:
+	if not _cache.has("thorns"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(30, 30, 26)
+		for i in 14:
+			var a := Vector3(VoxelDraw.hash3(i, 1, 0, 28) + 1, VoxelDraw.hash3(i, 2, 0, 28) + 1, 0)
+			var b := Vector3(VoxelDraw.hash3(i, 3, 0, 28) + 1, VoxelDraw.hash3(i, 4, 0, 28) + 1, 12 + VoxelDraw.hash3(i, 5, 0, 12))
+			VoxelDraw.rod(m, a, b, Color("4a3a4a") if i % 2 == 0 else Color("3a4a32"), 2)
+		for p: Vector3i in m.voxels().keys():
+			if VoxelDraw.hash3(p.x, p.y, p.z, 9) == 0:
+				m.set_voxel(p + Vector3i(0, 0, 1), Color("d9d0e0"))  # とげ
+			elif VoxelDraw.hash3(p.x, p.y, p.z, 23) == 0:
+				m.set_voxel(p, Color("9a3a6a"))  # 実
+		_cache["thorns"] = VoxelShade.apply(m)
+	return _cache["thorns"]
+
+## つた：上の枝から垂れた、太いつたの幕。剣で斬れる（仕掛け）。
+static func vines() -> VoxelModel:
+	if not _cache.has("vines"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(30, 30, 40)
+		VoxelDraw.rod(m, Vector3(0, 14, 36), Vector3(29, 15, 37), Color("6e4526"), 3)  # 上の枝
+		for i in 12:
+			var x := 1 + i * 2.4
+			var y := 14.5 + sin(i * 1.7) * 3.0
+			var bottom := VoxelDraw.hash3(i, 7, 0, 5)
+			for z in range(bottom, 36):
+				var sway := sin(z * 0.35 + i) * 1.2
+				var c := Color("3f8a3a") if (z + i) % 5 != 0 else Color("62b04a")
+				m.set_voxel(Vector3i(roundi(x + sway * 0.3), roundi(y + sway), z), c)
+				if (z + i * 3) % 7 == 0:
+					m.set_voxel(Vector3i(roundi(x + sway * 0.3) + 1, roundi(y + sway), z), Color("7cc24c"))  # 葉
+		_cache["vines"] = VoxelShade.apply(m)
+	return _cache["vines"]
+
+## 弓の的：杭の上の、赤と白の丸い的。hit なら当たった後（緑に変わり、矢が刺さっている）。
+static func target(hit := false) -> VoxelModel:
+	var key := "target/%d" % int(hit)
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(24, 24, 44)
+		VoxelDraw.fill(m, Vector3i(10, 10, 0), Vector3i(13, 13, 26), WOOD_DARK)
+		var c := Vector2(11.5, 32)
+		for z in range(22, 43):
+			for x in 24:
+				var d := Vector2(x, z).distance_to(c)
+				if d > 10.0:
+					continue
+				var ring := int(d / 2.5)
+				var col := (Color("e83a2e") if ring % 2 == 0 else Color("f4efe4")) if not hit else (Color("5aa83a") if ring % 2 == 0 else Color("e4f4d4"))
+				VoxelDraw.fill(m, Vector3i(x, 12, z), Vector3i(x, 13, z), col)
+		if hit:
+			VoxelDraw.rod(m, Vector3(11, 13, 32), Vector3(11, 22, 34), SHAFT, 1)
+		_cache[key] = VoxelShade.apply(m)
+	return _cache[key]

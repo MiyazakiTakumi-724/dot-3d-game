@@ -253,8 +253,8 @@ func test_start_hint_then_nothing():
 	assert_eq(f.ui_message(), "")
 
 func test_arrows_on_open_exits_only():
-	# 野営地：西と東の出口に矢印、北の門には矢印なし
-	assert_eq(f.arrow_count(), 6)
+	# 野営地：西・東・南（町）の出口に矢印、北の門には矢印なし
+	assert_eq(f.arrow_count(), 9)
 
 ## 死んでいる間に着いた鉄球で、できたばかりの墓石が壊れない（レビューの指摘）
 func test_ball_landing_while_dying_does_not_break_new_grave():

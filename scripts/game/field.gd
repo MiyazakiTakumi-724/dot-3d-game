@@ -191,19 +191,15 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_title_time = TITLE_SECONDS
 	_queue_warm()
 
-## となりのエリアを先に、ほかのエリアのモデルを作る順番に並べる（warm は後ろから取る）。
+## となりのエリアのモデルを作る順番に並べる（warm は後ろから取る）。エリアが多いので、遠いエリアは入るときに作る。
 func _queue_warm() -> void:
 	var near: Array[String] = []
-	var far: Array[String] = []
 	for ex in area.exits:
 		if not near.has(ex.target):
 			near.append(ex.target)
-	for id in world.ids():
-		if id != area.id and not near.has(id):
-			far.append(id)
 	var seen := {}
 	_warm_queue.clear()
-	for id in far + near:
+	for id in near:
 		var loaded := Continent.load_map(world.area(id))
 		for k in Terrain.model_keys(loaded[0], loaded[1]["deco"]):
 			if not Terrain.is_cached(k) and not seen.has(k):

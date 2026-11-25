@@ -7,6 +7,9 @@ const ENTRY_SAFE_RADIUS := 3  ## 出口からこのマス数以内には敵を�
 
 var id: String = ""
 var title: String = ""  ## 画面に出す名前
+var region: String = ""  ## 地方の名前（はじまりの地・山岳・草原・廃城・溶岩・神秘の塔）
+var theme: String = "grass"  ## 地面の見た目（Terrain.surface）
+var open_flat := false  ## 広場（たき火・町・ボスの間）。広い平地があってよい
 var origin: Vector2i = Vector2i.ZERO
 var heights: Array = []
 var objects: Array = []
@@ -17,6 +20,10 @@ var exits: Array[ExitDef] = []
 var enemies: Array = []
 ## [cell: Vector2i, kind: RunState.PickupKind, amount: int]
 var pickups: Array = []
+## 武器で開く仕掛け
+var gimmicks: Array[Gimmick] = []
+## ボスの居場所 [像のマス: Vector2i, 名前: String, 像の色: Color]
+var bosses: Array = []
 
 func size() -> Vector2i:
 	if heights.is_empty():

@@ -7,6 +7,11 @@ extends RefCounted
 ## 2層の地図（parse_layers、箱庭）：高さの層は . ＝島の外、数字＝高さ。物の層は . ＝なし、T ＝丸い木、
 ## P ＝とがった木、B ＝茂み、R ＝岩、F ＝花、~ ＝水、= ＝橋、_ ＝奈落、C/D/G。物はそのマスの高さに置く。
 ## 木・茂み・岩は壁と同じく移動も弾も止める。水は入れないが弾は通る。花は飾りで歩ける。
+## 全体の地図（2026-11-25）で足したもの：g ＝背の高い草（歩ける。キャラの足元が隠れる）、s ＝石畳（歩ける）、
+## L ＝溶岩（水と同じく入れない）、W ＝崩れた石の壁、I ＝石の柱、H ＝家（つながったマスで1軒）、O ＝井戸、
+## M ＝商人、K ＝ボスの像、Q ＝弓の的、X ＝ひびの入った岩、Y ＝茨、V ＝つた（商人から下はステージ側が小物を置く。
+## X・Y・V は Gimmick が通れなくする）。
+## 地面の色は、deco["theme"]（エリアの地方：grass・mountain・lava・castle・tower・town）と高さで決まる。
 ##
 ## 描き方：各マスを「柱」として描く。柱の上は地面の面、下は隣の一番低い床まで（column_bottom）。
 ## 隣が低くないマスは上の面だけになるので、描く枚数が少なくて済む。島のふちの柱は0より下へ伸びて、
@@ -21,6 +26,9 @@ const STONE_COLOR := Color("85807a")
 const WATER_COLOR := Color("4fc3c9")
 const FALL_COLORS := [Color("5fcbd6"), Color("8fe0ea"), Color("4ab4cf"), Color("d4f4f6"), Color("6fd2dc")]
 const FOAM_COLOR := Color("dff7f7")
+const LAVA_COLOR := Color("e2541f")
+const LAVA_GLOW := Color("ffc24a")
+const LAVA_FALL_COLORS := [Color("d9471c"), Color("ff7a2e"), Color("b8381a"), Color("ffb347")]
 ## 背景（島の外）のグラデーション
 const SKY_TOP := Color("1f2438")
 const SKY_BOTTOM := Color("0b0d16")
@@ -94,6 +102,35 @@ static func _put_object(ch: String, cell: Vector2i, map: HeightMap, info: Dictio
 		"D":
 			map.set_blocker(cell, HeightMap.Blocker.DOOR)
 			info["doors"].append(cell)
+		"g":
+			info["deco"][cell] = "tallgrass"
+		"s":
+			info["deco"][cell] = "paving"
+		"L":
+			map.set_water(cell, true)
+			info["deco"][cell] = "lava"
+		"W":
+			map.set_wall(cell, true)
+			info["deco"][cell] = "stonewall"
+		"I":
+			map.set_wall(cell, true)
+			info["deco"][cell] = "column"
+		"H":
+			map.set_wall(cell, true)
+			info["deco"][cell] = "house"
+		"O":
+			map.set_wall(cell, true)
+			info["deco"][cell] = "well"
+		"M", "K", "Q":
+			# 商人・ボスの像・的は、ステージ側が小物として置く。下は地面だけ描く
+			map.set_wall(cell, true)
+			info["deco"][cell] = "npc"
+			var list: String = {"M": "merchants", "K": "statues", "Q": "targets"}[ch]
+			if not info.has(list):
+				info[list] = []
+			info[list].append(cell)
+		"X", "Y", "V":
+			pass  # 仕掛け（Gimmick）。下は地面で、ふさぐのはステージ側
 
 ## 島のふちの断面の深さ（段）。マスごとに決まっている。
 static func foundation_levels(cell: Vector2i) -> int:
@@ -160,18 +197,54 @@ static func _cell_keys(map: HeightMap, cell: Vector2i, deco: Dictionary) -> Arra
 	var h := map.get_height(cell)
 	var v := variant(cell, 3)
 	var bottom := column_bottom(map, cell, deco)
+	var theme: String = deco.get("theme", "grass")
 	if map.is_wall(cell) and map.get_blocker(cell) == HeightMap.Blocker.NONE and kind == "":
 		out.append("wall")
+	elif kind == "lava":
+		out.append("lava/%d/%d/%d/%d" % [h, h - bottom, v, int(_next_to_void(map, cell))])
 	elif map.is_water(cell):
 		out.append("water/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(_has_higher_water(map, cell)), int(_next_to_void(map, cell))])
 	elif kind == "bridge":
-		var across_ns := map.is_water(cell + Vector2i.UP) or map.is_water(cell + Vector2i.DOWN)
+		var across_ns: bool = map.is_water(cell + Vector2i.UP) or map.is_water(cell + Vector2i.DOWN) \
+			or deco.get(cell + Vector2i.UP, "") == "bridge" or deco.get(cell + Vector2i.DOWN, "") == "bridge"
+		if map.is_water(cell + Vector2i.LEFT) or map.is_water(cell + Vector2i.RIGHT):
+			across_ns = false
 		out.append("bridge/%d/%d/%d" % [h, h - bottom, int(across_ns)])
 	else:
-		out.append("ground/%d/%d/%d/%d/%d" % [h, h - bottom, v, int(kind == "flower"), bottom])
-	if kind in ["rock", "tree", "pine", "bush"]:
+		var surf := surface(theme, h, kind)
+		out.append("ground/%d/%d/%d/%d/%d/%s" % [h, h - bottom, v, int(kind == "flower"), bottom, surf])
+	if kind in ["rock", "tree", "pine", "bush", "tallgrass", "stonewall", "column", "well"]:
 		out.append("%s/%d" % [kind, v])
+	elif kind == "house":
+		out.append("house/%s" % _house_shape(deco, cell))
 	return out
+
+## 地面の上の面の種類。地方（theme）と高さと、石畳の印（paving）で決まる。
+## grass 草、alpine 山の草（黄色がかる）、snow 雪、ash 溶岩の地方の黒い土、stone 石畳。
+static func surface(theme: String, h: int, kind: String = "") -> String:
+	if kind == "paving" or theme == "tower":
+		return "stone"
+	match theme:
+		"mountain":
+			return "snow" if h >= 6 else "alpine"
+		"lava":
+			return "ash"
+	return "grass"
+
+## 家のマスの形。"東西のふち/北のふちまでのマス/南のふちまでのマス"（屋根は東西に棟が通る切妻）。
+static func _house_shape(deco: Dictionary, cell: Vector2i) -> String:
+	var ew := 0
+	if deco.get(cell + Vector2i.LEFT, "") != "house":
+		ew |= 1
+	if deco.get(cell + Vector2i.RIGHT, "") != "house":
+		ew |= 2
+	var dn := 0
+	while deco.get(cell + Vector2i(0, -dn - 1), "") == "house":
+		dn += 1
+	var ds := 0
+	while deco.get(cell + Vector2i(0, ds + 1), "") == "house":
+		ds += 1
+	return "%d/%d/%d" % [ew, dn, ds]
 
 ## その地図を描くのに要るモデルの名前（重なりなし）。
 static func model_keys(map: HeightMap, deco: Dictionary) -> Array[String]:
@@ -261,7 +334,19 @@ static func _make(key: String) -> VoxelModel:
 		"bridge":
 			return bridge_model(int(p[1]), int(p[2]), p[3] == "1")
 		"ground":
-			return ground_model(int(p[1]), int(p[2]), int(p[3]), p[4] == "1", int(p[5]))
+			return ground_model(int(p[1]), int(p[2]), int(p[3]), p[4] == "1", int(p[5]), p[6] if p.size() > 6 else "grass")
+		"lava":
+			return water_model(int(p[1]), int(p[2]), int(p[3]), false, p[4] == "1", true)
+		"tallgrass":
+			return tallgrass_model(int(p[1]))
+		"stonewall":
+			return stonewall_model(int(p[1]))
+		"column":
+			return column_model(int(p[1]))
+		"well":
+			return well_model()
+		"house":
+			return house_model(int(p[1]), int(p[2]), int(p[3]))
 		"rock":
 			return rock_model(int(p[1]))
 		"tree":
@@ -278,8 +363,18 @@ static func _hash3(x: int, y: int, z: int, n: int) -> int:
 	return absi((x * 92837111) ^ (y * 689287499) ^ (z * 283923481)) % n
 
 ## 上の面の色。高い所ほど少し明るくする（0〜8段）。
-static func top_color(h: int) -> Color:
-	return Color("5aa23a").lerp(Color("c4e48a"), clampf(h / 8.0, 0.0, 1.0))
+static func top_color(h: int, surf: String = "grass") -> Color:
+	var t := clampf(h / 8.0, 0.0, 1.0)
+	match surf:
+		"alpine":
+			return Color("7d9a4a").lerp(Color("c9d08e"), t)
+		"snow":
+			return Color("dfe8f0").lerp(Color("f6f9fc"), t)
+		"ash":
+			return Color("4a3f3c").lerp(Color("807068"), t)
+		"stone":
+			return Color("9a958c").lerp(Color("cfc9bd"), t)
+	return Color("5aa23a").lerp(Color("c4e48a"), t)
 
 ## 隣が低い辺のビット（1＝北、2＝東、4＝南、8＝西）。マップの外・島の外・奈落も低いとみなす。
 static func lower_sides(map: HeightMap, cell: Vector2i) -> int:
@@ -334,9 +429,9 @@ static func _side(c: Color, face: int) -> Color:
 ## 0より下は暗い土と岩。島のふちの柱は、下の端が少しすぼまってでこぼこになる。
 ## 側面は1段ごとに暗い線を入れて、何段ぶんの崖かを数えられるようにする。
 ## 段のふちの明るい線はモデルには入れず、StackSprite.rim_sides で描く。
-static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0) -> VoxelModel:
+static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, bottom: int = 0, surf: String = "grass") -> VoxelModel:
 	var layers := depth * StackSprite.LEVEL_PX + 1
-	var grass: Color = top_color(h)
+	var grass: Color = top_color(h, surf)
 	grass = [grass, grass.lightened(0.05), grass.darkened(0.05)][v] as Color
 	var base_px := bottom * StackSprite.LEVEL_PX
 	var images: Array[Image] = []
@@ -345,22 +440,29 @@ static func ground_model(h: int, depth: int, v: int = 0, flowers: bool = false, 
 		var from_top := layers - 1 - z
 		var img := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
 		if from_top == 0:
-			_grass_top(img, grass, v, h)
+			if surf == "stone":
+				_stone_top(img, grass, v, h)
+			elif surf == "snow" or surf == "ash":
+				_plain_top(img, grass, v, h, surf)
+			else:
+				_grass_top(img, grass, v, h)
 		else:
 			# 島の下の端は、すぼめてでこぼこにする
 			var inset := 0
 			if bottom < 0 and z < 10:
 				inset = ((10 - z) / 3 + (1 if (v + z) % 4 == 0 else 0)) * FINE
-			img.fill_rect(Rect2i(inset, inset, TEX - 2 * inset, TEX - 2 * inset), _side(_cliff_color(grass, abs_px * FINE + 1, from_top * FINE - 1, 0, 2, v), 2))
+			img.fill_rect(Rect2i(inset, inset, TEX - 2 * inset, TEX - 2 * inset), _side(_cliff_color(grass, abs_px * FINE + 1, from_top * FINE - 1, 0, 2, v, surf), 2))
 			for r in _ring_cached(inset, TEX - inset):
 				var vf: int = abs_px * FINE + r[2]
-				var c := _cliff_color(grass, vf, from_top * FINE - r[2], r[4] + r[3] * 37, r[3], v)
+				var c := _cliff_color(grass, vf, from_top * FINE - r[2], r[4] + r[3] * 37, r[3], v, surf)
 				img.set_pixel(r[0], r[1], _side(c, r[3]))
 		images.append(img)
 	# 上の面の上に、草むらか花を立てる（2枚）
 	var tuft_a := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
 	var tuft_b := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
-	if flowers:
+	if surf == "snow" or surf == "ash" or surf == "stone":
+		pass  # 草むらは立てない
+	elif flowers:
 		var petals := [Color("f6f1e4"), Color("ffd84a"), Color("ff8fb3"), Color("b9a6ff")]
 		for i in 7:
 			var px := (3 + i * 9 + v * 7) % 27 + 2
@@ -406,10 +508,12 @@ static func _grass_top(img: Image, grass: Color, v: int, h: int) -> void:
 
 ## 崖の側面の1点の色。vf は高さ（本当の画面のpx、0 が高さ0の地面）、from_top は上の面からの深さ（同じ単位）、
 ## along は辺に沿った位置（ばらつき用）。
-static func _cliff_color(grass: Color, vf: int, from_top: int, along: int, face: int, v: int) -> Color:
+static func _cliff_color(grass: Color, vf: int, from_top: int, along: int, face: int, v: int, surf: String = "grass") -> Color:
 	var c: Color
-	if from_top <= 3 or (from_top <= 6 and _hash3(along, v, face, 3) != 0):
-		c = grass.darkened(0.05 * from_top)  # 崖のふちに草が少し垂れる
+	if from_top <= 3 or (from_top <= 6 and _hash3(along, v, face, 3) != 0 and surf != "stone"):
+		c = grass.darkened(0.05 * from_top)  # 崖のふちに草（雪）が少し垂れる
+	elif vf >= 0 and surf != "grass":
+		c = _rock_side(surf, vf, from_top, along, face)
 	elif vf >= 0:
 		c = DIRT_COLORS[(vf / 6) % 2]
 		c = c.darkened(clampf(from_top * 0.003, 0.0, 0.2))  # 下ほど少し暗く
@@ -426,14 +530,93 @@ static func _cliff_color(grass: Color, vf: int, from_top: int, along: int, face:
 		c = c.darkened(0.2)  # 1段ごとの線
 	return c
 
+## 草地でない地面の崖の側面（山は灰色の岩、溶岩の地方は黒い岩、石畳は積んだ石）。
+static func _rock_side(surf: String, vf: int, from_top: int, along: int, face: int) -> Color:
+	var c: Color
+	match surf:
+		"ash":
+			c = Color("3a3236") if (vf / 5) % 2 == 0 else Color("443a3c")
+			if _hash3(along / 2, vf / 2, face, 23) == 0:
+				c = Color("c2492b")  # 赤く光る割れ目
+		"stone":
+			var row := vf / 8
+			var brick := (along + (row % 2) * 8) % 16 == 0 or vf % 8 == 0
+			c = Color("8f8a80").darkened(0.18) if brick else Color("8f8a80")
+		_:
+			c = Color("8d8f94") if (vf / 6) % 2 == 0 else Color("7f828a")
+			if _hash3(along / 2, vf / 3, face, 13) == 0:
+				c = Color("6a6c73")
+	return c.darkened(clampf(from_top * 0.003, 0.0, 0.2))
+
+## 雪や黒い土の上の面：まだらの色と、小さな粒。
+static func _plain_top(img: Image, base: Color, v: int, h: int, surf: String) -> void:
+	img.fill(base)
+	for y in TEX:
+		for x in TEX:
+			var k := _hash3(x / 2 + v * 17, y / 2 + h * 5, 4, 13)
+			if k == 0:
+				img.set_pixel(x, y, base.lightened(0.05))
+			elif k == 1:
+				img.set_pixel(x, y, base.darkened(0.05))
+	for i in 6:
+		var px := (i * 9 + v * 11 + h * 3) % 30 + 1
+		var py := (i * 13 + v * 7 + h * 5) % 30 + 1
+		if surf == "snow":
+			img.set_pixel(px, py, Color("ffffff"))  # 雪のきらめき
+		else:
+			img.set_pixel(px, py, Color("e8742c") if i % 3 == 0 else base.darkened(0.2))  # 燃えかす
+
+## 石畳の上の面：四角い石を並べ、継ぎ目を暗く。ときどき草が生える。
+static func _stone_top(img: Image, base: Color, v: int, h: int) -> void:
+	img.fill(base)
+	for y in TEX:
+		for x in TEX:
+			var row := y / 8
+			var seam := y % 8 == 0 or (x + (row % 2) * 8 + v * 4) % 16 == 0
+			var c := base
+			if seam:
+				c = base.darkened(0.22)
+			elif _hash3((x + (row % 2) * 8 + v * 4) / 16, row + h * 3, 6, 5) == 0:
+				c = base.darkened(0.07)
+			elif _hash3(x / 2, y / 2, v, 17) == 0:
+				c = base.lightened(0.05)
+			img.set_pixel(x, y, c)
+	if v == 2:
+		for d in [Vector2i(5, 9), Vector2i(6, 8), Vector2i(7, 9), Vector2i(22, 24), Vector2i(23, 23)]:
+			img.set_pixel(d.x, d.y, Color("6fa040"))  # 継ぎ目の草
+
 ## 水の柱。上の面は水面（地面より WATER_DROP_PX 低い）、側面は滝（縦の筋）。
 ## foam：上の段から滝が落ちてくる所なので、水面に白い泡を出す。
 ## falls_off：島のふちから落ちる滝なので、下の方ほど薄くする。
-static func water_model(h: int, depth: int, v: int, foam: bool = false, falls_off: bool = false) -> VoxelModel:
+static func water_model(h: int, depth: int, v: int, foam: bool = false, falls_off: bool = false, lava: bool = false) -> VoxelModel:
 	var layers := depth * StackSprite.LEVEL_PX - WATER_DROP_PX + 1
 	var images: Array[Image] = []
+	var surface_c := LAVA_COLOR if lava else WATER_COLOR
+	var falls: Array = LAVA_FALL_COLORS if lava else FALL_COLORS
 	for z in layers:
 		var img := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
+		if lava and z == layers - 1:
+			img.fill(surface_c)
+			for y in TEX:
+				for x in TEX:
+					var k := _hash3(x / 3 + v * 5, y / 2, 2, 9)
+					if k == 0:
+						img.set_pixel(x, y, LAVA_GLOW)  # 明るい流れ
+					elif k == 1:
+						img.set_pixel(x, y, Color("8a2416"))  # 冷えて固まりかけた所
+			images.append(img)
+			continue
+		if lava:
+			var c0: Color = falls[0]
+			if falls_off and z < 24:
+				c0.a = 0.25 + 0.75 * float(z) / 24.0
+			img.fill(c0)
+			for r in _ring_cached(0, TEX):
+				var c: Color = falls[_hash3(r[4] + r[3] * 37, v + z / 4, 0, falls.size())]
+				c.a = c0.a
+				img.set_pixel(r[0], r[1], c)
+			images.append(img)
+			continue
 		if z == layers - 1:
 			img.fill(WATER_COLOR)
 			for y in TEX:
@@ -643,5 +826,136 @@ static func wall_model() -> VoxelModel:
 			for r in _ring_cached(0, n):
 				var brick: bool = mortar or ((r[4] + (z / 5) * 8) % 14 == 0)
 				img.set_pixel(r[0], r[1], _side(WALL_COLOR.darkened(0.15) if brick else WALL_COLOR, r[3]))
+		images.append(img)
+	return VoxelModel.from_images(images)
+
+## 背の高い草：歩けるが、キャラの足元から腰までが隠れる（草原のボスの「草むら」）。
+## 葉は細い縦の筋で、根もとが暗く、先が明るい。v で生え方を変える。
+static func tallgrass_model(v: int) -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(TEX, TEX, 14)
+	var base := [Color("4f9a34"), Color("5aa83a"), Color("478f32")][v] as Color
+	for i in 46:
+		var x := (i * 7 + v * 5 + (i / 6) * 3) % (TEX - 2) + 1
+		var y := (i * 11 + v * 9 + (i / 5) * 5) % (TEX - 2) + 1
+		var tall := 8 + _hash3(i, v, 1, 6)
+		var lean := Vector2((_hash3(i, v, 2, 3) - 1) * 0.25, (_hash3(i, v, 3, 3) - 1) * 0.25)
+		for z in tall:
+			var p := Vector2(x, y) + lean * z
+			var c := base.darkened(0.25 - 0.3 * float(z) / tall)
+			if z == tall - 1:
+				c = base.lightened(0.25).lerp(Color("d8e27a"), 0.25 if v == 1 else 0.0)
+			m.set_voxel(Vector3i(roundi(p.x), roundi(p.y), z), c)
+	return m
+
+## 崩れた石の壁：積んだ石の塊。上はでこぼこに崩れ、ところどころ苔。v で高さを変える。
+static func stonewall_model(v: int) -> VoxelModel:
+	var m := VoxelModel.new()
+	var top_h: int = [18, 24, 12][v]
+	m.size = Vector3i(TEX, TEX, top_h + 6)
+	for yy in TEX:
+		for xx in TEX:
+			var bx := xx / 8
+			var by := yy / 8
+			var hh := top_h + _hash3(bx, by, v, 6) - 2
+			for z in hh:
+				var row := z / 5
+				var seam := z % 5 == 0 or (xx + yy + (row % 2) * 6) % 12 == 0
+				var c := Color("9a968e") if seam == false else Color("77736c")
+				if _hash3(bx + row, by, v, 5) == 0 and not seam:
+					c = Color("a8a49a")
+				if z >= hh - 2 and _hash3(xx / 3, yy / 3, v, 4) == 0:
+					c = Color("5f8f45")  # 上の苔
+				m.set_voxel(Vector3i(xx, yy, z), c)
+	return VoxelShade.apply(m)
+
+## 石の柱：丸い柱に、上下の台。v=2 は途中で折れている。
+static func column_model(v: int) -> VoxelModel:
+	var m := VoxelModel.new()
+	var top: int = [34, 30, 16][v]
+	m.size = Vector3i(TEX, TEX, top + 2)
+	var c := Vector2(15.5, 15.5)
+	VoxelDraw.fill(m, Vector3i(5, 5, 0), Vector3i(26, 26, 3), Color("a8a49a"))
+	for z in range(4, top):
+		var r := 7.0 if (z % 6) != 0 else 6.5
+		for yy in TEX:
+			for xx in TEX:
+				var d := Vector2(xx, yy) - c
+				if d.length() <= r:
+					var flute := int(round(d.angle() / TAU * 16.0)) % 2 == 0
+					m.set_voxel(Vector3i(xx, yy, z), Color("c9c3b6") if flute else Color("b8b2a4"))
+	if v != 2:
+		VoxelDraw.fill(m, Vector3i(6, 6, top), Vector3i(25, 25, top + 1), Color("bdb7aa"))
+	else:
+		for i in 8:
+			m.set_voxel(Vector3i(10 + i * 2 % 12, 12 + i % 5, top - 1), Color(0, 0, 0, 0))
+	return VoxelShade.apply(m)
+
+## 井戸：石を丸く積んだ縁と、中の水、上の小さな屋根。
+static func well_model() -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(TEX, TEX, 30)
+	var c := Vector2(15.5, 15.5)
+	for z in 9:
+		for yy in TEX:
+			for xx in TEX:
+				var d := Vector2(xx, yy).distance_to(c)
+				if d <= 12.0 and d >= 8.0:
+					m.set_voxel(Vector3i(xx, yy, z), Color("8d8f94") if (z / 3 + xx / 4) % 2 == 0 else Color("7f828a"))
+				elif d < 8.0 and z == 5:
+					m.set_voxel(Vector3i(xx, yy, z), WATER_COLOR.darkened(0.2))
+	for x in [5, 26]:
+		VoxelDraw.fill(m, Vector3i(x, 15, 9), Vector3i(x, 16, 22), Color("6e4526"))
+	for z in range(22, 28):
+		var w := 28 - z
+		VoxelDraw.fill(m, Vector3i(2, 15 - w * 2, z), Vector3i(29, 16 + w * 2, z), Color("a8452e") if z % 2 == 0 else Color("8f3a28"))
+	VoxelDraw.fill(m, Vector3i(14, 15, 12), Vector3i(17, 16, 21), Color("5a3a22"))  # 釣瓶の縄
+	return VoxelShade.apply(m)
+
+## 家の1マス分。ew は東（2）・西（1）が外のふちか、dn・ds は北・南のふちまでのマス数。
+## 壁は白い漆喰に木の柱、屋根は赤い瓦の切妻（棟は東西に通る）。南のふちの真ん中のマスに戸、ほかの南と東西の壁に窓。
+static func house_model(ew: int, dn: int, ds: int) -> VoxelModel:
+	var wall_top := 18  # 壁の高さ（輪切り）
+	var depth := dn + ds + 1  # 家の南北のマス数
+	var images: Array[Image] = []
+	var plaster := Color("eee3cc")
+	var timber := Color("7a4a2a")
+	var roof_a := Color("b5523a")
+	var roof_b := Color("9c4230")
+	# 屋根の高さ：南北のふちから棟へ、1px（ゲームの座標）進むごとに 0.6 上がる
+	var half := depth * 16.0 / 2.0
+	var max_z := wall_top + int(half * 0.6) + 2
+	for z in max_z:
+		var img := Image.create(TEX, TEX, false, Image.FORMAT_RGBA8)
+		for yy in TEX:
+			var gy := dn * 16.0 + (yy + 0.5) / FINE  # 家の北のふちからの距離（px）
+			var from_edge := minf(gy, depth * 16.0 - gy)
+			var roof_z := wall_top + int(from_edge * 0.6)
+			for xx in TEX:
+				var outside_w := (ew & 1) != 0 and xx < 2
+				var outside_e := (ew & 2) != 0 and xx >= TEX - 2
+				var on_n := dn == 0 and yy < 2
+				var on_s := ds == 0 and yy >= TEX - 2
+				var eave := 1 if (on_n or on_s) else 0
+				if z < wall_top:
+					if on_n or on_s or outside_w or outside_e:
+						var c := plaster
+						var corner := (outside_w or outside_e) and (on_n or on_s)
+						if corner or z < 2 or z >= wall_top - 2:
+							c = timber
+						# 戸（南のふちで、東西の真ん中）と窓
+						if on_s and xx >= 11 and xx <= 20 and z < 13 and ew == 0:
+							c = Color("5a3a22") if xx != 18 else Color("ffd23f")
+						elif (xx >= 9 and xx <= 14 or xx >= 18 and xx <= 23) and z >= 7 and z <= 12 and (on_s or on_n) and ew != 0:
+							c = Color("4a6a8a") if z != 9 else timber
+						img.set_pixel(xx, yy, c)
+					else:
+						img.set_pixel(xx, yy, plaster.darkened(0.1))
+				elif z <= roof_z and z >= wall_top - eave:
+					var row := (int(from_edge * 0.6) - (roof_z - z)) / 2
+					var c2 := roof_a if (row + xx / 6) % 2 == 0 else roof_b
+					if z == roof_z:
+						c2 = c2.lerp(VoxelShade.LIGHT, 0.12) if yy < TEX / 2 + (dn - ds) * 16 else c2
+					img.set_pixel(xx, yy, c2)
 		images.append(img)
 	return VoxelModel.from_images(images)
