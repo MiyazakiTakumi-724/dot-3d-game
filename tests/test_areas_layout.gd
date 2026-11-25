@@ -53,11 +53,26 @@ func test_all_areas():
 		assert_not_null(world.area(id), id)
 	assert_null(world.area("camp"), "野営地は町に作り替えた")
 
-## エリアはせまい（2026-11-25 の指示）。いちばん大きくても 24×26 か 32×14 くらい
+## エリアはせまい（2026-11-25 の指示）。2026-11-26（3回目の直し）に、ランダムに少し広げた（gen.py の inflate_all）。
+## いちばん大きくても 34×28 くらい
 func test_areas_are_small():
 	for id in world.ids():
 		var s := world.area(id).size()
-		assert_lte(s.x * s.y, 32 * 20, "%s %s" % [id, s])
+		assert_lte(s.x * s.y, 1000, "%s %s" % [id, s])
+
+## 2026-11-26（3回目の直し）：町と休憩所のほかのエリアは、四角でない形（ふちが島の外になっている。gen.py の roughen）
+func test_area_shapes_are_not_rectangles():
+	for id in world.ids():
+		var a := world.area(id)
+		if id == "town" or Continent.load_map(a)[1].has("checkpoint"):
+			continue
+		var m: HeightMap = maps[id]
+		var outside := 0
+		for y in m.size.y:
+			for x in m.size.x:
+				if m.is_void(Vector2i(x, y)):
+					outside += 1
+		assert_gt(outside, m.size.x * m.size.y / 20, "%s 島の外 %d" % [id, outside])
 
 func test_heights_within_0_to_8():
 	for id in world.ids():
@@ -295,7 +310,7 @@ func test_bonfire_areas_are_small_and_safe():
 				var c := Vector2i(x, y)
 				if not m.is_wall(c) and not m.is_water(c) and not m.is_pit(c):
 					walk += 1
-		assert_lte(walk, 130, "%s 歩けるマス %d" % [id, walk])
+		assert_lte(walk, 175, "%s 歩けるマス %d" % [id, walk])  # 2026-11-26 にエリアを広げたので、出口への道が少し長い
 		assert_lte(walk * 2, m.size.x * m.size.y, "%s 半分より多く歩ける" % id)
 	assert_eq(n, 5, "4つの地方と神秘の塔の休憩所")
 

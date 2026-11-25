@@ -44,7 +44,7 @@ func _near_cell(m: HeightMap, cell: Vector2i) -> Vector2i:
 	for r in range(3, 8):
 		for d in [Vector2i(0, r), Vector2i(0, -r), Vector2i(r, 0), Vector2i(-r, 0)]:
 			var c: Vector2i = cell + d
-			if m.in_bounds(c) and not m.is_wall(c) and not m.is_pit(c) and not m.is_water(c) and m.get_height(c) == m.get_height(cell):
+			if m.in_bounds(c) and not m.is_wall(c) and not m.is_void(c) and not m.is_pit(c) and not m.is_water(c) and m.get_height(c) == m.get_height(cell):
 				return c
 	return cell
 
@@ -313,6 +313,7 @@ func test_snake_lunges():
 	var b := _enter("草むらの大蛇")
 	b._clock1 = 4.0
 	b._cool = 0.0
+	b.walker.speed_mult = 0.0  # 寄ってこないようにして、離れた所から突進するのを見る
 	assert_true(_run_until(func():
 		f.camera.angle = b._view_angle  # 体が見える向きから
 		return b._dash_time > 0.0, 3.0))

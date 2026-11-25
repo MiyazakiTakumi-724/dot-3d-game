@@ -515,10 +515,15 @@ BOSS_TINT = {'岩転がしの巨人': '8d8f94', '草むらの大蛇': '6f9a5a', 
              '岩窟のぬし': '6a6c73', '溶岩洞のぬし': '9a3a2a', '女王蜂': 'f0c030', '宝箱の王': 'e8b83a'}
 
 
+# 2026-11-26（3回目の直し）：高低差をもっと。ノイズの起伏を1.5倍、高台の崖を2段から3段に。
+HEIGHT_BOOST = 1.5
+MESA_RISE = 3
+
 def field(name, seed, base, amp, fine=1.5, tilt=(0.0, 0.0), scale=11):
     g = new_area(name, seed)
     nb = value_noise(seed * 11 + 3, scale)
-    noise_heights(g, lambda x, y: base + amp * nb(x, y) + tilt[0] * x / g.w + tilt[1] * y / g.h, fine=fine)
+    amp *= HEIGHT_BOOST
+    noise_heights(g, lambda x, y: base + amp * nb(x, y) + tilt[0] * x / g.w + tilt[1] * y / g.h, fine=fine * 1.2)
     return g
 
 def mesas(g, n, seed, rise=2, r=(3, 6)):
@@ -696,7 +701,15 @@ def barrier(g, x, kind, gate_y, ch):
     return gid
 
 def boss(g, x, y, name):
-    """ボスの居場所。ボスはここに現れて動く（倒したあとは何もない）。"""
+    """ボスの居場所。ボスはここに現れて動く（倒したあとは何もない）。
+    2026-11-26：高低差を増やしたので、ボスのまわり（半径4マス）は同じ高さの床にする（物は残す）。"""
+    disc = [(xx, yy) for xx, yy in g.cells() if math.hypot(xx - x, yy - y) <= 4.2]
+    hs = sorted(g.H[yy][xx] for xx, yy in disc if g.H[yy][xx] >= 0)
+    if hs:
+        h = hs[len(hs) // 2]
+        for xx, yy in disc:
+            if g.H[yy][xx] >= 0:
+                g.H[yy][xx] = h
     g.O[y][x] = '.'
     g.reserved.add((x, y))
     g.bosses.append((x, y, name, BOSS_TINT.get(name, '9a968e')))
@@ -807,11 +820,11 @@ def region_field(name, seed, base, amp, mesa_n=3, fine=1.5, tilt=(0.0, 0.0), pre
     if pre:
         pre(g)   # 仕掛け・たき火などを先に置く（高台がかぶらないように）
     if g.theme == 'mountain':
-        mesas(g, mesa_n, seed + 1, rise=2, r=(2, 4))
+        mesas(g, mesa_n + 1, seed + 1, rise=MESA_RISE, r=(2, 4))
     elif g.theme == 'castle':
-        mesas(g, max(1, mesa_n - 1), seed + 1, rise=2, r=(2, 3.5))
+        mesas(g, max(1, mesa_n), seed + 1, rise=MESA_RISE, r=(2, 3.5))
     else:
-        mesas(g, mesa_n, seed + 1, rise=2, r=(2, 3.5))
+        mesas(g, mesa_n + (1 if mesa_n > 0 else 0), seed + 1, rise=MESA_RISE, r=(2, 3.5))
     return g
 
 def dress(g, seed):
@@ -838,6 +851,7 @@ def carve_rest(g, cx, cy, rx, ry, keep_cells=()):
     """休憩所をせまくする（2026-11-25 夜の2回目の直し）。たき火の広場のまわりと、出口へ向かう3マスの道だけを残し、
     ほかは島の外（深い谷）にする。歩ける所が小さな台地になり、迷わずに次へ進める。"""
     keep = set(keep_cells)
+    g.rest_shape = (rx, ry)   # 広げたあとにもう一度せまくするのに使う
     n = value_noise(g.seed * 5 + 9, 2.5)
     for x, y in g.cells():
         if math.hypot((x - cx) / (rx + 1.2), (y - cy) / (ry + 1.2)) + 0.3 * (n(x, y) - 0.5) <= 1.0:
@@ -862,6 +876,9 @@ def carve_rest(g, cx, cy, rx, ry, keep_cells=()):
             x += sx; y += sy
         for c in cells:
             keep.add(c)
+            # 着いた所（出口の1マス内側）から歩き出せるように、出口の幅のまま2マス入る
+            keep.add((c[0] + dx, c[1] + dy))
+            keep.add((c[0] + 2 * dx, c[1] + 2 * dy))
     for x, y in g.cells():
         if (x, y) not in keep:
             g.H[y][x] = -1
@@ -1523,6 +1540,195 @@ MAKERS = {
     'tw_5': make_tw_5,
 }
 
+# ---------------------------------------------------------------- エリアを少し広く、形を四角でなく（2026-11-26 の3回目の直し）
+# 作り終えたエリアを、大陸の列・行をところどころ2倍にして広げる（となりのエリアと同じ列・行なので、出口はずれない）。
+# 段差は増えないので、つながりはそのまま。広がる割合はノイズで場所ごとに変わる（エリアごとにばらつく）。
+GROW_SEED = 2611
+UNIQUE_CH = set('CMKQO')   # 2倍にしない物（たき火・商人・像・的・井戸）。写しの側は何もない地面にする
+
+def continent_bounds():
+    xs = [a['origin'][0] for a in AREAS.values()] + [a['origin'][0] + a['size'][0] for a in AREAS.values()]
+    ys = [a['origin'][1] for a in AREAS.values()] + [a['origin'][1] + a['size'][1] for a in AREAS.values()]
+    return min(xs), max(xs), min(ys), max(ys)
+
+def pick_dups(lo, hi, seed):
+    n = value_noise(seed, 7.0)
+    rng = random.Random(seed)
+    return {c for c in range(lo, hi) if rng.random() < 0.08 + 0.30 * n(c, 0.5)}
+
+def inflate_all(gs):
+    x0, x1, y0, y1 = continent_bounds()
+    DX, DY = pick_dups(x0, x1, GROW_SEED), pick_dups(y0, y1, GROW_SEED + 1)
+    NX = lambda c: c + sum(1 for d in DX if d < c)
+    NY = lambda c: c + sum(1 for d in DY if d < c)
+    for name, g in gs.items():
+        ox, oy = AREAS[name]['origin']
+        xs = []   # 新しい列 → (元の列, 写しか)
+        for x in range(g.w):
+            xs.append((x, False))
+            if ox + x in DX:
+                xs.append((x, True))
+        ys = []
+        for y in range(g.h):
+            ys.append((y, False))
+            if oy + y in DY:
+                ys.append((y, True))
+        nx = lambda x: NX(ox + x) - NX(ox)
+        ny = lambda y: NY(oy + y) - NY(oy)
+        def copies(c):
+            x, y = c
+            out = []
+            for xx in ([nx(x), nx(x) + 1] if ox + x in DX else [nx(x)]):
+                for yy in ([ny(y), ny(y) + 1] if oy + y in DY else [ny(y)]):
+                    out.append((xx, yy))
+            return out
+        first = lambda c: (nx(c[0]), ny(c[1]))
+        g.H = [[g.H[y][x] for x, _ in xs] for y, _ in ys]
+        g.O = [['.' if (cx or cy) and g.O[y][x] in UNIQUE_CH else g.O[y][x] for x, cx in xs] for y, cy in ys]
+        g.w, g.h = len(xs), len(ys)
+        g.enemies = [(*first((x, y)), *rest) for x, y, *rest in g.enemies]
+        g.pickups = [(*first((x, y)), *rest) for x, y, *rest in g.pickups]
+        g.merchants = [(*first((x, y)), *rest) for x, y, *rest in g.merchants]
+        g.bosses = [(*first((x, y)), *rest) for x, y, *rest in g.bosses]
+        g.gimmicks = [(gid, kind, [c2 for c in cells for c2 in copies(c)], [first(c) for c in trig]) for gid, kind, cells, trig in g.gimmicks]
+        g.reserved = {c2 for c in g.reserved for c2 in copies(c)}
+        g.hedge = {c2 for c in g.hedge for c2 in copies(c)}
+        g.locked = {c2 for c in g.locked for c2 in copies(c)}
+        g.pads = [(nx(a), ny(b), copies((c, d))[-1][0], copies((c, d))[-1][1]) for a, b, c, d in g.pads]
+        g.must_extra = [first(c) for c in g.must_extra]
+        if g.start:
+            g.start = first(g.start)
+        if getattr(g, 'campfire', None):
+            g.campfire = first(g.campfire)
+    for name in AREAS:
+        ox, oy = AREAS[name]['origin']
+        g = gs[name]
+        AREAS[name]['origin'] = (NX(ox), NY(oy))
+        AREAS[name]['size'] = (g.w, g.h)
+    global EXITS
+    links = []
+    for a, b, g0, g1, door, opener in LINKS:
+        ax, ay = AREAS[a]['origin']; aw, ah = AREAS[a]['size']
+        bx, by = AREAS[b]['origin']
+        vertical = ax + aw == bx or bx + AREAS[b]['size'][0] == ax   # 東西の辺（範囲は y）
+        D, N = (DY, NY) if vertical else (DX, NX)
+        links.append((a, b, N(g0), N(g1) + (1 if g1 in D else 0), door, opener))
+    EXITS = [e for l in links for e in _link_exits(*l)]
+    for name, g in gs.items():
+        g.exits = [e for e in EXITS if e[0] == name]
+    print('  広げた：列 %d・行 %d' % (len(DX), len(DY)))
+
+def roughen(g, hub):
+    """ふちを島の外（深い谷）にして、形を四角でなくする。出口の道・物・仕掛け・広場のまわりは残す。
+    つながりが切れたら、浅くしてやり直す（それでもだめなら何もしない）。"""
+    keep = set(g.reserved) | set(g.locked) | set(g.hedge)
+    def around(c, r):
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                keep.add((c[0] + dx, c[1] + dy))
+    for e in g.exits:
+        cells = exit_cells(g.name, e[1], e[2], e[3])
+        dx, dy = INWARD[e[1]]
+        for c in cells:
+            for k in range(7):
+                around((c[0] + dx * k, c[1] + dy * k), 1)
+    for x, y, *_ in g.enemies + g.pickups + g.merchants:
+        around((x, y), 1)
+    for x, y, *_ in g.bosses:
+        around((x, y), 3)
+    for _, _, cells, trig in g.gimmicks:
+        for c in cells + trig:
+            around(c, 2)
+    for a, b, c, d in g.pads:
+        for x in range(a - 1, c + 2):
+            for y in range(b - 1, d + 2):
+                keep.add((x, y))
+    for c in g.must_extra:
+        around(c, 1)
+    around(hub, 2)
+    n = value_noise(g.seed * 13 + 5, 3.2)
+    m = value_noise(g.seed * 17 + 3, 9.0)
+    saved_H = [row[:] for row in g.H]
+    saved_O = [row[:] for row in g.O]
+    must = [c for e in g.exits for c in exit_cells(g.name, *e[1:4]) if c not in g.locked]
+    must += [(x, y) for x, y, *_ in g.enemies] + [(x, y) for x, y, _, _ in g.pickups if (x, y) not in g.locked]
+    must += g.must_extra
+    def connected():
+        fwd, back = bfs(g, hub), set(bfs(g, hub, reverse=True))
+        # 大事なマスへ行って帰れて、行けるのに戻れないくぼみもできない
+        return all(c in fwd and c in back for c in must) and all(c in back for c in fwd)
+    for scale in (1.0, 0.6):
+        cand = []
+        for x, y in g.cells():
+            if (x, y) in keep or g.H[y][x] < 0:
+                continue
+            edge = min(x, y, g.w - 1 - x, g.h - 1 - y)
+            if edge < scale * (0.3 + 2.6 * n(x, y) + 1.6 * m(x, y)):
+                cand.append((edge, x, y))
+        cand.sort()
+        for _, x, y in cand:
+            g.H[y][x] = -1
+        if not connected():
+            # まとめて削るとつながりが切れる：外側から1マスずつ、切れないものだけ削る
+            for _, x, y in cand:
+                g.H[y][x] = saved_H[y][x]
+            for _, x, y in cand:
+                g.H[y][x] = -1
+                if not connected():
+                    g.H[y][x] = saved_H[y][x]
+        cut = 0
+        for x, y in g.cells():
+            if g.H[y][x] < 0 and saved_H[y][x] >= 0:
+                g.O[y][x] = '.'
+                cut += 1
+        ok = True
+        if g.gimmicks:
+            try:
+                check_unlocked(g, hub)
+            except SystemExit:
+                ok = False
+        if ok:
+            print('  形：%s ふちを %d マス削った' % (g.name, cut))
+            return
+        g.H = [row[:] for row in saved_H]
+        g.O = [row[:] for row in saved_O]
+    print('  形：%s は削れなかった' % g.name)
+
+def recarve_rest(g, hub):
+    """広げたあとの休憩所を、もう一度せまくする（2026-11-26）。たき火の広場と出口への道だけを残す。
+    まっすぐの道が段差で切れるときは、行き来できるままの所だけを外側から1マスずつ削る。"""
+    keep = [(x + i, y + j) for x, y, *_ in g.merchants for i in (-1, 0, 1) for j in (-1, 0, 1, 2)]
+    keep += list(g.must_extra) + [(x, y) for x, y, *_ in g.pickups]
+    saved_H = [row[:] for row in g.H]
+    saved_O = [row[:] for row in g.O]
+    must = []
+    for e in g.exits:
+        dx, dy = INWARD[e[1]]
+        for x, y in exit_cells(g.name, *e[1:4]):
+            if (x, y) not in g.locked:
+                must += [(x, y), (x + dx, y + dy)]
+    must += list(g.must_extra) + [(x, y) for x, y, _, _ in g.pickups if (x, y) not in g.locked]
+    must = [c for c in must if walkable(g, *c)]
+    def connected():
+        fwd, back = bfs(g, hub), set(bfs(g, hub, reverse=True))
+        return all(c in fwd and c in back for c in must) and all(c in back for c in fwd)
+    kept = carve_rest(g, g.campfire[0], g.campfire[1], *g.rest_shape, keep_cells=keep)
+    if not connected():
+        g.H = [row[:] for row in saved_H]
+        g.O = [row[:] for row in saved_O]
+        fx, fy = g.campfire
+        cand = sorted(((x, y) for x, y in g.cells() if (x, y) not in kept and g.H[y][x] >= 0),
+                      key=lambda c: -math.hypot(c[0] - fx, c[1] - fy))
+        for x, y in cand:
+            g.H[y][x] = -1
+            if not connected():
+                g.H[y][x] = saved_H[y][x]
+            else:
+                g.O[y][x] = '.'
+    clear_void(g)
+    walk = sum(1 for x, y in g.cells() if walkable(g, x, y))
+    print('  休憩所：%s 歩けるマス %d' % (g.name, walk))
+
 def main():
     gs = {}
     for k, make in MAKERS.items():
@@ -1534,6 +1740,13 @@ def main():
         hubs[k] = finish(g)
     for k, g in gs.items():
         place_hidden(g, hubs[k])
+    inflate_all(gs)
+    for k, g in gs.items():
+        hubs[k] = hub_of(g)
+        if k != 'town' and not getattr(g, 'campfire', None):
+            roughen(g, hubs[k])
+        elif getattr(g, 'rest_shape', None):
+            recarve_rest(g, hubs[k])
     for g in gs.values():
         write_gd(g)
         if '--preview' in sys.argv:

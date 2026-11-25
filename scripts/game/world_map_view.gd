@@ -8,6 +8,8 @@ extends Control
 ## - 自分のいる所（点滅する点）と、いま画面の上がどちらを向いているか（点から出る矢印）。
 ## - 出口（次のエリアへの道）を、エリアのふちの黄色い印で出す。行ったことのないとなりのエリアは、うすい枠と「？」で出す。
 ## - 門：閉じている門は赤い印（2本の柵）、開けた門は緑の印。
+## 2026-11-26（3回目の直し）：エリアの形が四角でなくなったので、長方形でなく、エリアの本当の形（1マス1点の絵）で描く。
+## 高い所ほど明るく、水は青、ふち（島の外のとなり）は暗くして形を見せる。
 
 const BOX := Rect2(10, 14, 300, 142)  ## 地図を描く所（ゲームの座標）
 const COLORS := {
@@ -26,6 +28,8 @@ var current_id := ""
 var player_pos := Vector2.ZERO
 var view_angle := 0.0
 var _fires := {}
+## エリアの形の絵（id → ImageTexture）
+var _shapes := {}
 var _title: Label
 var _legend: Label
 var _blink := 0.0
@@ -37,9 +41,11 @@ func setup(w: WorldMap, r: RunState) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	size = Vector2(320, 180)
 	for id in world.ids():
-		var info: Dictionary = Continent.load_map(world.area(id))[1]
+		var loaded = Continent.load_map(world.area(id))
+		var info: Dictionary = loaded[1]
 		if info.has("checkpoint"):
 			_fires[id] = info["checkpoint"]
+		_shapes[id] = shape_texture(loaded[0], COLORS.get(world.area(id).theme, Color.GRAY))
 	_title = UiText.label()
 	_title.position = Vector2(8, 1)
 	add_child(_title)
@@ -93,6 +99,36 @@ func layout() -> Dictionary:
 	var offset := BOX.position + (BOX.size - used) * 0.5 - Vector2(bounds.position) * k
 	return {"scale": k, "offset": offset}
 
+## エリアの形の絵（1マス1点）。島の外は透明。
+static func shape_texture(m: HeightMap, base: Color) -> ImageTexture:
+	var img := Image.create(m.size.x, m.size.y, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	for y in m.size.y:
+		for x in m.size.x:
+			var c := Vector2i(x, y)
+			if m.is_void(c):
+				continue
+			var col := base
+			if m.is_water(c):
+				col = Color("3f6fb0")
+			elif m.is_pit(c):
+				col = Color("1a1420")
+			else:
+				var h := m.get_height(c)
+				col = base.darkened(0.25).lightened(minf(0.45, h * 0.06))
+			var edge := false
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if m.is_void(c + d):
+					edge = true
+			if edge:
+				col = col.darkened(0.45)
+			img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+## エリアの形の絵（テスト用）
+func shape_of(id: String) -> ImageTexture:
+	return _shapes.get(id)
+
 func area_rect(id: String, lay: Dictionary) -> Rect2:
 	var r := world.area(id).rect()
 	var k: float = lay["scale"]
@@ -116,8 +152,10 @@ func _draw() -> void:
 	for id in run.visited_ids():
 		var a := world.area(id)
 		var r := area_rect(id, lay)
-		draw_rect(r, COLORS.get(a.theme, Color.GRAY))
-		draw_rect(r, Color(0, 0, 0, 0.6), false, 1.0)
+		if _shapes.has(id):
+			draw_texture_rect(_shapes[id], r, false)
+		else:
+			draw_rect(r, COLORS.get(a.theme, Color.GRAY))
 		if _fires.has(id):
 			var p := r.position + (Vector2(_fires[id]) + Vector2(0.5, 0.5)) * k
 			draw_rect(Rect2(p - Vector2(1.5, 1.5), Vector2(3, 3)), Color("ff9a3c"))

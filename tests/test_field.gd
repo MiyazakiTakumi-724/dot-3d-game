@@ -288,8 +288,13 @@ func test_start_hint_then_nothing():
 	assert_eq(f.ui_message(), "")
 
 func test_arrows_on_open_exits_only():
-	# 町：西・東・南の出口に矢印、北の門と南西の封印の門には矢印なし
-	assert_eq(f.arrow_count(), 9)
+	# 町：西・東・南の出口に矢印、北の門と南西の封印の門には矢印なし（出口の幅の分だけ。2026-11-26 に広げた）
+	var n := 0
+	for ex in f.area.exits:
+		if ex.door_id == "":
+			n += ex.cells(f.area.size()).size()
+	assert_eq(n, 11)
+	assert_eq(f.arrow_count(), n)
 
 ## 死んでいる間に着いた鉄球で、できたばかりの墓石が壊れない（レビューの指摘）
 func test_ball_landing_while_dying_does_not_break_new_grave():
@@ -1273,6 +1278,23 @@ func test_map_shows_exits_gates_and_unvisited_neighbors():
 	assert_false("mt_1" in next, "道でつながっていないエリアは出さない")
 	f.run.open_door("forest_gate")
 	assert_eq(mv.exit_marks().filter(func(m): return m["from"] == "town" and m["to"] == "forest")[0]["kind"], "gate_open")
+
+## 2026-11-26（3回目の直し）：全体マップは、エリアの本当の形で描く（島の外は透明）
+func test_map_draws_area_shapes():
+	var mv: WorldMapView = f.map_view
+	var tex: ImageTexture = mv.shape_of("hills")
+	assert_not_null(tex)
+	var img := tex.get_image()
+	var m: HeightMap = Continent.load_map(f.world.area("hills"))[0]
+	assert_eq(img.get_size(), m.size)
+	var clear := 0
+	for y in m.size.y:
+		for x in m.size.x:
+			var c := Vector2i(x, y)
+			assert_eq(img.get_pixel(x, y).a < 0.5, m.is_void(c), str(c))
+			if m.is_void(c):
+				clear += 1
+	assert_gt(clear, 0, "四角でない形")
 
 func test_map_follows_player_and_camera():
 	f.toggle_map()
