@@ -997,7 +997,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				hotbar.select_slot(event.physical_keycode - KEY_0, run.inventory.equipment)
 			KEY_F:
-				if not try_open_shop() and not try_open_chest():
+				if not try_open_shop() and not try_open_chest() and not try_pull_lever():
 					try_open_door()
 			KEY_TAB:
 				open_inventory()
@@ -1328,6 +1328,7 @@ func spell_cost_mult() -> float:
 ## 雷：狙った点に落ちる。自分と同じか低い所の敵に当たる（高い所からでなくてもよい）。
 func _thunder(point: Vector2) -> void:
 	var mv := player.mover
+	_magic_gimmicks(point, Magic.THUNDER_RADIUS)
 	for e in targets():
 		if e.walker.pos.distance_to(point) < Magic.THUNDER_RADIUS and e.walker.height <= mv.height:
 			_hit_enemy(e, Magic.Spell.THUNDER, mv.height)
@@ -1393,6 +1394,8 @@ func _step_bolts(delta: float) -> void:
 					p.alive = false
 					break
 		if not p.alive:
+			if playing:
+				_magic_gimmicks(p.pos, 4.0)
 			if playing and spell == Magic.Spell.FIREBALL:
 				_explode(p.pos, p.z, from_h)
 			if playing and run.grave != null and run.grave.area_id == area.id and p.hit_grave == run.grave.cell:
@@ -1438,6 +1441,7 @@ func fires_burning() -> int:
 func _fire_pillar(point: Vector2) -> void:
 	var mv := player.mover
 	_burn_gimmicks(point, Magic.PILLAR_RADIUS)
+	_magic_gimmicks(point, Magic.PILLAR_RADIUS)
 	for e in targets():
 		if e.walker.pos.distance_to(point) < Magic.PILLAR_RADIUS:
 			if _hit_enemy(e, Magic.Spell.FIRE_PILLAR, mv.height):
@@ -1458,6 +1462,7 @@ func _fire_rain(point: Vector2) -> void:
 	var ground := map.get_height(c) if map.in_bounds(c) else mv.height
 	var r := Magic.rain_radius(mv.height, ground)
 	_burn_gimmicks(point, r)
+	_magic_gimmicks(point, r)
 	for e in targets():
 		if e.walker.height <= mv.height and e.walker.pos.distance_to(point) < r:
 			_hit_enemy(e, Magic.Spell.FIRE_RAIN, mv.height)
@@ -1606,7 +1611,7 @@ func _step_bombs(delta: float) -> void:
 			if e.walker.pos.distance_to(b[0]) < 20.0 and absi(e.walker.height - b[1]) <= 1 and Damage.can_hit(b[4], e.walker.height):
 				damage_target(e, b[3], b[0], "", Color("ffb347"), "bomb")
 		for g in _closed_gimmicks():
-			if g.kind == Gimmick.Kind.CRACK and g.by_ball(b[0], 1):
+			if (g.kind == Gimmick.Kind.CRACK and g.by_ball(b[0], 1)) or g.by_bomb(b[0], 20.0):
 				open_gimmick(g)
 
 func open_inventory() -> bool:
@@ -1845,18 +1850,33 @@ func _closed_gimmicks() -> Array[Gimmick]:
 
 func _place_gimmicks() -> void:
 	for g in area.gimmicks:
-		if g.kind == Gimmick.Kind.TARGET:
+		var opened := run.is_gimmick_open(g.id)
+		if g.kind in [Gimmick.Kind.TARGET, Gimmick.Kind.PLATE, Gimmick.Kind.LEVER, Gimmick.Kind.CRYSTAL]:
 			var ts := []
 			for c in g.trigger:
-				ts.append(_marker(c, Props.target(run.is_gimmick_open(g.id)), 1))
+				var flat := g.kind == Gimmick.Kind.PLATE
+				var lit := g.kind == Gimmick.Kind.CRYSTAL and opened
+				ts.append(_marker(c, switch_model(g.kind, opened), 0 if flat else 1, not lit))
 			_target_nodes[g.id] = ts
-		elif not run.is_gimmick_open(g.id):
+		if not opened and g.kind not in [Gimmick.Kind.TARGET, Gimmick.Kind.CRYSTAL]:
 			var model: VoxelModel = {Gimmick.Kind.CRACK: Props.crack_rock(), Gimmick.Kind.THORNS: Props.thorns(),
-				Gimmick.Kind.VINES: Props.vines()}[g.kind]
+				Gimmick.Kind.VINES: Props.vines(), Gimmick.Kind.PLATE: Props.bars(), Gimmick.Kind.LEVER: Props.bars(),
+				Gimmick.Kind.BRITTLE: Props.brittle_wall()}[g.kind]
 			var ns := []
 			for c in g.cells:
 				ns.append(_marker(c, model, 1))
 			_gimmick_nodes[g.id] = ns
+
+## 仕掛けの、武器を当てる所の模型（的・押し板・レバー・水晶）。opened なら開けた後の姿。
+static func switch_model(kind: Gimmick.Kind, opened: bool) -> VoxelModel:
+	match kind:
+		Gimmick.Kind.PLATE:
+			return Props.plate(opened)
+		Gimmick.Kind.LEVER:
+			return Props.lever(opened)
+		Gimmick.Kind.CRYSTAL:
+			return Props.crystal(opened)
+	return Props.target(opened)
 
 ## 仕掛けを開ける（岩が砕ける・橋が下りる・茨が燃える・つたが切れる）。死んでも開いたまま。
 func open_gimmick(g: Gimmick) -> void:
@@ -1891,6 +1911,33 @@ func open_gimmick(g: Gimmick) -> void:
 			for s in _target_nodes.get(g.id, []):
 				s.set_model(Props.target(true))
 			_rebuild_terrain()
+		Gimmick.Kind.PLATE, Gimmick.Kind.LEVER:
+			notice(("押し板が沈んだ！" if g.kind == Gimmick.Kind.PLATE else "レバーを引いた！") + "\n鉄格子が上がった", 2.0)
+			Sfx.play("switch")
+			Sfx.play("lift", HeightMap.cell_center(g.cells[0]), -4.0)
+			for s in _target_nodes.get(g.id, []):
+				s.set_model(switch_model(g.kind, true))
+		Gimmick.Kind.CRYSTAL:
+			notice("水晶が光った！\n足場がせり上がった", 2.0)
+			Sfx.play("seal")
+			Sfx.play("lift", HeightMap.cell_center(g.cells[0]))
+			camera.shake(2.0)
+			for s in _target_nodes.get(g.id, []):
+				s.outline_color = Color(0, 0, 0, 0)  # 光っているので、ふちなし
+				s.set_model(switch_model(g.kind, true))
+			_rebuild_terrain()
+			# 足場の上に立っていたら、一緒に上がる
+			var pc := player.mover.cell()
+			if pc in g.cells:
+				player.mover.height = map.get_height(pc)
+		Gimmick.Kind.BRITTLE:
+			notice("もろい壁が崩れた！", 1.5)
+			camera.shake(3.0)
+			Sfx.play("break")
+			for c in g.cells:
+				var dust := ImpactDust.new()
+				dust.setup(camera, HeightMap.cell_center(c), map.get_height(c), 5)
+				_area_root.add_child(dust)
 
 ## 地形の絵を作り直す（橋が下りたとき）。
 func _rebuild_terrain() -> void:
@@ -1907,6 +1954,31 @@ func _burn_gimmicks(point: Vector2, radius: float) -> void:
 	for g in _closed_gimmicks():
 		if g.by_fire(point, radius):
 			open_gimmick(g)
+
+## 魔法（弾・炎・雷）が point のまわり radius に当たった。水晶が光る。
+func _magic_gimmicks(point: Vector2, radius: float) -> void:
+	for g in _closed_gimmicks():
+		if g.by_magic(point, radius):
+			open_gimmick(g)
+
+## となりにある、まだ引いていないレバー。なければ null。
+func lever_here() -> Gimmick:
+	if area_state.result != AreaState.Result.PLAYING:
+		return null
+	for g in _closed_gimmicks():
+		if g.by_hand(player.mover.cell(), map):
+			return g
+	return null
+
+## そばのレバーを引く（F）。なければ false。
+func try_pull_lever() -> bool:
+	if is_switching():
+		return false
+	var g := lever_here()
+	if g == null:
+		return false
+	open_gimmick(g)
+	return true
 
 func gimmick_markers(id: String) -> int:
 	return _gimmick_nodes.get(id, []).size()
@@ -2162,6 +2234,8 @@ func ui_message() -> String:
 		return _notice_text
 	if chest_here() >= 0:
 		return "F：宝箱を開ける"
+	if lever_here() != null:
+		return "F：レバーを引く"
 	if _title_time > 0.0:
 		return area.title if area.region == "はじまりの地" else "%s\n%s" % [area.region, area.title]
 	var talk := _talk_here()

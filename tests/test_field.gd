@@ -991,6 +991,76 @@ func test_sword_cuts_vines():
 	assert_true(f.swing_sword())
 	assert_true(f.run.is_gimmick_open(g.id))
 
+# ---- 2026-11-26（3回目の直し）：仕掛けを増やした
+
+## 押し板：鉄球を板に置くと鉄格子が上がり、板は沈んだ姿になる
+func test_ball_on_plate_raises_bars():
+	var id := _gimmick_area(Gimmick.Kind.PLATE)
+	var g := _gimmick(id, Gimmick.Kind.PLATE)
+	f.enter_area(id, Continent.START_CELL)
+	assert_true(f.map.is_wall(g.cells[0]), "鉄格子")
+	assert_false(f.map.is_wall(g.trigger[0]), "板の上は歩ける")
+	assert_eq(f.gimmick_markers(g.id), g.cells.size())
+	f.ball.rules_ball.fall_levels = 0
+	f._on_ball_landed(HeightMap.cell_center(g.trigger[0]), 0)
+	assert_true(f.run.is_gimmick_open(g.id))
+	assert_false(f.map.is_wall(g.cells[0]))
+	assert_eq(f.gimmick_markers(g.id), 0)
+
+## レバー：となりに立つと「F：レバーを引く」が出て、F で鉄格子が上がる
+func test_lever_pulled_with_f():
+	var id := _gimmick_area(Gimmick.Kind.LEVER)
+	var g := _gimmick(id, Gimmick.Kind.LEVER)
+	f.enter_area(id, Continent.START_CELL)
+	assert_false(f.try_pull_lever(), "遠いと引けない")
+	var lever := g.trigger[0]
+	var stand := lever
+	for d in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		var n: Vector2i = lever + d
+		if not f.map.is_wall(n) and not f.map.is_water(n) and absi(f.map.get_height(n) - f.map.get_height(lever)) <= 1:
+			stand = n
+			break
+	assert_ne(stand, lever)
+	f.player.mover.place(stand)
+	f._title_time = 0.0
+	assert_eq(f.ui_message(), "F：レバーを引く")
+	var ev := InputEventKey.new()
+	ev.pressed = true
+	ev.physical_keycode = KEY_F
+	f._unhandled_input(ev)
+	assert_true(f.run.is_gimmick_open(g.id))
+	assert_false(f.map.is_wall(g.cells[0]))
+
+## 魔法の水晶：魔法を当てると、入口の足場が2段せり上がり、3段高い台へ登れる
+func test_magic_on_crystal_raises_steps():
+	var id := _gimmick_area(Gimmick.Kind.CRYSTAL)
+	var g := _gimmick(id, Gimmick.Kind.CRYSTAL)
+	f.enter_area(id, Continent.START_CELL)
+	var low: int = f.map.get_height(g.cells[0])
+	assert_true(f.map.is_wall(g.trigger[0]), "水晶は通れない")
+	f._magic_gimmicks(HeightMap.cell_center(g.trigger[0]), 4.0)
+	assert_true(f.run.is_gimmick_open(g.id))
+	for i in g.cells.size():
+		assert_eq(f.map.get_height(g.cells[i]), g.heights[i])
+	assert_gt(f.map.get_height(g.cells[0]), low)
+	f.enter_area("town", Continent.START_CELL)
+	f.enter_area(id, Continent.START_CELL)
+	assert_eq(f.map.get_height(g.cells[0]), g.heights[0], "入り直しても上がったまま")
+
+## もろい壁：爆弾でだけ崩れる
+func test_bomb_breaks_brittle_wall():
+	var id := _gimmick_area(Gimmick.Kind.BRITTLE)
+	var g := _gimmick(id, Gimmick.Kind.BRITTLE)
+	f.enter_area(id, Continent.START_CELL)
+	assert_true(f.map.is_wall(g.cells[0]))
+	f.ball.rules_ball.fall_levels = 3
+	f._on_ball_landed(HeightMap.cell_center(g.cells[0]), 0)
+	assert_false(f.run.is_gimmick_open(g.id), "鉄球では崩れない")
+	f._bombs.append([HeightMap.cell_center(g.cells[0]) + Vector2(10, 0), f.map.get_height(g.cells[0]), 0.0, 10, 8])
+	f._process(0.016)
+	assert_true(f.run.is_gimmick_open(g.id))
+	assert_false(f.map.is_wall(g.cells[0]))
+
 func test_tower_seal_needs_four_bosses():
 	f.enter_area("town", Vector2i(12, 13))
 	var ex := _exit("town", "tw_1", true)

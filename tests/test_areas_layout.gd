@@ -322,12 +322,15 @@ func test_bonfire_has_room_to_respawn():
 			var c: Vector2i = info["checkpoint"] + Vector2i(0, 1)
 			assert_false(m.is_wall(c) or m.is_water(c) or m.is_pit(c), id)
 
-func test_all_four_gimmick_kinds_are_used():
+## 2026-11-26（3回目の直し）：仕掛けは8種類（押し板・レバー・魔法の水晶・もろい壁を足した）。どれも2か所以上
+func test_all_gimmick_kinds_are_used():
 	var kinds := {}
 	for id in world.ids():
 		for g in world.area(id).gimmicks:
-			kinds[g.kind] = true
-	assert_eq(kinds.size(), 4)
+			kinds[g.kind] = kinds.get(g.kind, 0) + 1
+	assert_eq(kinds.size(), Gimmick.Kind.size())
+	for k in kinds:
+		assert_gte(kinds[k], 2, Gimmick.Kind.keys()[k])
 
 ## 仕掛けの宝は、閉じている間は取れず、開けると取れる
 func test_gimmick_rewards_locked_until_opened():

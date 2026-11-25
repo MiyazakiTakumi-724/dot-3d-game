@@ -600,3 +600,103 @@ static func seal() -> VoxelModel:
 					m.set_voxel(Vector3i(x, 9, z), Color("7ad8ff"))
 		_cache["seal"] = VoxelShade.apply(m)
 	return _cache["seal"]
+
+# ---- 2026-11-26（3回目の直し）：仕掛けを増やした
+
+## 鉄格子（押し板とレバーで上がる）：マスいっぱいの太い鉄の棒の列と、上下の横木。
+static func bars() -> VoxelModel:
+	if not _cache.has("bars"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(28, 28, 44)
+		var bar := Color("5a5f6a")
+		for i in 6:
+			var x := 2.5 + i * 4.6
+			VoxelDraw.cylinder(m, Vector2(x, 14), 1.4, 0, 40, bar if i % 2 == 0 else bar.lightened(0.08))
+		VoxelDraw.fill(m, Vector3i(0, 12, 36), Vector3i(27, 15, 40), Color("444852"))
+		VoxelDraw.fill(m, Vector3i(0, 12, 4), Vector3i(27, 15, 7), Color("444852"))
+		for x in [0, 1, 26, 27]:
+			VoxelDraw.fill(m, Vector3i(x, 11, 0), Vector3i(x, 16, 43), Color("6a6052"))  # 石の柱
+		for p: Vector3i in m.voxels().keys():
+			if VoxelDraw.hash3(p.x, p.y, p.z, 13) == 0 and p.x > 1 and p.x < 26:
+				m.set_voxel(p, Color("8a5a3a"))  # さび
+		_cache["bars"] = VoxelShade.apply(m)
+	return _cache["bars"]
+
+## 押し板：地面に埋めた石の板。down なら沈んで、光る印が見える。
+static func plate(down := false) -> VoxelModel:
+	var key := "plate/%d" % int(down)
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(28, 28, 4)
+		var top := 1 if down else 3
+		VoxelDraw.fill(m, Vector3i(2, 2, 0), Vector3i(25, 25, 0), Color("4a4650"))  # 枠
+		VoxelDraw.fill(m, Vector3i(4, 4, 0), Vector3i(23, 23, top), Color("8f8a80") if not down else Color("6f6a62"))
+		var mark := Color("ffd27a") if down else Color("5a5650")
+		for i in range(7, 21):
+			m.set_voxel(Vector3i(i, 13, top), mark)
+			m.set_voxel(Vector3i(13, i, top), mark)
+		_cache[key] = VoxelShade.apply(m)
+	return _cache[key]
+
+## レバー：石の台に立てた木の棒。on なら倒れている（引いた後）。
+static func lever(on := false) -> VoxelModel:
+	var key := "lever/%d" % int(on)
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(24, 24, 30)
+		VoxelDraw.fill(m, Vector3i(5, 7, 0), Vector3i(18, 16, 7), Color("7a7468"))
+		VoxelDraw.fill(m, Vector3i(6, 8, 8), Vector3i(17, 15, 8), Color("8f887a"))
+		var tip := Vector3(11.5, 3, 12) if on else Vector3(11.5, 20, 27)
+		VoxelDraw.rod(m, Vector3(11.5, 11.5, 8), tip, WOOD_DARK, 2)
+		VoxelDraw.ellipsoid(m, tip, Vector3(2.5, 2.5, 2.5), Color("e8463a") if not on else Color("5aa83a"))
+		_cache[key] = VoxelShade.apply(m)
+	return _cache[key]
+
+## 魔法の水晶：台座の上に浮かぶ、とがった青い水晶。lit なら明るく光る（影なし）。
+static func crystal(lit := false) -> VoxelModel:
+	var key := "crystal/%d" % int(lit)
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(24, 24, 44)
+		VoxelDraw.fill(m, Vector3i(4, 4, 0), Vector3i(19, 19, 5), Color("6a6478"))
+		VoxelDraw.fill(m, Vector3i(6, 6, 6), Vector3i(17, 17, 7), Color("7f7890"))
+		var base := Color("9fe8ff") if lit else Color("5a7fd0")
+		for z in range(12, 42):
+			var t := 1.0 - absf(z - 24.0) / 18.0
+			var r := maxf(0.6, 6.5 * t)
+			for y in 24:
+				for x in 24:
+					var d := absf(x - 11.5) + absf(y - 11.5)  # ひし形の断面
+					if d <= r:
+						var c := base.lightened(0.25) if (x + z) % 5 == 0 else base
+						m.set_voxel(Vector3i(x, y, z), c)
+		_cache[key] = VoxelShade.apply(m) if not lit else m
+	return _cache[key]
+
+## もろい壁：ひびだらけのレンガの壁。爆弾で崩れる。
+static func brittle_wall() -> VoxelModel:
+	if not _cache.has("brittle"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(28, 28, 40)
+		for z in 40:
+			for y in range(6, 22):
+				for x in 28:
+					var row := z / 5
+					var off := 4 if row % 2 == 0 else 0
+					var mortar := z % 5 == 4 or (x + off) % 9 == 8
+					var c := Color("8a6a58") if not mortar else Color("5a4a42")
+					if (row + (x + off) / 9) % 3 == 0 and not mortar:
+						c = Color("9a7a64")
+					m.set_voxel(Vector3i(x, y, z), c)
+		# 大きなひび（黒い線）
+		for z in range(2, 38):
+			var x := 14 + roundi(sin(z * 0.45) * 4.0)
+			for y in range(6, 22):
+				if y == 6 or y == 21:
+					m.set_voxel(Vector3i(x, y, z), Color("1e1816"))
+		for x in range(4, 24):
+			var z := 20 + roundi(sin(x * 0.6) * 3.0)
+			m.set_voxel(Vector3i(x, 21, z), Color("1e1816"))
+			m.set_voxel(Vector3i(x, 6, z), Color("1e1816"))
+		_cache["brittle"] = VoxelShade.apply(m)
+	return _cache["brittle"]

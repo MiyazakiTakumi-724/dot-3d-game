@@ -72,3 +72,66 @@ func test_vines_are_cut_by_a_sword_facing_them():
 	assert_true(g.by_sword(from, 1, Vector2.RIGHT, m))
 	assert_false(g.by_sword(from, 1, Vector2.LEFT, m))
 	assert_false(g.by_sword(from, 0, Vector2.RIGHT, m))  # 下からは届かない
+
+# ---- 2026-11-26（3回目の直し）：仕掛けの種類を増やした
+
+func test_new_kinds_from_data():
+	var g := Gimmick.from_data(["cs_1:1", "CRYSTAL", [Vector2i(3, 4), Vector2i(3, 3)], [Vector2i(5, 4)], [2, 3]])
+	assert_eq(g.kind, Gimmick.Kind.CRYSTAL)
+	assert_eq(g.heights, [2, 3])
+	assert_eq(Gimmick.from_data(["x:0", "PLATE", [Vector2i(1, 1)], [Vector2i(2, 2)]]).heights, [])
+
+## 押し板：鉄球を板の上に置く（落とす高さは問わない）と、鉄格子が上がる
+func test_plate_opens_bars_when_the_ball_rests_on_it():
+	var m := _map()
+	var g := _g(Gimmick.Kind.PLATE, [Vector2i(2, 2)], [Vector2i(5, 5)])
+	g.close(m)
+	assert_true(m.is_wall(Vector2i(2, 2)), "鉄格子")
+	assert_eq(m.get_blocker(Vector2i(2, 2)), HeightMap.Blocker.BARS)
+	assert_false(m.is_wall(Vector2i(5, 5)), "板の上は歩ける")
+	assert_true(g.by_ball(HeightMap.cell_center(Vector2i(5, 5)), 0))
+	assert_false(g.by_ball(HeightMap.cell_center(Vector2i(5, 5)) + Vector2(12, 0), 0), "板の外")
+	assert_false(g.by_ball(HeightMap.cell_center(Vector2i(2, 2)), 2), "鉄格子に落としても開かない")
+	g.open(m)
+	assert_false(m.is_wall(Vector2i(2, 2)))
+
+## レバー：となりに立って F で引く（高さの差は1段まで）
+func test_lever_is_pulled_from_next_to_it():
+	var m := _map()
+	m.set_height(Vector2i(6, 1), 3)
+	var g := _g(Gimmick.Kind.LEVER, [Vector2i(2, 2)], [Vector2i(5, 1)])
+	g.close(m)
+	assert_eq(m.get_blocker(Vector2i(2, 2)), HeightMap.Blocker.BARS)
+	assert_true(g.by_hand(Vector2i(5, 2), m))
+	assert_true(g.by_hand(Vector2i(4, 1), m))
+	assert_false(g.by_hand(Vector2i(5, 3), m), "2マス離れている")
+	assert_false(g.by_hand(Vector2i(6, 1), m), "高い所からは届かない")
+	assert_false(_g(Gimmick.Kind.VINES, [Vector2i(5, 1)]).by_hand(Vector2i(5, 2), m))
+
+## 魔法の水晶：魔法を当てると、足場（cells）が heights の高さまでせり上がる
+func test_crystal_raises_steps_when_hit_by_magic():
+	var m := _map()
+	var g := Gimmick.make("g1", Gimmick.Kind.CRYSTAL, [Vector2i(3, 3), Vector2i(3, 2)], [Vector2i(6, 6)], [2, 3])
+	g.close(m)
+	assert_eq(m.get_height(Vector2i(3, 3)), 1, "閉じている間は低いまま")
+	assert_false(m.is_wall(Vector2i(3, 3)))
+	assert_true(g.by_magic(HeightMap.cell_center(Vector2i(6, 6)) + Vector2(8, 0), 4.0))
+	assert_false(g.by_magic(HeightMap.cell_center(Vector2i(1, 1)), 4.0))
+	assert_false(g.by_fire(HeightMap.cell_center(Vector2i(6, 6)), 4.0), "炎で茨を燃やすのとは別")
+	g.open(m)
+	assert_eq(m.get_height(Vector2i(3, 3)), 2)
+	assert_eq(m.get_height(Vector2i(3, 2)), 3)
+	g.open(m)
+	assert_eq(m.get_height(Vector2i(3, 2)), 3, "2回開けても同じ高さ")
+
+## もろい壁：爆弾でだけ崩れる（鉄球や剣では崩れない）
+func test_brittle_wall_breaks_only_with_a_bomb():
+	var m := _map()
+	var g := _g(Gimmick.Kind.BRITTLE, [Vector2i(2, 2)])
+	g.close(m)
+	assert_eq(m.get_blocker(Vector2i(2, 2)), HeightMap.Blocker.BRITTLE)
+	assert_true(g.by_bomb(HeightMap.cell_center(Vector2i(2, 2)) + Vector2(20, 0), 20.0))
+	assert_false(g.by_bomb(HeightMap.cell_center(Vector2i(6, 6)), 20.0))
+	assert_false(g.by_ball(HeightMap.cell_center(Vector2i(2, 2)), 3))
+	assert_false(g.by_sword(HeightMap.cell_center(Vector2i(1, 2)), 1, Vector2.RIGHT, m))
+	assert_false(_g(Gimmick.Kind.CRACK, [Vector2i(2, 2)]).by_bomb(HeightMap.cell_center(Vector2i(2, 2)), 20.0), "ひびの岩は今までどおり鉄球（爆弾は field が鉄球として扱う）")

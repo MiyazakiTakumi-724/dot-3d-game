@@ -10,7 +10,7 @@ extends RefCounted
 ## 全体の地図（2026-11-25）で足したもの：g ＝背の高い草（歩ける。キャラの足元が隠れる）、s ＝石畳（歩ける）、
 ## L ＝溶岩（水と同じく入れない）、W ＝崩れた石の壁、I ＝石の柱、H ＝家（つながったマスで1軒）、O ＝井戸、
 ## M ＝商人、K ＝ボスの像、Q ＝弓の的、X ＝ひびの入った岩、Y ＝茨、V ＝つた（商人から下はステージ側が小物を置く。
-## X・Y・V は Gimmick が通れなくする）。
+## X・Y・V は Gimmick が通れなくする）。2026-11-26：E ＝鉄格子、N ＝もろい壁、U ＝押し板（歩ける）、J ＝レバー、Z ＝魔法の水晶。
 ## 地面の色は、deco["theme"]（エリアの地方：grass・mountain・lava・castle・tower・town）と高さで決まる。
 ##
 ## 描き方：各マスを「柱」として描く。柱の上は地面の面、下は隣の一番低い床まで（column_bottom）。
@@ -129,8 +129,12 @@ static func _put_object(ch: String, cell: Vector2i, map: HeightMap, info: Dictio
 			if not info.has(list):
 				info[list] = []
 			info[list].append(cell)
-		"X", "Y", "V":
-			pass  # 仕掛け（Gimmick）。下は地面で、ふさぐのはステージ側
+		"X", "Y", "V", "E", "N", "U":
+			pass  # 仕掛け（Gimmick）。下は地面で、ふさぐのはステージ側（E 鉄格子・N もろい壁・U 押し板は 2026-11-26）
+		"J", "Z":
+			# レバー・魔法の水晶（2026-11-26）。ステージ側が小物として置く。下は地面だけ描く
+			map.set_wall(cell, true)
+			info["deco"][cell] = "npc"
 
 ## 島のふちの断面の深さ（段）。マスごとに決まっている。
 static func foundation_levels(cell: Vector2i) -> int:

@@ -16,7 +16,7 @@ import heapq
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, '..', '..', 'scripts', 'areas')
-WALLS = set('TPBRWIHOMKQXYV')  # 通れない物（X・Y・V は仕掛けで、開けるまで通れない）
+WALLS = set('TPBRWIHOMKQXYVENJZ')  # 通れない物（X・Y・V・E・N は仕掛けで、開けるまで通れない。J レバー・Z 水晶）
 BLOCK = WALLS | set('~_L')    # 通れないマス（水・奈落・溶岩を含む）
 CLIMB, DROP = 1, 3
 SPEED_CELLS = 60.0 / 16.0    # プレイヤーの速さ（マス/秒）
@@ -401,6 +401,7 @@ def new_area(name, seed):
     g.pads = []
     g.theme = AREAS[name]['theme']
     g.gimmicks = []   # (id, 種類, ふさぐマス, 当てるマス)
+    g.raise_to = {}   # CRYSTAL の足場：マス → 開けたときの高さ（2026-11-26）
     g.bosses = []     # (x, y, 名前, 色)
     g.merchants = []  # (x, y, お店の id)
     g.region = REGION[name]
@@ -604,7 +605,9 @@ def protect(g, cells):
         g.hedge.add(c)
 
 OUT_OF = {'N': (0, -1), 'S': (0, 1), 'E': (1, 0), 'W': (-1, 0)}
-GIMMICK_CH = {'CRACK': 'X', 'THORNS': 'Y', 'VINES': 'V'}
+GIMMICK_CH = {'CRACK': 'X', 'THORNS': 'Y', 'VINES': 'V', 'PLATE': 'E', 'LEVER': 'E', 'BRITTLE': 'N'}
+## 2026-11-26：仕掛けの、武器を当てる所（押し板 U は歩ける。レバー J・水晶 Z は通れない）
+SWITCH_CH = {'PLATE': 'U', 'LEVER': 'J', 'CRYSTAL': 'Z'}
 
 def pocket(g, kind, x0, y0, x1, y1, side, reward):
     """囲われた小さな所（中に宝）。side の辺の真ん中が入口で、そこを仕掛けがふさぐ。"""
@@ -621,8 +624,34 @@ def pocket(g, kind, x0, y0, x1, y1, side, reward):
     if kind == 'CRACK':
         A = max(A, 1)
         floor = A - 1
+    elif kind == 'CRYSTAL':
+        A = min(A, 5)
+        floor = A + 3   # 中は3段高い台。水晶を光らせると、入口に2段の足場がせり上がる
     else:
         floor = A
+    sw = None
+    if kind in SWITCH_CH:
+        # 板・レバー・水晶は、立つ所（stand）の横。押し板は1マスあけて置く（となりに立って鉄球を落とす）
+        far_k = 1 if kind == 'LEVER' else 2
+        for px, py in ((oy, ox), (-oy, -ox)):
+            cand = (stand[0] + px * far_k, stand[1] + py * far_k)
+            mid = (stand[0] + px, stand[1] + py)
+            if all(g.inside(*c) and c not in g.reserved and c not in allc for c in (cand, mid)):
+                sw, sw_mid = cand, mid
+                break
+        if sw is None:
+            raise SystemExit('仕掛けの所が空いていない: %s %s 板・レバー・水晶' % (g.name, kind))
+        for c in {sw, sw_mid}:
+            g.H[c[1]][c[0]] = A
+            g.O[c[1]][c[0]] = '.'
+        g.O[sw[1]][sw[0]] = SWITCH_CH[kind]
+        if kind == 'PLATE':
+            g.reserved.add(sw)
+            g.must_extra.append(sw)
+        else:
+            protect(g, [sw])
+        g.reserved.add(sw_mid)
+        g.must_extra.append(sw_mid)
     for c in (ap, stand):
         g.H[c[1]][c[0]] = A
         g.O[c[1]][c[0]] = '.'
@@ -653,9 +682,18 @@ def pocket(g, kind, x0, y0, x1, y1, side, reward):
         g.locked.add(ap)
         g.must_extra.append(stand)
         far = [c for c in inner if c != tgt and abs(c[0] - gate[0]) + abs(c[1] - gate[1]) > 1]
+    elif kind == 'CRYSTAL':
+        # 閉じている間は入口と、その外の1マスが低いまま（中の台へは3段で登れない）
+        g.H[gate[1]][gate[0]] = A
+        g.O[gate[1]][gate[0]] = '.'
+        g.raise_to[ap] = A + 1
+        g.raise_to[gate] = A + 2
+        g.gimmicks.append((gid, kind, [ap, gate], [sw]))
+        g.must_extra.append(ap)
+        far = inner
     else:
         g.O[gate[1]][gate[0]] = GIMMICK_CH[kind]
-        g.gimmicks.append((gid, kind, [gate], [gate]))
+        g.gimmicks.append((gid, kind, [gate], [sw] if sw else [gate]))
         g.must_extra.append(ap)
         far = inner
     rx, ry = max(far, key=lambda c: abs(c[0] - gate[0]) + abs(c[1] - gate[1]))
@@ -943,6 +981,7 @@ def make_town():
 def make_rocks():
     def _pre(g):
         pocket(g, 'CRACK', 15, 12, 17, 14, 'W', ('money', 30))
+        pocket(g, 'PLATE', 7, 2, 9, 4, 'S', ('bomb', 2))   # 押し板に鉄球を置くと鉄格子が上がる（2026-11-26）
     def _after(g):
         scatter(g, [('R', 6), ('B', 2), ('P', 1)], 0.10, 7)
     return area('rocks', 5, 1.0, 3.5, mesa_n=2, fine=1.6, pre=_pre, after=_after, enemies=4, loot_n=3)
@@ -950,6 +989,7 @@ def make_rocks():
 def make_hills():
     def _pre(g):
         river(g, [(13, 0), (11, 9), (14, 17), (12, 25)], '~', 0.7, gaps=(10, 34), bridge='=')
+        pocket(g, 'LEVER', 18, 18, 20, 20, 'W', ('potion_m', 1))
     def _after(g):
         loot(g, 97, 1, [('sword_bronze', 1)])
     return area('hills', 9, 0.6, 2.6, mesa_n=2, fine=1.4, pre=_pre, after=_after, enemies=5, loot_n=3)
@@ -1023,6 +1063,7 @@ def make_mt_x():
 def make_gr_1():
     def _pre(g):
         pocket(g, 'CRACK', 3, 10, 5, 12, 'N', ('money', 40))
+        pocket(g, 'PLATE', 18, 11, 20, 13, 'W', ('herb', 4))
         river(g, [(15, 0), (14, 8), (16, 15)], '~', 0.7, gaps=(12,), bridge='=')
     return area('gr_1', 301, 0.8, 2.4, mesa_n=2, fine=1.3, pre=_pre, enemies=4)
 
@@ -1062,6 +1103,7 @@ def make_gr_5():
 def make_cs_1():
     def _pre(g):
         pocket(g, 'VINES', 16, 6, 18, 8, 'W', ('armor_mage', 1))
+        pocket(g, 'LEVER', 3, 3, 5, 5, 'S', ('old_steel', 3))
     return area('cs_1', 401, 1.0, 2.2, mesa_n=2, fine=1.2, pre=_pre, enemies=4)
 
 def make_cs_2():
@@ -1108,6 +1150,7 @@ def make_cs_5():
 def make_lv_1():
     def _pre(g):
         pocket(g, 'CRACK', 13, 3, 15, 5, 'W', ('fire_stone', 3))
+        pocket(g, 'BRITTLE', 3, 3, 5, 5, 'S', ('obsidian', 2))   # もろい壁は爆弾で崩れる
         river(g, [(0, 10), (6, 9), (12, 11), (17, 9)], 'L', 0.6, gaps=(5, 22))
     return area('lv_1', 501, 1.5, 2.6, mesa_n=1, pre=_pre, enemies=4)
 
@@ -1266,6 +1309,7 @@ def make_mt_6():
     def _pre(g):
         river(g, [(4, 4), (9, 7), (15, 6), (19, 9)], '~', 0.9, gaps=(3, 12))
         pocket(g, 'CRACK', 13, 12, 15, 14, 'W', ('snow', 4))
+        pocket(g, 'CRYSTAL', 17, 2, 19, 4, 'S', ('ether', 2))   # 水晶に魔法を当てると、足場がせり上がる
     return side('mt_6', 261, 2.0, 3.0, mesa_n=3, pre=_pre)
 
 def make_mt_7():
@@ -1311,6 +1355,7 @@ def make_gr_x():
 def make_cs_6():
     def _pre(g):
         pocket(g, 'CRACK', 12, 3, 14, 5, 'S', ('silver', 3))
+        pocket(g, 'CRYSTAL', 12, 10, 14, 12, 'W', ('money', 60))
     return side('cs_6', 461, 1.0, 2.4, mesa_n=2, fine=1.2, pre=_pre)
 
 def make_cs_7():
@@ -1336,6 +1381,7 @@ def make_cs_x():
 def make_lv_6():
     def _pre(g):
         pocket(g, 'THORNS', 9, 3, 11, 5, 'S', ('obsidian', 3))
+        pocket(g, 'BRITTLE', 11, 10, 13, 12, 'W', ('potion_l', 1))
     return side('lv_6', 561, 1.5, 2.6, mesa_n=2, pre=_pre)
 
 def make_lv_7():
@@ -1403,7 +1449,8 @@ def write_gd(g):
     L.append('## 武器で開く仕掛け [id, 種類, ふさぐマス（的なら橋になる水のマス）, 武器を当てるマス]')
     L.append('const GIMMICKS := [')
     for gid, kind, cells, trig in g.gimmicks:
-        L.append('\t["%s", "%s", [%s], [%s]],' % (gid, kind, ', '.join(vec(c) for c in cells), ', '.join(vec(c) for c in trig)))
+        extra = ', [%s]' % ', '.join(str(g.raise_to[c]) for c in cells) if kind == 'CRYSTAL' else ''
+        L.append('\t["%s", "%s", [%s], [%s]%s],' % (gid, kind, ', '.join(vec(c) for c in cells), ', '.join(vec(c) for c in trig), extra))
     L.append(']')
     L.append('## ボスの居場所 [マス, 名前, 色]')
     L.append('const BOSSES := [')
@@ -1443,13 +1490,18 @@ def check_unlocked(g, hub):
     if not g.gimmicks:
         return
     saved = [row[:] for row in g.O]
+    saved_H = [row[:] for row in g.H]
     for _, kind, cells, _ in g.gimmicks:
         for x, y in cells:
-            g.O[y][x] = '=' if kind == 'TARGET' else '.'
+            if kind == 'CRYSTAL':
+                g.H[y][x] = g.raise_to[(x, y)]
+            else:
+                g.O[y][x] = '=' if kind == 'TARGET' else '.'
     fwd, back = bfs(g, hub), set(bfs(g, hub, reverse=True))
     locked_targets = [c for c in g.locked if g.O[c[1]][c[0]] not in BLOCK and walkable(g, *c)]
     bad = [c for c in locked_targets if c not in fwd or c not in back]
     g.O = saved
+    g.H = saved_H
     if bad:
         raise SystemExit('仕掛けを開けても行けない: %s %s' % (g.name, bad[:5]))
 
@@ -1504,7 +1556,8 @@ def preview(g, path):
     col = {'T': (40, 110, 40), 'P': (25, 80, 45), 'B': (70, 130, 60), 'R': (140, 140, 135),
            '~': (70, 170, 200), '=': (150, 110, 70), '_': (0, 0, 0), 'C': (255, 140, 30), 'F': None,
            'L': (230, 80, 30), 'W': (120, 115, 110), 'I': (200, 195, 180), 'H': (180, 80, 60), 'O': (90, 120, 160),
-           'M': (255, 220, 0), 'K': (255, 0, 255), 'Q': (255, 60, 60), 'X': (60, 40, 30), 'Y': (120, 40, 100), 'V': (0, 200, 60)}
+           'M': (255, 220, 0), 'K': (255, 0, 255), 'Q': (255, 60, 60), 'X': (60, 40, 30), 'Y': (120, 40, 100), 'V': (0, 200, 60),
+           'E': (90, 95, 110), 'N': (140, 100, 80), 'U': (255, 210, 120), 'J': (230, 70, 60), 'Z': (120, 200, 255)}
     for x, y in g.cells():
         hv = g.H[y][x]
         c = (60 + hv * 22, 110 + hv * 15, 50 + hv * 10) if hv >= 0 else (10, 10, 20)
@@ -1544,7 +1597,7 @@ MAKERS = {
 # 作り終えたエリアを、大陸の列・行をところどころ2倍にして広げる（となりのエリアと同じ列・行なので、出口はずれない）。
 # 段差は増えないので、つながりはそのまま。広がる割合はノイズで場所ごとに変わる（エリアごとにばらつく）。
 GROW_SEED = 2611
-UNIQUE_CH = set('CMKQO')   # 2倍にしない物（たき火・商人・像・的・井戸）。写しの側は何もない地面にする
+UNIQUE_CH = set('CMKQOUJZ')   # 2倍にしない物（たき火・商人・像・的・井戸・押し板・レバー・水晶）。写しの側は何もない地面にする
 
 def continent_bounds():
     xs = [a['origin'][0] for a in AREAS.values()] + [a['origin'][0] + a['size'][0] for a in AREAS.values()]
@@ -1591,6 +1644,7 @@ def inflate_all(gs):
         g.merchants = [(*first((x, y)), *rest) for x, y, *rest in g.merchants]
         g.bosses = [(*first((x, y)), *rest) for x, y, *rest in g.bosses]
         g.gimmicks = [(gid, kind, [c2 for c in cells for c2 in copies(c)], [first(c) for c in trig]) for gid, kind, cells, trig in g.gimmicks]
+        g.raise_to = {c2: h for c, h in g.raise_to.items() for c2 in copies(c)}
         g.reserved = {c2 for c in g.reserved for c2 in copies(c)}
         g.hedge = {c2 for c in g.hedge for c2 in copies(c)}
         g.locked = {c2 for c in g.locked for c2 in copies(c)}

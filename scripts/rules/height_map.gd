@@ -6,7 +6,7 @@ const CELL_PX := 16
 
 ## 壁のように通れなくするもの。NONE に戻すと元の地形になる。
 ## CRACK・THORNS・VINES は武器で開く仕掛け（Gimmick）。
-enum Blocker { NONE, GRAVE, DOOR, CRACK, THORNS, VINES }
+enum Blocker { NONE, GRAVE, DOOR, CRACK, THORNS, VINES, BARS, BRITTLE }
 
 var size: Vector2i
 var _heights: PackedInt32Array
