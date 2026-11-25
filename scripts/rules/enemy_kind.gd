@@ -3,7 +3,7 @@ extends RefCounted
 ## 敵の種類ごとの決まり。体力と攻撃力はレベル1の値で、レベルで20%ずつ増える（design.md 17.1）。
 ## 経験値は、種類ごとの値 × レベル【提案】。2026-11-25 に6種類を足し（設計 4章）、夜にさらに6種類を足して
 ## 基準の数値を上げた（体力はおよそ3倍、攻撃力はおよそ1.6倍。`2026-11-25-balance-pass.md` 4章）。数値は【提案】。
-## 動き方は scripts/game/enemy.gd。
+## 動き方は scripts/game/enemy.gd。2026-11-25 夜（2回目の直し）：イノシシのほかは、どの敵も1段は登れる（浮いている敵は段差を越える）。
 ## WEAK スライム：近づくと、ためて跳びかかる。MELEE ゴブリン：寄って、ためて叩き、少し下がる。
 ## SHOOTER 射手：近づかれると離れる。ときどき3発続けて撃つ。SHIELD 盾持ち：正面からの剣・矢・魔法を防ぎ、ゆっくり向き直る。
 ## SHADOW 影：体が見えない。近づくと跳びこむ。FLYER コウモリ：飛ぶ。回って急降下する。剣と鉄球は当たらない。
@@ -18,9 +18,9 @@ enum Kind { WEAK, MELEE, SHOOTER, SHIELD, SHADOW, FLYER, CHARGER, BOMBER, GHOST,
 
 ## [名前, 体力, 攻撃力, 経験値, 登れる段, 撃つ, 体当たり, ためて叩く, 速さの倍率, 寄ってくる距離（px、0は寄らない）]
 const DATA := {
-	Kind.WEAK: ["スライム", 14, 4, 4, 0, false, true, false, 1.0, 56.0],
+	Kind.WEAK: ["スライム", 14, 4, 4, 1, false, true, false, 1.0, 56.0],
 	Kind.MELEE: ["ゴブリン", 28, 6, 7, 1, false, false, true, 1.05, 64.0],
-	Kind.SHOOTER: ["射手", 16, 5, 6, 0, true, true, false, 1.0, 0.0],
+	Kind.SHOOTER: ["射手", 16, 5, 6, 1, true, true, false, 1.0, 0.0],
 	Kind.SHIELD: ["盾持ち", 40, 6, 10, 1, false, false, true, 0.8, 64.0],
 	Kind.SHADOW: ["影", 22, 6, 9, 1, false, true, false, 1.2, 72.0],
 	Kind.FLYER: ["コウモリ", 14, 5, 7, 9, false, true, false, 1.2, 88.0],
@@ -30,7 +30,7 @@ const DATA := {
 	Kind.SPEAR: ["槍兵", 32, 8, 10, 1, false, false, false, 0.9, 80.0],
 	Kind.LOBBER: ["投石兵", 20, 6, 8, 1, false, false, false, 0.9, 0.0],
 	Kind.MAGE: ["魔術師", 22, 7, 12, 1, true, false, false, 0.8, 0.0],
-	Kind.BEETLE: ["甲虫", 30, 7, 10, 0, false, true, false, 0.8, 48.0],
+	Kind.BEETLE: ["甲虫", 30, 7, 10, 1, false, true, false, 0.8, 48.0],
 	Kind.WASP: ["蜂", 9, 4, 4, 9, false, true, false, 1.6, 104.0],
 	Kind.MIMIC: ["擬態箱", 40, 10, 16, 1, false, false, true, 1.25, 72.0],
 }

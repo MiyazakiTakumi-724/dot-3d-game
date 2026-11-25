@@ -121,12 +121,12 @@ func test_no_enemy_near_entries():
 		for e in world.area(id).enemies:
 			assert_false(safe.has(e[0]), "%s %s" % [id, e[0]])
 
-## 町のほかのすべてのエリアに敵がいる（ボスの間はボスだけ）。種類は地方ごと、レベルは地方のレベル
+## 町とたき火のある休憩所のほかのすべてのエリアに敵がいる（ボスの間はボスだけ）。種類は地方ごと、レベルは地方のレベル
 func test_enemies_everywhere_but_town():
 	for id in world.ids():
 		var a := world.area(id)
-		if id == "town":
-			assert_eq(a.enemies.size(), 0)
+		if id == "town" or Continent.load_map(a)[1].has("checkpoint"):
+			assert_eq(a.enemies.size(), 0, id)
 			continue
 		if not a.bosses.is_empty():
 			continue
@@ -278,6 +278,26 @@ func test_three_seals_per_region_and_one_hidden_boss_each():
 	for seal in RunState.BOSS_DOORS.values():
 		assert_eq(seals.get(seal, 0), RunState.SEALS_PER_DOOR, seal)
 	assert_eq(hidden.size(), 4)
+
+## 2026-11-25 夜（2回目の直し）：たき火のある休憩所はせまい（歩ける所はたき火の広場と出口への道だけ）。敵はいない
+func test_bonfire_areas_are_small_and_safe():
+	var n := 0
+	for id in world.ids():
+		var a := world.area(id)
+		if id == "town" or not Continent.load_map(a)[1].has("checkpoint"):
+			continue
+		n += 1
+		assert_eq(a.enemies.size(), 0, id)
+		var m: HeightMap = maps[id]
+		var walk := 0
+		for y in m.size.y:
+			for x in m.size.x:
+				var c := Vector2i(x, y)
+				if not m.is_wall(c) and not m.is_water(c) and not m.is_pit(c):
+					walk += 1
+		assert_lte(walk, 130, "%s 歩けるマス %d" % [id, walk])
+		assert_lte(walk * 2, m.size.x * m.size.y, "%s 半分より多く歩ける" % id)
+	assert_eq(n, 5, "4つの地方と神秘の塔の休憩所")
 
 func test_bonfire_has_room_to_respawn():
 	for id in world.ids():

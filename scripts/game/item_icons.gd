@@ -42,6 +42,7 @@ const OTHER := {
 	"snow": ["flake", "e0f4ff", "8ac8f0"], "scale": ["scale", "4a9a6a", "a0e0a0"], "old_steel": ["ingot", "7a8088", "b0b8c0"],
 	"silver": ["shard", "d8dce8", "8a90a8"], "obsidian": ["shard", "2a2430", "6a5a8a"], "fire_stone": ["gem", "e04a2a", "ffb04a"],
 	"star_shard": ["star", "ffe066", "fff8d0"],
+	"power_crystal": ["shard", "e05ad0", "ffd0f8"], "ancient_crystal": ["shard", "5ae0e0", "f0ffff"],
 	"giant_core": ["orb", "9a9ca4", "f0c040"], "serpent_fang": ["fang", "f0ecd8", "4a8a4a"], "lava_heart": ["heart", "e0401a", "ffb03a"],
 	"crest": ["crest", "a02a3a", "f0d060"], "cave_gem": ["gem", "4ad0c0", "e0fff8"], "flame_tail": ["tail", "e0602a", "ffd04a"],
 	"twin_mirror": ["mirror", "c8c0b0", "8ab0ff"], "gear": ["cog", "b0a890", "6a6050"], "bright_eye": ["eye", "fff0a0", "2a2a60"],

@@ -327,7 +327,7 @@ func test_ball_damage_uses_formula():
 	var b: IronBall = f.ball.rules_ball
 	assert_true(b.drop_at(f.player.mover, f.map, target))
 	b.update(1.0, f.player.mover, f.map, f.rules)
-	assert_eq(hp - e.walker.hp, Damage.iron_ball(5, b.fall_levels, 1))
+	assert_eq(hp - e.walker.hp, Damage.iron_ball(PlayerStats.BASE_ATTACK, b.fall_levels))
 
 func test_killing_enemies_levels_up_and_raises_max_hp_with_points():
 	_walk_out(_exit("town", "hills"))
@@ -375,13 +375,12 @@ func test_choose_ball_rank_in_menu():
 	assert_eq(f.ball_rank, 2)
 	assert_true(f.ball.rules_ball.strong)
 	assert_eq(f.player.held_look, "ball_heavy")
-	assert_eq(f.current_attack(), 5 + Equipment.ATTACK_PER_RANK + 2)  # 重い鉄球の特色：つよさ＋2
+	assert_eq(f.current_attack(), PlayerStats.BASE_ATTACK + Equipment.ATTACK_PER_RANK + 2)  # 重い鉄球の特色：つよさ＋2
 	assert_false(f.menu.choose("sword_1"))  # 持っていない品物は選べない
 
 ## 杖の枠は1つで、持っている杖（無の杖・炎の杖…）の中から選ぶ
 func test_choose_staff_in_menu():
 	f.run.inventory.equipment.gain("staff_none_1")
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	f.run.inventory.equipment.gain("staff_fire_3")
 	f.open_inventory()
 	f.menu.select_slot(Equipment.Slot.STAFF)
@@ -417,7 +416,7 @@ func test_buy_sword_in_town_and_swing():
 	e.walker.height = f.player.mover.height
 	var hp: int = e.walker.hp
 	assert_true(f.use_item())
-	assert_eq(hp - e.walker.hp, Damage.sword(5, 0, 0))
+	assert_eq(hp - e.walker.hp, Damage.sword(PlayerStats.BASE_ATTACK, 0, 0))
 	assert_false(f.use_item())  # 振る間隔
 
 func test_sword_not_usable_without_sword():
@@ -446,7 +445,7 @@ func test_falling_slash_after_drop():
 	e.walker.pos = f.player.mover.pos + Vector2(12, 0)
 	var hp: int = e.walker.hp
 	assert_true(f.swing_sword())
-	assert_eq(hp - e.walker.hp, Damage.sword(5, 0, 2))
+	assert_eq(hp - e.walker.hp, Damage.sword(PlayerStats.BASE_ATTACK, 0, 2))
 
 ## 剣は1段下の敵に当たる（高さの上乗せはない）。1段上の敵には、下から当たらない
 func test_sword_down_but_not_up():
@@ -469,10 +468,10 @@ func test_sword_down_but_not_up():
 	f.player.mover.facing = Vector2.RIGHT
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
 	for i in 5:
-		f.run.stats.allocate(PlayerStats.Stat.ATTACK)  # つよさ10
+		f.run.stats.allocate(PlayerStats.Stat.ATTACK)  # つよさ15
 	var hp: int = e.walker.hp
 	assert_true(f.swing_sword())
-	assert_eq(hp - e.walker.hp, Damage.sword(10, 0, 0))
+	assert_eq(hp - e.walker.hp, Damage.sword(PlayerStats.BASE_ATTACK + 5, 0, 0))
 	# 入れ替えて、下から上の敵を斬る
 	f.player.mover.place(Vector2i(2, 1))
 	e.walker.pos = HeightMap.cell_center(Vector2i(1, 1))
@@ -509,7 +508,7 @@ func test_bow_from_camp_hits_over_wall():
 	var hp: int = e.walker.hp
 	for i in 30:
 		f._step_shots(0.05)
-	assert_eq(hp - e.walker.hp, Damage.bow(5, 1.0, 1.0, 0))
+	assert_eq(hp - e.walker.hp, Damage.bow(PlayerStats.BASE_ATTACK, 1.0, 1.0, 0))
 
 func test_release_uses_one_arrow():
 	f.run.inventory.equipment.gain("bow_1")
@@ -549,7 +548,7 @@ func test_poison_arrow_choice_needs_skill():
 	f.open_inventory()
 	f.menu.select_slot(Equipment.Slot.BOW)
 	assert_false(f.menu.choose_arrow(Arrow.Kind.POISON))
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(3))
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(4))
 	for i in 3:
 		f.run.stats.allocate(PlayerStats.Stat.BOW)
 	assert_true(f.menu.choose_arrow(Arrow.Kind.POISON))
@@ -588,7 +587,7 @@ func test_null_bolt_auto_aims_enemy():
 	assert_eq(f.mana.value, 50.0 - Magic.COST[Magic.Spell.NULL_BOLT])
 	for i in 60:
 		f._step_bolts(1.0 / 60)
-	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.NULL_BOLT], 0))
+	assert_eq(hp - e.walker.hp, Damage.magic(PlayerStats.BASE_ATTACK, Magic.POWER[Magic.Spell.NULL_BOLT], 0))
 	assert_false(f.cast_spell(screen))  # 次に使えるまで少し待つ
 	assert_string_contains(f.hotbar_text(), "無の弾(2)")  # あと何秒で使えるか
 
@@ -604,7 +603,6 @@ func test_no_mana_no_cast():
 func test_fire_staff_and_wheel():
 	var eq: Equipment = f.run.inventory.equipment
 	eq.gain("staff_none_1")
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	eq.gain("staff_fire_3")
 	assert_eq(eq.current(Equipment.Slot.STAFF), "staff_none_1")
 	assert_true(eq.equip("staff_fire_3"))
@@ -634,7 +632,6 @@ func test_fireball_does_not_burn_higher_ground():
 ## 火柱は下の敵に当たってやけどにする。崖の上（自分より高い所）の敵には当たらない
 func test_fire_pillar_only_hits_at_or_below():
 	var eq: Equipment = f.run.inventory.equipment
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	eq.gain("staff_fire_3")
 	eq.equip("staff_fire_3")
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
@@ -659,7 +656,7 @@ func test_fire_pillar_only_hits_at_or_below():
 	e.walker.hp = 50
 	f._fire_pillar(e.walker.pos)
 	assert_eq(50 - e.walker.hp, Damage.magic(f.current_attack(), Magic.POWER[Magic.Spell.FIRE_PILLAR], 3))
-	assert_eq(f.current_attack(), 5 + Equipment.rank_attack(3))  # 杖のランクもつよさに足される
+	assert_eq(f.current_attack(), PlayerStats.BASE_ATTACK + Equipment.rank_attack(3))  # 杖のランクもつよさに足される
 	assert_true(e.walker.is_burning())
 
 ## 火の玉は当たった所で弾けて敵をやけどにし、地面が少しの間燃える
@@ -683,10 +680,9 @@ func test_fireball_burns():
 ## 炎の雨：高い所から使うほど広い。自分より高い所の敵には当たらない
 func test_fire_rain_from_high_ground():
 	var eq: Equipment = f.run.inventory.equipment
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	eq.gain("staff_star")
 	eq.equip("staff_star")
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(8))
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(10))
 	for i in 9:
 		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
 	f.hotbar.select_slot(4, eq)
@@ -717,7 +713,7 @@ func test_enemy_drop_and_pick():
 
 ## 技能（体の動き）：しゃがみ・受け身・よじ登りが、ポイントを振ると使えるようになる
 func test_move_skills_apply():
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(10))
 	f.open_inventory()
 	watch_signals(f.menu)
 	for i in 9:
@@ -751,7 +747,7 @@ func test_spin_slash_needs_skill():
 	f.run.inventory.equipment.gain("sword_1")
 	f.hotbar.select_slot(2, f.run.inventory.equipment)
 	assert_false(f.spin_slash())
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(6))
+	f.run.stats.add_exp(PlayerStats.exp_to_reach(10))
 	for i in 9:
 		f.run.stats.allocate(PlayerStats.Stat.SWORD)
 	var m := HeightMap.new(Vector2i(8, 3))
@@ -834,7 +830,6 @@ func test_pixel_scale_and_fine_hero():
 
 ## インベントリの姿は、選んでいる枠の品物を持つ
 func test_portrait_holds_selected_slot_item():
-	f.run.stats.add_exp(PlayerStats.exp_to_reach(20))  # ランクの高い品物を使えるように
 	f.run.inventory.equipment.gain("staff_fire_3")
 	f.run.inventory.equipment.equip("staff_fire_3")
 	f.open_inventory()
@@ -1200,6 +1195,42 @@ func test_map_toggles_with_m():
 	f.toggle_map()
 	assert_false(f.map_view.visible)
 
+## 2026-11-25 夜（2回目の直し）：全体マップに北・自分のいる所と画面の上の向き・次のエリアへの道・門を出す
+func test_map_shows_exits_gates_and_unvisited_neighbors():
+	f.toggle_map()
+	var mv: WorldMapView = f.map_view
+	var marks: Array = mv.exit_marks()
+	var to_forest = marks.filter(func(m): return m["from"] == "town" and m["to"] == "forest")
+	assert_eq(to_forest.size(), 1)
+	assert_eq(to_forest[0]["kind"], "gate_closed", "奥の森の門は、まだ閉じている")
+	assert_eq(marks.filter(func(m): return m["from"] == "town" and m["to"] == "rocks")[0]["kind"], "path")
+	assert_eq(marks.filter(func(m): return m["from"] == "town" and m["to"] == "tw_1")[0]["kind"], "gate_closed")
+	# 行ったことのないとなりのエリアは、うすい枠で出す（道の先にエリアがあると分かる）
+	var next: Array = mv.unvisited_neighbors()
+	for id in ["rocks", "hills", "forest", "lv_1", "tw_1"]:
+		assert_true(id in next, id)
+	assert_false("mt_1" in next, "道でつながっていないエリアは出さない")
+	f.run.open_door("forest_gate")
+	assert_eq(mv.exit_marks().filter(func(m): return m["from"] == "town" and m["to"] == "forest")[0]["kind"], "gate_open")
+
+func test_map_follows_player_and_camera():
+	f.toggle_map()
+	f.player.mover.place(Vector2i(3, 4))
+	f.camera.angle = 0.7
+	f._process(0.016)
+	assert_eq(f.map_view.player_pos, f.player.mover.pos)
+	assert_almost_eq(f.map_view.view_angle, 0.7, 0.001)
+
+## 画面の右上の方位：北（マップの上）が画面のどちらかを指す。カメラを回すと一緒に回る
+func test_hud_compass_points_north():
+	f.camera.angle = 0.0
+	assert_true(f.hud.north_dir().is_equal_approx(Vector2.UP))
+	f.camera.angle = PI / 2
+	assert_true(f.hud.north_dir().is_equal_approx(Vector2.UP.rotated(-PI / 2)))
+	# 北の向きへ歩くと、ワールドでは北（y が減る向き）へ進む
+	var world: Vector2 = f.camera.screen_dir_to_world(f.hud.north_dir())
+	assert_true(world.is_equal_approx(Vector2.UP))
+
 ## 持ち物のページ：持っている品物がアイコンで並び、カーソルを合わせると説明が出る（2026-11-25 夜）
 func test_items_page_lists_icons_with_tips():
 	var inv: Inventory = f.run.inventory
@@ -1220,7 +1251,7 @@ func test_items_page_lists_icons_with_tips():
 	var t: Array = f.menu.tip.texts("sword_flame")
 	assert_string_contains(t[0], "炎の剣")
 	assert_string_contains(t[1], "やけど")
-	assert_string_contains(t[1], "Lv12")
+	assert_false(t[1].contains("Lv12"), "装備のレベル制限はない")
 	slot.mouse_exited.emit()
 	assert_false(f.menu.tip.visible)
 

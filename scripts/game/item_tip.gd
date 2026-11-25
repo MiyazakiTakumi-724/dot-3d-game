@@ -43,8 +43,6 @@ func texts(id: String, count := 0) -> Array:
 		if ItemCatalog.slot(id) == Equipment.Slot.ARMOR:
 			base = "いのち＋%d" % (r * Equipment.HP_PER_ARMOR_RANK + int(ItemCatalog.trait_value(id, "hp", 0)))
 		body = base + "\n" + body
-		if stats != null and ItemCatalog.required_level(id) > stats.level:
-			body += "\n（今は Lv%d。まだ装備できない）" % stats.level
 	return [head, body]
 
 ## 品物の説明を、画面の点 at のそばに出す（画面からはみ出さないようにずらす）。

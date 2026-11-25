@@ -5,7 +5,9 @@ extends RefCounted
 ## 装備は枠（Equipment.Slot）とランク（1〜5）と特色（traits）を持つ。ランク1は枠ごとに1つで特色なし。
 ## src は手に入れ方：shop（お店）・craft（鍛冶屋で作る）・drop（敵の落とし物）・chest（宝箱）。
 ## 宝箱だけの装備はない。ランク5は作るだけ。数値は【提案】。
-## 2026-11-25 夜：ボスは装備を落とさず、ボスの素材を落とす（ランク4は作る）。ランクの高い装備は使えるレベルがある（required_level）。
+## 2026-11-25 夜：ボスは装備を落とさず、ボスの素材を落とす（ランク4は作る）。
+## 同じ夜の2回目の直しで、装備のレベル制限をやめた。代わりにランク4は「力の結晶」（Lv6以上の敵だけが落とす）、
+## ランク5は「いにしえの結晶」（Lv10以上の敵だけ）がないと作れない（Loot.LEVEL_MATERIALS・Recipes）。
 ##
 ## 特色（traits）のキー：
 ##   atk つよさ＋n / rate 剣を振る速さ× / reach 剣の届く長さ×・鉄球の届く距離× / radius 鉄球の当たる範囲×
@@ -91,6 +93,9 @@ const MATERIALS := {
 	"obsidian": {"name": "黒曜石", "where": "溶岩"},
 	"fire_stone": {"name": "火の石", "where": "溶岩"},
 	"star_shard": {"name": "星のかけら", "where": "神秘の塔"},
+	# 強い敵だけが落とす素材（ランク4・5を作るのに要る。地方は問わない）
+	"power_crystal": {"name": "力の結晶", "where": "Lv6以上の敵（ランク4を作るのに要る）"},
+	"ancient_crystal": {"name": "いにしえの結晶", "where": "Lv10以上の敵（ランク5を作るのに要る）"},
 	# ボスの素材
 	"giant_core": {"name": "巨人の核", "where": "岩転がしの巨人"},
 	"serpent_fang": {"name": "大蛇の牙", "where": "草むらの大蛇"},
@@ -112,9 +117,6 @@ const KEYS := {
 	"seal_cs": {"name": "廃城の印", "info": "3つ集めると、王の間への門が開く"},
 	"seal_lv": {"name": "溶岩の印", "info": "3つ集めると、満ち引きのくぼ地への門が開く"},
 }
-
-## ランクごとの、装備できるレベル（2026-11-25 夜）
-const RANK_LEVEL := {1: 1, 2: 1, 3: 6, 4: 12, 5: 18}
 
 ## 道具（5番で手に持って使う）。効果：heal いのち（-1 で全部）/ mana マナ / buff 一時の強化 [種類, 量, 秒] / warp 最後のたき火へ / bomb 投げる
 const TOOLS := {
@@ -172,10 +174,6 @@ static func is_key(id: String) -> bool:
 static func is_counted(id: String) -> bool:
 	return is_material(id) or is_tool_item(id) or is_arrow(id) or is_key(id)
 
-## 装備できるレベル（装備でなければ1）。
-static func required_level(id: String) -> int:
-	return RANK_LEVEL.get(rank(id), 1) if ITEMS.has(id) else 1
-
 ## どれかの品物か（お金も含む）。
 static func known(id: String) -> bool:
 	return id == MONEY or exists(id) or is_counted(id)
@@ -224,8 +222,6 @@ static func describe(id: String) -> String:
 			if w != "":
 				how.append(w)
 		lines.append("手に入る所：" + "・".join(how))
-		if required_level(id) > 1:
-			lines.append("Lv%dから装備できる" % required_level(id))
 		return "\n".join(lines)
 	if MATERIALS.has(id):
 		return "素材（鍛冶屋で使う）。出る所：%s" % MATERIALS[id]["where"]

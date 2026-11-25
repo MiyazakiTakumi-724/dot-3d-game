@@ -60,9 +60,9 @@ const ENEMIES := [
 ## [マス, 品物の id（ItemCatalog、お金は money）, 数]
 const PICKUPS := [
 	[Vector2i(18, 6), "armor_mage", 1],
-	[Vector2i(1, 7), "silver", 1],
-	[Vector2i(19, 3), "money", 40],
-	[Vector2i(15, 15), "potion_m", 1],
+	[Vector2i(20, 11), "silver", 1],
+	[Vector2i(14, 10), "money", 40],
+	[Vector2i(6, 0), "potion_m", 1],
 	[Vector2i(19, 4), "money", 40],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く

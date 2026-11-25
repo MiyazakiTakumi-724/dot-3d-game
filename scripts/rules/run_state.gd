@@ -34,7 +34,6 @@ const SEALS_PER_DOOR := 3
 func _init(cp_area: String, checkpoint: Vector2i) -> void:
 	checkpoint_area = cp_area
 	checkpoint_cell = checkpoint
-	inventory.equipment.stats = stats
 
 ## ボスの間の前の門を開けるのに、あと何個の印が要るか（ほかの門は0）。
 func seals_left(door_id: String) -> int:

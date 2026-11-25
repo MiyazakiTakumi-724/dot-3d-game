@@ -766,6 +766,8 @@ func _process(delta: float) -> void:
 		elif area_state.result == AreaState.Result.DYING and player.mover.fell:
 			player.modulate.a = 0.0
 	_update_aim()
+	if map_view != null and map_view.visible:
+		_sync_map()
 	_flash_time = maxf(0.0, _flash_time - delta)
 	_flash.color.a = clampf(_flash_time / 0.5, 0.0, 1.0) * settings.flash_strength()
 	camera.follow(player.mover.pos, player.mover.height * StackSprite.LEVEL_PX, delta)
@@ -794,6 +796,12 @@ func _regen(delta: float) -> void:
 	if _regen_clock >= 5.0:
 		_regen_clock -= 5.0
 		player.set_hp(mini(player.max_hp, player.hp + regen))
+
+## 全体マップに、自分のいる所とカメラの向きを渡す。
+func _sync_map() -> void:
+	map_view.current_id = area.id
+	map_view.player_pos = player.mover.pos
+	map_view.view_angle = camera.angle
 
 ## 画面を白くする（ブライトの光）。
 func flash_screen(seconds: float) -> void:
@@ -1626,7 +1634,7 @@ func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
 		if g.by_ball(land_pos, ball.rules_ball.fall_levels):
 			open_gimmick(g)
 	var id := ball.rules_ball.item
-	var damage := Damage.iron_ball(current_attack() if hotbar.selected == Hotbar.Item.IRON_BALL else _ball_attack(), ball.rules_ball.fall_levels, run.stats.level)
+	var damage := Damage.iron_ball(current_attack() if hotbar.selected == Hotbar.Item.IRON_BALL else _ball_attack(), ball.rules_ball.fall_levels)
 	var radius := IronBall.hit_radius(float(ItemCatalog.trait_value(id, "radius", 1.0)))
 	for e in targets():
 		if IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height, radius):
@@ -1788,6 +1796,7 @@ func _on_bought(id: String) -> void:
 ## M キーで全体マップを開く・閉じる（開いている間も世界は動く）。
 func toggle_map() -> void:
 	map_view.current_id = area.id
+	_sync_map()
 	map_view.visible = not map_view.visible
 	map_view.queue_redraw()
 

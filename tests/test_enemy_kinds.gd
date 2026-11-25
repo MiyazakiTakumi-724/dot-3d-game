@@ -41,6 +41,16 @@ func test_hit_rules():
 	assert_eq(EnemyKind.hit_rule(EnemyKind.Kind.CHARGER, "sword", Vector2.LEFT, at, from, {"stunned": true}), "weak")
 	assert_eq(EnemyKind.hit_rule(EnemyKind.Kind.MELEE, "sword", Vector2.LEFT, at, from), "")
 
+## 2026-11-25 夜（2回目の直し）：ほとんどの敵が1段登れる。登らないのは、まっすぐ突進するイノシシだけ
+func test_most_enemies_climb_one_step():
+	for k in EnemyKind.Kind.values():
+		if EnemyKind.flies(k):
+			continue
+		if k == EnemyKind.Kind.CHARGER:
+			assert_eq(EnemyKind.climb(k), 0)
+		else:
+			assert_eq(EnemyKind.climb(k), 1, EnemyKind.name_of(k))
+
 func test_old_kinds_keep_their_roles():
 	assert_eq(EnemyKind.climb(EnemyKind.Kind.MELEE), 1)
 	assert_true(EnemyKind.shoots(EnemyKind.Kind.SHOOTER))
@@ -75,6 +85,25 @@ func test_loot_always_gives_money_and_region_materials():
 				mats[d[0]] = true
 	assert_true(mats.has("iron_ore"))
 	assert_false(mats.has("obsidian"))
+
+## 力の結晶はLv6以上の敵だけ、いにしえの結晶はLv10以上の敵だけが落とす（地方は問わない）
+func test_level_materials_only_from_strong_enemies():
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var got := {}
+	for lv in [1, 5, 6, 9, 10, 13]:
+		got[lv] = {}
+		for i in 400:
+			for d in Loot.roll("山岳", lv, rng):
+				got[lv][d[0]] = true
+	for lv in [1, 5]:
+		assert_false(got[lv].has("power_crystal"), "Lv%d" % lv)
+	for lv in [6, 9, 10, 13]:
+		assert_true(got[lv].has("power_crystal"), "Lv%d" % lv)
+	for lv in [1, 5, 6, 9]:
+		assert_false(got[lv].has("ancient_crystal"), "Lv%d" % lv)
+	for lv in [10, 13]:
+		assert_true(got[lv].has("ancient_crystal"), "Lv%d" % lv)
 
 func test_mimic_drops_more():
 	var rng := RandomNumberGenerator.new()

@@ -125,7 +125,7 @@ func test_kind_table():
 	assert_eq(EnemyKind.hp(EnemyKind.Kind.MELEE), 28)
 	assert_eq(EnemyKind.attack(EnemyKind.Kind.MELEE), 6)
 	assert_eq(EnemyKind.climb(EnemyKind.Kind.MELEE), 1)
-	assert_eq(EnemyKind.climb(EnemyKind.Kind.SHOOTER), 0)
+	assert_eq(EnemyKind.climb(EnemyKind.Kind.SHOOTER), 1)
 	assert_true(EnemyKind.shoots(EnemyKind.Kind.SHOOTER))
 	assert_false(EnemyKind.contact(EnemyKind.Kind.MELEE))
 	assert_true(EnemyKind.contact(EnemyKind.Kind.WEAK))
@@ -168,7 +168,7 @@ func test_chase_fuzz_never_enters_bad_cell():
 
 ## 敵のレベルで体力と攻撃力が20%ずつ増える（17.1）
 func test_kind_stats_scale_with_level():
-	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK, 3), 19)
+	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK, 3), 18)  # 14 × 1.3
 	assert_eq(EnemyKind.attack(EnemyKind.Kind.WEAK, 3), 5)
 	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.WEAK, 1), 4)
 	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.MELEE, 2), 14)

@@ -25,8 +25,8 @@ const HEIGHTS := [
 	"3333333333444333",
 ]
 const OBJECTS := [
-	"g....ggP...P.g.g",
-	"g....gg.....g...",
+	"gggggggP...P.g.g",
+	"ggggggg.....g...",
 	"................",
 	"..............T.",
 	"................",
@@ -36,7 +36,7 @@ const OBJECTS := [
 	"........g.TTTTT.",
 	"P.gggggT..T...TT",
 	".gggggg...Y...T.",
-	"..ggggg...T...T.",
+	"..gggg....T...T.",
 	"..........TTTTT.",
 	".g...........ggg",
 ]
@@ -56,9 +56,9 @@ const ENEMIES := [
 const PICKUPS := [
 	[Vector2i(13, 9), "scale", 4],
 	[Vector2i(9, 11), "seal_gr", 1],
-	[Vector2i(6, 4), "scale", 2],
-	[Vector2i(9, 8), "money", 30],
-	[Vector2i(11, 13), "potion", 1],
+	[Vector2i(6, 11), "scale", 2],
+	[Vector2i(11, 13), "money", 30],
+	[Vector2i(1, 3), "potion", 1],
 	[Vector2i(14, 2), "potion", 2],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く

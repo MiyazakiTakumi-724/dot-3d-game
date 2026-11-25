@@ -762,7 +762,7 @@ REGION_ENEMIES = {
     '溶岩': ['BOMBER', 'FLYER', 'SHIELD', 'BEETLE', 'MIMIC', 'SHOOTER'],
     '神秘の塔': ['SHADOW', 'GHOST', 'MAGE', 'SPEAR', 'FLYER', 'SHIELD'],
 }
-FLAT_KINDS = {'WEAK', 'SHOOTER', 'CHARGER', 'BEETLE'}   # 段差を登らない敵（4×4の平地を作る）
+FLAT_KINDS = {'CHARGER'}   # 段差を登らない敵（4×4の平地を作る）。2026-11-25 夜からイノシシだけ
 DIR_NAMES = ['RIGHT', 'DOWN', 'LEFT', 'UP']
 
 def spawn(g, seed, n, kinds=None):
@@ -834,14 +834,57 @@ def area(name, seed, base, amp, mesa_n=2, fine=1.4, tilt=(0.0, 0.0), pre=None, e
     loot(g, seed + 2, loot_n)
     return g
 
-def rest(name, seed, base, amp, cx, cy, mx, my, shop=None, paving=False, enemies=2, rx=3, ry=2):
-    """休憩所：たき火の広場と旅の商人。"""
+def carve_rest(g, cx, cy, rx, ry, keep_cells=()):
+    """休憩所をせまくする（2026-11-25 夜の2回目の直し）。たき火の広場のまわりと、出口へ向かう3マスの道だけを残し、
+    ほかは島の外（深い谷）にする。歩ける所が小さな台地になり、迷わずに次へ進める。"""
+    keep = set(keep_cells)
+    n = value_noise(g.seed * 5 + 9, 2.5)
+    for x, y in g.cells():
+        if math.hypot((x - cx) / (rx + 1.2), (y - cy) / (ry + 1.2)) + 0.3 * (n(x, y) - 0.5) <= 1.0:
+            keep.add((x, y))
+    for e in g.exits:
+        cells = exit_cells(g.name, e[1], e[2], e[3])
+        dx, dy = INWARD[e[1]]
+        mx, my = cells[len(cells) // 2]
+        x, y = mx, my
+        # 出口から内側へ、広場の中心と同じ列（行）まで進む
+        while (dx != 0 and x != cx) or (dy != 0 and y != cy):
+            for k in (-1, 0, 1):
+                keep.add((x + k * abs(dy), y + k * abs(dx)))
+            x += dx; y += dy
+        # そこから広場の中心へ
+        sx = 0 if x == cx else (1 if cx > x else -1)
+        sy = 0 if y == cy else (1 if cy > y else -1)
+        while (x, y) != (cx, cy):
+            for k in (-1, 0, 1):
+                for j in (-1, 0, 1):
+                    keep.add((x + k, y + j))
+            x += sx; y += sy
+        for c in cells:
+            keep.add(c)
+    for x, y in g.cells():
+        if (x, y) not in keep:
+            g.H[y][x] = -1
+            g.O[y][x] = '.'
+    return keep
+
+def clear_void(g):
+    """島の外のマスには物を置かない（飾りをまいた後に消す）。"""
+    for x, y in g.cells():
+        if g.H[y][x] < 0:
+            g.O[y][x] = '.'
+
+def rest(name, seed, base, amp, cx, cy, mx, my, shop=None, paving=False, enemies=0, rx=3, ry=2):
+    """休憩所：たき火の広場と旅の商人。2026-11-25 夜（2回目の直し）から、せまくして敵を置かない。"""
     def _pre(g):
         plaza(g, cx, cy, rx=rx, ry=ry, paving=paving)
         if shop:
             merchant(g, mx, my, shop)
-    g = region_field(name, seed, base, amp, mesa_n=1, fine=1.0, pre=_pre)
+    g = region_field(name, seed, base, amp, mesa_n=0, fine=1.0, pre=_pre)
+    carve_rest(g, cx, cy, rx, ry, keep_cells=[(x, y) for x, y in g.cells() if g.O[y][x] == 'M'] +
+               [(mx + i, my + j) for i in (-1, 0, 1) for j in (-1, 0, 1, 2)] if shop else [])
     dress(g, seed)
+    clear_void(g)
     spawn(g, seed + 3, enemies)
     loot(g, seed + 2, 2)
     return g
@@ -1104,12 +1147,10 @@ def make_lv_x():
 # ---------------------------------------------------------------- 神秘の塔
 def make_tw_1():
     g = field('tw_1', 701, 1.0, 0.8, fine=0.5)
-    plaza(g, 10, 11, rx=4, ry=3, paving=True)
-    for x in range(2, 19, 4):
-        if g.O[2][x] == '.':
-            g.O[2][x] = 'I'
+    plaza(g, 10, 11, rx=3, ry=2, paving=True)
+    carve_rest(g, 10, 11, 3, 2)   # たき火のエリアはせまく、敵なし（2026-11-25 夜の2回目の直し）
     dress(g, 701)
-    spawn(g, 704, 2)
+    clear_void(g)
     loot(g, 702, 2)
     return g
 

@@ -17,7 +17,7 @@ const HEIGHTS := [
 	"3222223333333222222223",
 	"2222223333332222222222",
 	"2222223333222222222222",
-	"2222223322222222222222",
+	"2222223333222222222222",
 	"3332122222222222222222",
 	"3331112222222332222222",
 	"3331112222222332222222",
@@ -29,20 +29,20 @@ const HEIGHTS := [
 const OBJECTS := [
 	"............T..~..gggg",
 	"...............~...ggg",
-	".F.............~......",
+	".F........g.g..~......",
 	"g......g.......~..F...",
-	".B..ggggg....g~~......",
+	".B..gggggggggg~~......",
 	"P...gggggggggg~g..B..P",
-	"....gggg.ggggg~g......",
+	"....gggggggggg~g......",
 	"......B.gggggg~g.g....",
-	"............gg~T......",
-	"PgTTXTT.....gg=......P",
-	"ggT...TT....gg.=..T...",
-	"ggT...TB....gg.=.g....",
+	"........gggggg~T......",
+	"PgTTXTT.gggggg=......P",
+	"ggT...TT.g.ggg.=..T...",
+	"ggT...TB.ggggg.=.g....",
 	"ggT...T.gg.....=......",
 	"ggTTTTT.gg.....=..T...",
 	"ggg.....gg......~.....",
-	"ggg.....gP...PB.~g....",
+	"g.g.....gP...PB.~g....",
 ]
 ## [辺, from, to, 相手, 門の id, この側から門を開けられるか]
 const EXITS := [
@@ -60,9 +60,9 @@ const ENEMIES := [
 ## [マス, 品物の id（ItemCatalog、お金は money）, 数]
 const PICKUPS := [
 	[Vector2i(3, 12), "money", 40],
-	[Vector2i(13, 3), "potion", 1],
-	[Vector2i(8, 6), "wood", 2],
-	[Vector2i(21, 14), "arrow", 10],
+	[Vector2i(8, 10), "potion", 1],
+	[Vector2i(1, 15), "wood", 2],
+	[Vector2i(10, 3), "arrow", 10],
 	[Vector2i(18, 12), "potion", 2],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く

@@ -26,6 +26,9 @@ const REGION_GEAR_RANKS := {
 	"溶岩": [2, 3],
 	"神秘の塔": [3, 4],
 }
+## 強い敵だけが落とす素材（2026-11-25 夜の2回目の直し。装備のレベル制限の代わり）：[id, この敵のレベルから, 落とす割合]。
+## ランク4を作るには力の結晶、ランク5にはいにしえの結晶が要る。敵のレベルは倒したボスの数で上がる（RunState.enemy_level）【提案】
+const LEVEL_MATERIALS := [["power_crystal", 6, 0.2], ["ancient_crystal", 10, 0.12]]
 ## 地方ごとの敵の基本のレベル（倒したボスの数が足される）
 const REGION_LEVEL := {"はじまりの地": 1, "山岳": 2, "草原": 2, "廃城": 3, "溶岩": 3, "神秘の塔": 5}
 
@@ -35,6 +38,9 @@ static func roll(region: String, level: int, rng: RandomNumberGenerator, loot_mu
 	var mats: Array = REGION_MATERIALS.get(region, REGION_MATERIALS["はじまりの地"])
 	if rng.randf() < minf(1.0, MATERIAL_CHANCE * loot_mult):
 		out.append([mats[rng.randi_range(0, mats.size() - 1)], 1])
+	for m in LEVEL_MATERIALS:
+		if level >= m[1] and rng.randf() < m[2]:
+			out.append([m[0], 1])
 	if rng.randf() < TOOL_CHANCE:
 		out.append(["potion", 1])
 	if rng.randf() < GEAR_CHANCE:
@@ -52,6 +58,9 @@ static func roll_kind(k: EnemyKind.Kind, region: String, level: int, rng: Random
 	var mats: Array = REGION_MATERIALS.get(region, REGION_MATERIALS["はじまりの地"])
 	for i in 2:
 		out.append([mats[rng.randi_range(0, mats.size() - 1)], 1])
+	for m in LEVEL_MATERIALS:
+		if level >= m[1] and rng.randf() < 0.5:
+			out.append([m[0], 1])  # 擬態箱は強い素材もよく落とす
 	var list := gear_pool(region)
 	if not list.is_empty() and rng.randf() < MIMIC_GEAR_CHANCE:
 		out.append([list[rng.randi_range(0, list.size() - 1)], 1])

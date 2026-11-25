@@ -178,8 +178,7 @@ func _refresh_items() -> void:
 		c.queue_free()
 	for row in grid_items():
 		var id: String = row[0]
-		var dim: bool = ItemCatalog.exists(id) and not run.inventory.equipment.usable(id)
-		_items_box.add_child(ItemTip.make_slot(id, row[1], tip, Callable(), dim))
+		_items_box.add_child(ItemTip.make_slot(id, row[1], tip, Callable(), false))
 
 func _build_settings_page() -> void:
 	_settings_root = _page_root()
@@ -232,8 +231,6 @@ func select_slot(slot: Equipment.Slot) -> void:
 ## 品物 id を装備する。持っていなければ false。
 func choose(id: String) -> bool:
 	if not run.inventory.equipment.equip(id):
-		if run.inventory.equipment.has(id):
-			_detail_title.text = "Lv%dから装備できる" % ItemCatalog.required_level(id)
 		return false
 	stats_changed.emit()  # 防具なら最大いのちが変わる
 	refresh()
@@ -349,12 +346,8 @@ func _refresh_equip() -> void:
 		if t != "":
 			text += "\n　" + t
 		var item_id: String = id
-		if not eq.usable(id):
-			text += "\n　Lv%dから" % ItemCatalog.required_level(id)
 		var b := _button(_rank_box, text, Vector2.ZERO, func(): choose(item_id))
 		b.icon = ItemIcons.texture(id)
-		if not eq.usable(id):
-			b.modulate = Color(1.0, 0.6, 0.6, 0.8)
 		b.mouse_entered.connect(func(): tip.show_item(item_id, 1, b.global_position + Vector2(-174, 0)))
 		b.mouse_exited.connect(tip.hide_tip)
 	for id in in_grave:

@@ -58,9 +58,10 @@ func test_break_without_grave_does_nothing():
 	assert_eq(rs.inventory.money, 0)
 
 func test_enemy_reward():
-	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.WEAK, 1), 0)
+	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.WEAK, 1), 1)  # 経験4でレベル2
 	assert_eq(rs.stats.exp, EnemyKind.exp_reward(EnemyKind.Kind.WEAK, 1))
-	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.MELEE, 1), 1)  # 経験 6 でレベル2
+	assert_eq(rs.stats.level, 2)
+	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.MELEE, 1), 0)  # 合わせて11。レベル3は20から
 	assert_eq(rs.stats.level, 2)
 
 ## 死んでもレベル・経験値・振り分けは残る
@@ -234,18 +235,14 @@ func test_bosses_are_remembered():
 	rs.on_boss_killed("ブライト", 10)
 	assert_true(rs.cleared)
 
-## 地方の印は死んでも墓石に入らない（鍵なので）。装備のレベルの制限は、冒険のステータスに合わせる
-func test_seals_stay_on_death_and_equipment_knows_level():
+## 地方の印は死んでも墓石に入らない（鍵なので）
+func test_seals_stay_on_death():
 	var rs := RunState.new("town", Vector2i(1, 1))
 	rs.inventory.add("seal_mt", 2)
 	rs.inventory.add("herb", 3)
 	rs.on_death("town", Vector2i(2, 2))
 	assert_eq(rs.inventory.count("seal_mt"), 2)
 	assert_eq(rs.inventory.count("herb"), 0)
-	rs.inventory.equipment.gain("sword_flame")
-	assert_false(rs.inventory.equipment.usable("sword_flame"))
-	rs.stats.add_exp(PlayerStats.exp_to_reach(12))
-	assert_true(rs.inventory.equipment.usable("sword_flame"))
 
 ## ボスの間の門は、その地方の印が3つあると開く
 func test_boss_doors_need_three_seals():

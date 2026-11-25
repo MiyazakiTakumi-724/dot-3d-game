@@ -50,14 +50,25 @@ func test_bosses_drop_rank4_materials_not_gear():
 						used = true
 		assert_true(used, b + " の素材でランク4を作れる")
 
-## ランクが高い装備は、レベルが上がってから使える
-func test_required_level_by_rank():
-	assert_eq(ItemCatalog.required_level("sword_1"), 1)
-	assert_eq(ItemCatalog.required_level("sword_light"), 1)
-	assert_eq(ItemCatalog.required_level("sword_long"), 6)
-	assert_eq(ItemCatalog.required_level("sword_flame"), 12)
-	assert_eq(ItemCatalog.required_level("sword_star"), 18)
-	assert_eq(ItemCatalog.required_level("herb"), 1)
+## 2026-11-25 夜（2回目の直し）：装備のレベル制限の代わりに、ランク4はLv6以上の敵が落とす「力の結晶」、
+## ランク5はLv10以上の敵が落とす「いにしえの結晶」がないと作れない
+func test_high_rank_recipes_need_level_materials():
+	assert_true(ItemCatalog.is_material("power_crystal"))
+	assert_true(ItemCatalog.is_material("ancient_crystal"))
+	assert_string_contains(ItemCatalog.describe("power_crystal"), "Lv6")
+	assert_string_contains(ItemCatalog.describe("ancient_crystal"), "Lv10")
+	for r in Recipes.LIST:
+		var id: String = r[0]
+		if not ItemCatalog.exists(id):
+			continue
+		var need: Dictionary = r[2]
+		match ItemCatalog.rank(id):
+			4:
+				assert_true(need.has("power_crystal"), id)
+			5:
+				assert_true(need.has("ancient_crystal"), id)
+			_:
+				assert_false(need.has("power_crystal") or need.has("ancient_crystal"), id)
 
 ## 地方の印（ボスの間の門の鍵）は数で持ち、素材ではない
 func test_region_seals_are_key_items():

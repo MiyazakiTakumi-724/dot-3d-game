@@ -33,11 +33,11 @@ const OBJECTS := [
 	".......B.T.W...W..",
 	"...........W...W..",
 	"..B........W...W..",
-	".....B.....WWXWW..",
+	"F....B.....WWXWW..",
 	".......B..........",
 	".F.........BT.....",
 	"..................",
-	"B.................",
+	"B.......B.........",
 	"I..............F..",
 	".........B........",
 	"..................",
@@ -54,16 +54,16 @@ const ENEMIES := [
 	[Vector2i(9, 4), Vector2.DOWN, EnemyKind.Kind.SPEAR, 3],
 	[Vector2i(4, 7), Vector2.UP, EnemyKind.Kind.MAGE, 3],
 	[Vector2i(13, 9), Vector2.LEFT, EnemyKind.Kind.MIMIC, 3],
-	[Vector2i(7, 12), Vector2.UP, EnemyKind.Kind.SHOOTER, 3],
+	[Vector2i(4, 12), Vector2.RIGHT, EnemyKind.Kind.SHOOTER, 3],
 	[Vector2i(12, 13), Vector2.DOWN, EnemyKind.Kind.SHIELD, 3],
 ]
 ## [マス, 品物の id（ItemCatalog、お金は money）, 数]
 const PICKUPS := [
 	[Vector2i(12, 3), "silver", 3],
 	[Vector2i(15, 9), "seal_cs", 1],
-	[Vector2i(0, 6), "silver", 1],
-	[Vector2i(15, 12), "money", 40],
-	[Vector2i(9, 2), "potion_m", 1],
+	[Vector2i(16, 3), "silver", 1],
+	[Vector2i(11, 7), "money", 40],
+	[Vector2i(2, 4), "potion_m", 1],
 	[Vector2i(15, 1), "money", 40],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く

@@ -19,14 +19,12 @@ const WEAPONS := [Slot.BALL, Slot.SWORD, Slot.BOW, Slot.STAFF]
 const ARMOR := [Slot.ARMOR]
 const MIN_RANK := 1
 const MAX_RANK := 5
-## ランクが1上がるごとに足されるつよさ【提案】（ランク2の鉄球＝前の「強い鉄球」で＋2）
-const ATTACK_PER_RANK := 2
+## ランクが1上がるごとに足されるつよさ【提案】。2026-11-25 夜につよさの基本を10にしたので2から3に（ランク5で＋12）
+const ATTACK_PER_RANK := 3
 ## 防具のランク1つにつき足される最大いのち【提案】（守りの値は未定。design.md 16章）
 const HP_PER_ARMOR_RANK := 4
 
 var _owned: Array[String] = []
-## 持ち主のステータス（レベルで装備できる品物が決まる）。なければ制限しない
-var stats: PlayerStats
 var _equipped := {}  # Slot → id（好み）
 
 func _init() -> void:
@@ -42,13 +40,9 @@ func gain(id: String) -> bool:
 		return false
 	_owned.append(id)
 	var s := ItemCatalog.slot(id)
-	if not _equipped.has(s) and usable(id):
+	if not _equipped.has(s):
 		_equipped[s] = id
 	return true
-
-## 今のレベルで装備できるか（ItemCatalog.required_level）。
-func usable(id: String) -> bool:
-	return stats == null or ItemCatalog.required_level(id) <= stats.level
 
 func has(id: String) -> bool:
 	return _owned.has(id)
@@ -64,7 +58,7 @@ func items(slot: Slot) -> Array:
 	return out
 
 func equip(id: String) -> bool:
-	if not has(id) or not usable(id):
+	if not has(id):
 		return false
 	_equipped[ItemCatalog.slot(id)] = id
 	return true
@@ -74,15 +68,12 @@ func chosen(slot: Slot) -> String:
 	return _equipped.get(slot, "")
 
 ## 実際に使う品物。選んだものが手元になければ（墓石の中など）、持っている一番低いランクのもの。何もなければ空。
-## レベルが足りない品物は使わない。
 func current(slot: Slot) -> String:
 	var c := chosen(slot)
-	if has(c) and usable(c):
+	if has(c):
 		return c
-	for id in items(slot):
-		if usable(id):
-			return id
-	return ""
+	var list := items(slot)
+	return list[0] if not list.is_empty() else ""
 
 ## 実際に使う品物のランク。何もなければ0。
 func effective(slot: Slot) -> int:

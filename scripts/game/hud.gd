@@ -4,6 +4,9 @@ extends Control
 ## 左上：いのちのバー（赤）とマナのバー（青）と数、細い経験値のバー、レベル・お金・薬の残り・墓石のあるエリア。
 ## 下の真ん中：手に持つ物の5つの箱（アイコンと番号。持っていない武器は暗い）。選んでいる物の名前は箱の上。
 ## 杖を持つと、使える魔法を小さな箱で並べ、待ち時間の間は箱が暗くなって残り秒を出す（マナが足りなければ赤い印）。
+## 右上：方位（北が画面のどちらか。カメラを回すと一緒に回る。全体マップの上が北）。2026-11-25 夜の2回目の直しで足した。
+
+const COMPASS_POS := Vector2(302, 52)
 
 const BAR_POS := Vector2(15, 3)
 const BAR_W := 72.0
@@ -59,6 +62,11 @@ func _draw() -> void:
 		return
 	_draw_status()
 	_draw_hotbar()
+	Compass.draw_on(self, COMPASS_POS, north_dir())
+
+## 北（全体マップの上、ワールドの y が減る向き）が、画面ではどちらか。
+func north_dir() -> Vector2:
+	return Vector2.UP.rotated(-field.camera.angle)
 
 func _draw_status() -> void:
 	var p: Player = field.player

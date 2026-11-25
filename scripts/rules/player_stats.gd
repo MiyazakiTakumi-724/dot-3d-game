@@ -24,14 +24,17 @@ const SKILLS := {
 	Stat.MOVE: ["しゃがみ", "受け身", "よじ登り"],
 }
 
+## 2026-11-25 夜（2回目の直し）：伸びが大きすぎたので下げた（docs/superpowers/specs/2026-11-25-tuning-2.md 2章）。
+## つよさの基本を5から10にして武器の倍率を半分にした（Damage）ので、つよさ1ポイントは前の半分の1割ずつ伸びる。
+## レベル1つでポイントは1つ（前は2つ）、いのちは1ポイントで＋2（前は＋3）、次のレベルまでの経験値は 4 × n × n（前は 5 × n）。
 const BASE_HP := 20  ## 2026-11-25 夜に10から上げた（敵を強くしたので）
-const BASE_ATTACK := 5
-const HP_PER_POINT := 3
+const BASE_ATTACK := 10
+const HP_PER_POINT := 2
 const ATTACK_PER_POINT := 1
-const SPEED_PER_POINT := 0.03  ## 体の動き1ポイントで足が3%速くなる
-const POINTS_PER_LEVEL := 2
+const SPEED_PER_POINT := 0.02  ## 体の動き1ポイントで足が2%速くなる
+const POINTS_PER_LEVEL := 1
 const POINTS_PER_SKILL := 3
-const EXP_STEP := 5  ## レベル n から n+1 へは n × 5 の経験値
+const EXP_STEP := 4  ## レベル n から n+1 へは 4 × n × n の経験値
 
 var level := 1
 ## これまでにもらった経験値の合計
@@ -42,7 +45,7 @@ var _alloc := {}
 
 ## レベル lv になるのに必要な経験値の合計。
 static func exp_to_reach(lv: int) -> int:
-	return EXP_STEP * (lv - 1) * lv / 2
+	return EXP_STEP * (lv - 1) * lv * (2 * lv - 1) / 6  # 1²＋2²＋…＋(lv−1)² の EXP_STEP 倍
 
 ## 経験値をもらう。上がったレベルの数を返す。
 func add_exp(n: int) -> int:

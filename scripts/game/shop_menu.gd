@@ -94,8 +94,6 @@ func _item_text(id: String, n: int) -> String:
 	if ItemCatalog.exists(id):
 		if run.inventory.equipment.has(id):
 			text += "（持っている）"
-		if ItemCatalog.required_level(id) > run.stats.level:
-			text += "（Lv%dから）" % ItemCatalog.required_level(id)
 		var t := ItemCatalog.trait_of(id)
 		if ItemCatalog.slot(id) == Equipment.Slot.STAFF:
 			var names: Array[String] = []

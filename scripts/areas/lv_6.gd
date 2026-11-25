@@ -34,8 +34,8 @@ const OBJECTS := [
 	".R......R...R...",
 	"........R...R...",
 	".....R..RRYRR...",
-	"R.....R.........",
-	"............R..R",
+	"R...R.R.........",
+	"..R.........R..R",
 	"........R..R....",
 	"R....R....R.....",
 	"................",
@@ -60,9 +60,9 @@ const ENEMIES := [
 const PICKUPS := [
 	[Vector2i(9, 3), "obsidian", 3],
 	[Vector2i(13, 2), "seal_lv", 1],
-	[Vector2i(15, 5), "potion_m", 1],
-	[Vector2i(7, 7), "bomb", 2],
-	[Vector2i(12, 12), "obsidian", 2],
+	[Vector2i(1, 6), "potion_m", 1],
+	[Vector2i(12, 13), "bomb", 2],
+	[Vector2i(6, 11), "obsidian", 2],
 	[Vector2i(9, 1), "fire_stone", 3],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く
