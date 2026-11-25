@@ -39,6 +39,8 @@ var flying := false
 var _slow_left := 0.0
 ## 遅くなっている間の速さの倍率
 const SLOW_MULT := 0.5
+## 毒・やけどの1秒ごとのダメージ（2026-11-25 夜に1から上げた。敵の体力を上げたので）
+const DOT_DAMAGE := 2
 
 func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2, hp_max: int = MAX_HP, climb_levels: int = 0) -> void:
 	map = height_map
@@ -117,7 +119,7 @@ func is_slowed() -> bool:
 func touches(p: Vector2, h: int) -> bool:
 	return alive and h == height and pos.distance_to(p) < TOUCH_RADIUS
 
-## 毒にする（毒矢）。seconds 秒の間、毎秒1ダメージ。もう毒なら長い方にする。
+## 毒にする（毒矢）。seconds 秒の間、毎秒 DOT_DAMAGE。もう毒なら長い方にする。
 func poison(seconds: float) -> void:
 	if not alive:
 		return
@@ -152,7 +154,7 @@ func update_poison(delta: float) -> int:
 	_poison_clock += step
 	while _poison_clock >= 1.0 - 0.0001:
 		_poison_clock -= 1.0
-		dmg += 1
+		dmg += DOT_DAMAGE
 	if dmg > 0:
 		take_damage(dmg)
 	if _poison_left <= 0.0001:

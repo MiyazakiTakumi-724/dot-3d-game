@@ -118,11 +118,12 @@ func test_weak_walker_does_not_chase():
 	w.chase(w.pos + Vector2(20, 0), 0)
 	assert_eq(w.dir, Vector2.UP)
 
+## 2026-11-25 夜に強くした（体力はおよそ3倍、攻撃力はおよそ1.6倍）
 func test_kind_table():
-	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK), 5)
-	assert_eq(EnemyKind.attack(EnemyKind.Kind.WEAK), 3)
-	assert_eq(EnemyKind.hp(EnemyKind.Kind.MELEE), 10)
-	assert_eq(EnemyKind.attack(EnemyKind.Kind.MELEE), 4)
+	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK), 14)
+	assert_eq(EnemyKind.attack(EnemyKind.Kind.WEAK), 4)
+	assert_eq(EnemyKind.hp(EnemyKind.Kind.MELEE), 28)
+	assert_eq(EnemyKind.attack(EnemyKind.Kind.MELEE), 6)
 	assert_eq(EnemyKind.climb(EnemyKind.Kind.MELEE), 1)
 	assert_eq(EnemyKind.climb(EnemyKind.Kind.SHOOTER), 0)
 	assert_true(EnemyKind.shoots(EnemyKind.Kind.SHOOTER))
@@ -167,10 +168,10 @@ func test_chase_fuzz_never_enters_bad_cell():
 
 ## 敵のレベルで体力と攻撃力が20%ずつ増える（17.1）
 func test_kind_stats_scale_with_level():
-	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK, 3), 7)
-	assert_eq(EnemyKind.attack(EnemyKind.Kind.WEAK, 3), 4)
-	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.WEAK, 1), 2)
-	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.MELEE, 2), 8)
+	assert_eq(EnemyKind.hp(EnemyKind.Kind.WEAK, 3), 19)
+	assert_eq(EnemyKind.attack(EnemyKind.Kind.WEAK, 3), 5)
+	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.WEAK, 1), 4)
+	assert_eq(EnemyKind.exp_reward(EnemyKind.Kind.MELEE, 2), 14)
 
 func test_walker_remembers_max_hp():
 	var w := EnemyWalker.new(_flat(), Vector2i(1, 1), Vector2.UP, 7, 0)
@@ -185,20 +186,20 @@ func test_poison_ticks_once_per_second_for_five_seconds():
 	var total := 0
 	for i in 70:
 		total += w.update_poison(0.1)
-	assert_eq(total, 5)
-	assert_eq(w.hp, 15)
+	assert_eq(total, 5 * EnemyWalker.DOT_DAMAGE)
+	assert_eq(w.hp, 20 - 5 * EnemyWalker.DOT_DAMAGE)
 	assert_false(w.is_poisoned())
 
 ## やけど（火の魔法）：毒と同じく毎秒1ダメージ。やけどの間は is_burning
 func test_burn_ticks():
 	var m := HeightMap.new(Vector2i(4, 4))
-	var w := EnemyWalker.new(m, Vector2i(1, 1), Vector2.RIGHT, 10)
+	var w := EnemyWalker.new(m, Vector2i(1, 1), Vector2.RIGHT, 30)
 	w.burn(3.0)
 	assert_true(w.is_burning())
 	var total := 0
 	for i in 40:
 		total += w.update_poison(0.1)
-	assert_eq(total, 3)
+	assert_eq(total, 3 * EnemyWalker.DOT_DAMAGE)
 	assert_false(w.is_burning())
 	w.poison(2.0)
 	assert_false(w.is_burning())

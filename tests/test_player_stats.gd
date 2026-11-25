@@ -10,7 +10,7 @@ func test_initial_values():
 	assert_eq(s.level, 1)
 	assert_eq(s.exp, 0)
 	assert_eq(s.points, 0)
-	assert_eq(s.max_hp(), 10)
+	assert_eq(s.max_hp(), PlayerStats.BASE_HP)
 	assert_eq(s.attack(), 5)
 
 func test_exp_needed_grows_with_level():
@@ -47,11 +47,11 @@ func test_vitality_and_attack_raise_base_values():
 	s.add_exp(15)
 	s.allocate(PlayerStats.Stat.VITALITY)
 	s.allocate(PlayerStats.Stat.ATTACK)
-	assert_eq(s.max_hp(), 10 + PlayerStats.HP_PER_POINT)
+	assert_eq(s.max_hp(), PlayerStats.BASE_HP + PlayerStats.HP_PER_POINT)
 	assert_eq(s.attack(), 5 + PlayerStats.ATTACK_PER_POINT)
 
 func test_equipment_adds_to_values():
-	assert_eq(s.max_hp(3), 13)
+	assert_eq(s.max_hp(3), PlayerStats.BASE_HP + 3)
 	assert_eq(s.attack(2), 7)
 
 func test_move_points_make_faster():

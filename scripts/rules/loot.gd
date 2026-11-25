@@ -6,6 +6,8 @@ extends RefCounted
 const MATERIAL_CHANCE := 0.6
 const TOOL_CHANCE := 0.08
 const GEAR_CHANCE := 0.03
+## 擬態箱が装備を落とす割合
+const MIMIC_GEAR_CHANCE := 0.4
 
 const REGION_MATERIALS := {
 	"はじまりの地": ["hide", "bone", "scrap", "wood", "herb"],
@@ -39,6 +41,20 @@ static func roll(region: String, level: int, rng: RandomNumberGenerator, loot_mu
 		var list := gear_pool(region)
 		if not list.is_empty():
 			out.append([list[rng.randi_range(0, list.size() - 1)], 1])
+	return out
+
+## 敵の種類ごとの落とし物。擬態箱はお金が4倍、素材を2つ、装備をよく落とす（balance-pass 4章）【提案】。
+static func roll_kind(k: EnemyKind.Kind, region: String, level: int, rng: RandomNumberGenerator, loot_mult := 1.0) -> Array:
+	var out := roll(region, level, rng, loot_mult)
+	if k != EnemyKind.Kind.MIMIC:
+		return out
+	out[0][1] *= 4
+	var mats: Array = REGION_MATERIALS.get(region, REGION_MATERIALS["はじまりの地"])
+	for i in 2:
+		out.append([mats[rng.randi_range(0, mats.size() - 1)], 1])
+	var list := gear_pool(region)
+	if not list.is_empty() and rng.randf() < MIMIC_GEAR_CHANCE:
+		out.append([list[rng.randi_range(0, list.size() - 1)], 1])
 	return out
 
 ## その地方の敵が落とす装備の一覧。

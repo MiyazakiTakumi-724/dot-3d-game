@@ -112,6 +112,16 @@ func blocks(from: Vector2) -> bool:
 func blocks_ball(land: Vector2) -> bool:
 	return blocks(land)
 
+## 攻撃（source：sword・arrow・magic・ball・bomb）がどう当たるか。field.damage_target が使う（EnemyKind.hit_rule と同じ言葉）。
+func hit_rule(source: String, from: Vector2) -> String:
+	if source in ["ball", "bomb"]:
+		return "block" if blocks_ball(from) else ""
+	return "block" if blocks(from) else ""
+
+## 攻撃が当たったあと。
+func on_hit(_source: String) -> void:
+	pass
+
 ## 1回の満ち引きは、引いている間（LAVA_CYCLE − LAVA_FLOOD 秒）から始まる（入ってすぐ溶岩につからないように）。
 func _lava_flooded() -> bool:
 	return fmod(_t, LAVA_CYCLE) >= LAVA_CYCLE - LAVA_FLOOD

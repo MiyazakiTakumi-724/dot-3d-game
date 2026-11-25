@@ -7,11 +7,41 @@ func test_every_kind_has_data():
 		assert_ne(EnemyKind.name_of(k), "")
 		assert_gt(EnemyKind.hp(k), 0)
 		assert_gt(EnemyKind.attack(k), 0)
-	assert_gte(EnemyKind.Kind.size(), 9)
+	assert_gte(EnemyKind.Kind.size(), 15)
 
-func test_old_kinds_keep_their_numbers():
-	assert_eq([EnemyKind.hp(EnemyKind.Kind.WEAK), EnemyKind.attack(EnemyKind.Kind.WEAK)], [5, 3])
-	assert_eq([EnemyKind.hp(EnemyKind.Kind.MELEE), EnemyKind.attack(EnemyKind.Kind.MELEE)], [10, 4])
+## 2026-11-25 夜：基準の数値を上げた。主人公の剣（ランク1）で何回も当てないと倒れない
+func test_enemies_need_many_hits():
+	var sword := Damage.sword(PlayerStats.BASE_ATTACK, 0, 0)
+	for k in EnemyKind.Kind.values():
+		if k == EnemyKind.Kind.WASP:
+			continue  # 蜂は小さくて弱い（数で来る）
+		assert_gte(ceili(EnemyKind.hp(k) / float(sword)), 4, EnemyKind.name_of(k))
+	assert_gte(PlayerStats.BASE_HP / EnemyKind.attack(EnemyKind.Kind.WEAK), 4, "スライムには何回か当たっても平気")
+
+## 浮いている敵（コウモリ・蜂）には剣と鉄球が当たらない。甲虫はひっくり返すまでかたい
+func test_hit_rules():
+	var at := Vector2(50, 50)
+	var from := at + Vector2(20, 0)
+	for k in [EnemyKind.Kind.FLYER, EnemyKind.Kind.WASP]:
+		assert_true(EnemyKind.flies(k))
+		assert_eq(EnemyKind.hit_rule(k, "sword", Vector2.LEFT, at, from), "miss")
+		assert_eq(EnemyKind.hit_rule(k, "ball", Vector2.LEFT, at, from), "miss")
+		assert_eq(EnemyKind.hit_rule(k, "arrow", Vector2.LEFT, at, from), "")
+		assert_eq(EnemyKind.hit_rule(k, "magic", Vector2.LEFT, at, from), "")
+	var b := EnemyKind.Kind.BEETLE
+	assert_eq(EnemyKind.hit_rule(b, "sword", Vector2.LEFT, at, from), "armor")
+	assert_eq(EnemyKind.hit_rule(b, "arrow", Vector2.LEFT, at, from), "armor")
+	assert_eq(EnemyKind.hit_rule(b, "ball", Vector2.LEFT, at, from), "")
+	assert_eq(EnemyKind.hit_rule(b, "sword", Vector2.LEFT, at, from, {"flipped": true}), "")
+	var s := EnemyKind.Kind.SHIELD
+	assert_eq(EnemyKind.hit_rule(s, "sword", Vector2.RIGHT, at, from), "block")
+	assert_eq(EnemyKind.hit_rule(s, "ball", Vector2.RIGHT, at, from), "")
+	assert_eq(EnemyKind.hit_rule(s, "sword", Vector2.LEFT, at, from), "")
+	assert_eq(EnemyKind.hit_rule(EnemyKind.Kind.GHOST, "ball", Vector2.LEFT, at, from, {"faded": true}), "pass")
+	assert_eq(EnemyKind.hit_rule(EnemyKind.Kind.CHARGER, "sword", Vector2.LEFT, at, from, {"stunned": true}), "weak")
+	assert_eq(EnemyKind.hit_rule(EnemyKind.Kind.MELEE, "sword", Vector2.LEFT, at, from), "")
+
+func test_old_kinds_keep_their_roles():
 	assert_eq(EnemyKind.climb(EnemyKind.Kind.MELEE), 1)
 	assert_true(EnemyKind.shoots(EnemyKind.Kind.SHOOTER))
 	assert_false(EnemyKind.contact(EnemyKind.Kind.MELEE))
@@ -45,6 +75,24 @@ func test_loot_always_gives_money_and_region_materials():
 				mats[d[0]] = true
 	assert_true(mats.has("iron_ore"))
 	assert_false(mats.has("obsidian"))
+
+func test_mimic_drops_more():
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var money_mimic := 0
+	var money_slime := 0
+	var gear := 0
+	for i in 100:
+		var m := Loot.roll_kind(EnemyKind.Kind.MIMIC, "廃城", 3, rng)
+		var w := Loot.roll_kind(EnemyKind.Kind.WEAK, "廃城", 3, rng)
+		money_mimic += m[0][1]
+		money_slime += w[0][1]
+		assert_gte(m.size(), 3, "擬態箱は素材を2つ以上")
+		for d in m:
+			if ItemCatalog.exists(d[0]):
+				gear += 1
+	assert_gt(money_mimic, money_slime * 3)
+	assert_gt(gear, 20, "擬態箱は装備をよく落とす")
 
 func test_gear_pool_by_region():
 	for id in Loot.gear_pool("はじまりの地"):

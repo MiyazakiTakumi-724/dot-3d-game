@@ -24,9 +24,9 @@ const SKILLS := {
 	Stat.MOVE: ["しゃがみ", "受け身", "よじ登り"],
 }
 
-const BASE_HP := 10
+const BASE_HP := 20  ## 2026-11-25 夜に10から上げた（敵を強くしたので）
 const BASE_ATTACK := 5
-const HP_PER_POINT := 2
+const HP_PER_POINT := 3
 const ATTACK_PER_POINT := 1
 const SPEED_PER_POINT := 0.03  ## 体の動き1ポイントで足が3%速くなる
 const POINTS_PER_LEVEL := 2

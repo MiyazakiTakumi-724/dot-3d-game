@@ -94,7 +94,7 @@ func test_killed_enemy_stays_dead_on_death_and_returns_after_300s_and_reentry():
 	_walk_out(_exit("town", "hills"))
 	var e: Enemy = f.enemies[0]
 	var idx: int = f.enemy_index(e)
-	e.walker.take_damage(10)
+	e.walker.take_damage(e.walker.hp)
 	f.kill_player(false)
 	_finish_death()
 	assert_eq(f.area.id, "town")
@@ -109,7 +109,7 @@ func test_enemy_not_back_while_staying_in_area():
 	_walk_out(_exit("town", "hills"))
 	var e: Enemy = f.enemies[0]
 	var idx: int = f.enemy_index(e)
-	e.walker.take_damage(10)
+	e.walker.take_damage(e.walker.hp)
 	f.roster.tick(301.0)
 	for i in 5:
 		f._process(0.1)
@@ -301,17 +301,17 @@ func test_pickup_collected_from_next_cell_edge():
 		return
 	assert_true(f.run.is_picked(f.area.pickup_id(0)))
 
-## 体力は数値（初期10）で、敵の攻撃力の分だけ減る（17.1）
+## 体力は数値（初期 PlayerStats.BASE_HP）で、敵の攻撃力の分だけ減る（17.1）
 func test_player_hp_from_stats():
-	assert_eq(f.player.max_hp, 10)
-	assert_eq(f.player.hp, 10)
+	assert_eq(f.player.max_hp, PlayerStats.BASE_HP)
+	assert_eq(f.player.hp, PlayerStats.BASE_HP)
 	assert_true(f.hurt_player(3))
-	assert_eq(f.player.hp, 7)
+	assert_eq(f.player.hp, PlayerStats.BASE_HP - 3)
 
 func test_easy_mode_halves_damage():
 	f.settings.easy_mode = true
 	f.hurt_player(4)
-	assert_eq(f.player.hp, 8)
+	assert_eq(f.player.hp, PlayerStats.BASE_HP - 2)
 
 ## 鉄球のダメージは17章の式（初期の攻撃力5、同じ高さなら5）
 func test_ball_damage_uses_formula():
@@ -337,7 +337,7 @@ func test_killing_enemies_levels_up_and_raises_max_hp_with_points():
 	assert_string_contains(f.ui_message(), "レベル")
 	f.run.stats.allocate(PlayerStats.Stat.VITALITY)
 	f.apply_stats()
-	assert_eq(f.player.max_hp, 10 + PlayerStats.HP_PER_POINT)
+	assert_eq(f.player.max_hp, PlayerStats.BASE_HP + PlayerStats.HP_PER_POINT)
 
 func test_potion_restores_fixed_amount():
 	f.run.inventory.add("potion", 1)
@@ -361,8 +361,8 @@ func test_allocate_from_menu_applies_stats():
 	f.open_inventory()
 	f.menu.show_page(InventoryMenu.Page.STATS)
 	assert_true(f.menu.allocate(PlayerStats.Stat.VITALITY))
-	assert_eq(f.player.max_hp, 10 + PlayerStats.HP_PER_POINT)
-	assert_eq(f.player.hp, 10 + PlayerStats.HP_PER_POINT)
+	assert_eq(f.player.max_hp, PlayerStats.BASE_HP + PlayerStats.HP_PER_POINT)
+	assert_eq(f.player.hp, PlayerStats.BASE_HP + PlayerStats.HP_PER_POINT)
 	assert_false(f.menu.allocate(PlayerStats.Stat.VITALITY) and f.menu.allocate(PlayerStats.Stat.VITALITY))
 
 ## 画面で鉄球のランクを選ぶと、手に持つ鉄球が替わり攻撃力に足される
@@ -554,12 +554,12 @@ func test_poison_arrow_choice_needs_skill():
 		f.run.stats.allocate(PlayerStats.Stat.BOW)
 	assert_true(f.menu.choose_arrow(Arrow.Kind.POISON))
 
-func _solo_enemy(m: HeightMap, cell: Vector2i) -> Enemy:
+func _solo_enemy(m: HeightMap, cell: Vector2i, kind := EnemyKind.Kind.MELEE) -> Enemy:
 	for e in f.enemies:
 		e.queue_free()
 	f.enemies.clear()
 	var e := Enemy.new()
-	e.setup(m, cell, Vector2.RIGHT, f.player, f.camera, EnemyKind.Kind.MELEE)
+	e.setup(m, cell, Vector2.RIGHT, f.player, f.camera, kind)
 	add_child_autofree(e)
 	e.set_process(false)
 	f.enemies.append(e)
@@ -744,7 +744,7 @@ func test_crouch_dodges_bullets():
 func test_armor_raises_max_hp():
 	f.run.inventory.add("armor_1")
 	f._process(0.016)
-	assert_eq(f.player.max_hp, 10 + Equipment.HP_PER_ARMOR_RANK)
+	assert_eq(f.player.max_hp, PlayerStats.BASE_HP + Equipment.HP_PER_ARMOR_RANK)
 
 ## 回転斬り：剣の技能を3つ覚えると、Space で後ろの敵にも当たる
 func test_spin_slash_needs_skill():
@@ -768,7 +768,7 @@ func test_easy_mode_from_settings_page():
 	f.menu.set_easy(true)
 	assert_true(f.settings.easy_mode)
 	f.hurt_player(4)
-	assert_eq(f.player.hp, 8)
+	assert_eq(f.player.hp, PlayerStats.BASE_HP - 2)
 
 ## 主人公の姿は、手に持つ物と防具で変わる。鉄球は持っている間、両手で抱えて見せる（鉄球の絵は出さない）
 func test_hero_look_follows_held_item():
@@ -1023,10 +1023,73 @@ func test_shield_blocks_front():
 	var hp: int = e.walker.hp
 	assert_true(f.swing_sword())
 	assert_eq(e.walker.hp, hp)
-	e.walker.dir = Vector2.RIGHT  # 背中を向けた
+	e.face = Vector2.RIGHT  # 背中を向けた（盾は face の向き）
 	f.sword.update(1.0)
 	assert_true(f.swing_sword())
 	assert_lt(e.walker.hp, hp)
+
+## 浮いている敵（コウモリ・蜂）に剣と鉄球は届かない。矢と魔法は当たる
+func test_flyers_dodge_sword_and_ball():
+	var m := HeightMap.new(Vector2i(8, 3))
+	_use_map(m, Vector2i(2, 1))
+	for k in [EnemyKind.Kind.FLYER, EnemyKind.Kind.WASP]:
+		var e := _solo_enemy(m, Vector2i(3, 1), k)
+		var hp: int = e.walker.hp
+		assert_false(f.damage_target(e, 3, f.player.mover.pos, "", Color.WHITE, "sword"))
+		assert_false(f.damage_target(e, 3, e.walker.pos, "", Color.WHITE, "ball"))
+		assert_eq(e.walker.hp, hp)
+		assert_true(f.damage_target(e, 3, f.player.mover.pos, "", Color.WHITE, "arrow"))
+		assert_true(f.damage_target(e, 3, f.player.mover.pos, "", Color.WHITE, "magic"))
+		assert_eq(e.walker.hp, hp - 6)
+
+## 甲虫はかたい（剣は1だけ）。鉄球でひっくり返すと、剣がふつうに入る
+func test_beetle_flips_under_ball():
+	var m := HeightMap.new(Vector2i(8, 3))
+	_use_map(m, Vector2i(2, 1))
+	var e := _solo_enemy(m, Vector2i(3, 1), EnemyKind.Kind.BEETLE)
+	var hp: int = e.walker.hp
+	f.damage_target(e, 8, f.player.mover.pos, "", Color.WHITE, "sword")
+	assert_eq(e.walker.hp, hp - 1)
+	f.damage_target(e, 2, e.walker.pos, "", Color.WHITE, "ball")
+	assert_gt(e.flipped, 0.0)
+	f.damage_target(e, 8, f.player.mover.pos, "", Color.WHITE, "sword")
+	assert_eq(e.walker.hp, hp - 1 - 2 - 8)
+
+## 目を回しているイノシシには2倍入る。すけている亡霊には入らない
+func test_stunned_double_and_faded_pass():
+	var m := HeightMap.new(Vector2i(8, 3))
+	_use_map(m, Vector2i(2, 1))
+	var e := _solo_enemy(m, Vector2i(3, 1), EnemyKind.Kind.CHARGER)
+	var hp: int = e.walker.hp
+	e.stunned = 1.0
+	f.damage_target(e, 4, f.player.mover.pos)
+	assert_eq(e.walker.hp, hp - 8)
+	var g := _solo_enemy(m, Vector2i(3, 1), EnemyKind.Kind.GHOST)
+	g.faded = true
+	assert_false(f.damage_target(g, 4, f.player.mover.pos, "", Color.WHITE, "arrow"))
+
+## 投石兵の石は、落ちる所に立っているとダメージ。よければ当たらない
+func test_lobbed_stone_hits_where_it_lands():
+	var m := HeightMap.new(Vector2i(10, 3))
+	_use_map(m, Vector2i(2, 1))
+	var e := _solo_enemy(m, Vector2i(8, 1), EnemyKind.Kind.LOBBER)
+	f._on_enemy_lobbed(f.player.mover.pos, 0, 0.5, 4, e)
+	f._step_lobs(0.6)
+	assert_eq(f.player.hp, PlayerStats.BASE_HP - 4)
+	f.player.clear_invulnerable()
+	f._on_enemy_lobbed(f.player.mover.pos + Vector2(32, 0), 0, 0.5, 4, e)
+	f._step_lobs(0.6)
+	assert_eq(f.player.hp, PlayerStats.BASE_HP - 4)
+
+## 擬態箱は宝箱のふりをしていて、近づくか攻撃されると目を覚ます
+func test_mimic_wakes_up():
+	var m := HeightMap.new(Vector2i(10, 3))
+	_use_map(m, Vector2i(1, 1))
+	var e := _solo_enemy(m, Vector2i(8, 1), EnemyKind.Kind.MIMIC)
+	assert_false(e.awake)
+	assert_false(e.touch_hurts())
+	f.damage_target(e, 1, f.player.mover.pos, "", Color.WHITE, "arrow")
+	assert_true(e.awake)
 
 ## 防具の守りで受けるダメージが減り、足の速い服で速くなる
 func test_armor_traits():

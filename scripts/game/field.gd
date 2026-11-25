@@ -185,6 +185,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_effects.clear()
 	_drops.clear()
 	_bombs.clear()
+	_lobs.clear()
 	_hot.clear()
 	for b in bosses:
 		if is_instance_valid(b):
@@ -283,6 +284,7 @@ func _spawn_enemies() -> void:
 		e.shot.connect(_on_enemy_shot)
 		e.melee_hit.connect(_on_melee_hit.bind(e))
 		e.exploded.connect(_on_enemy_exploded.bind(e))
+		e.lobbed.connect(_on_enemy_lobbed.bind(e))
 		e.walker.died.connect(_on_enemy_died.bind(area.id, i, e.kind, lv, e.walker))
 		_area_root.add_child(e)
 		enemies.append(e)
@@ -383,7 +385,7 @@ func has_enemy(index: int) -> bool:
 func _on_enemy_died(area_id: String, index: int, kind: EnemyKind.Kind, level: int, w: EnemyWalker) -> void:
 	roster.kill(area_id, index)
 	if area_id == area.id:
-		_drop_loot(w.cell(), Loot.roll(area.region, level, rng, loot_mult()))
+		_drop_loot(w.cell(), Loot.roll_kind(kind, area.region, level, rng, loot_mult()))
 	if run.on_enemy_killed(kind, level) > 0:
 		notice("レベル%d になった！\nTab：ポイントを振る" % run.stats.level)
 		apply_stats()
@@ -414,6 +416,40 @@ func _on_enemy_exploded(pos: Vector2, h: int, e: Enemy) -> void:
 	if area_state.result == AreaState.Result.PLAYING and not is_switching() \
 			and player.mover.pos.distance_to(pos) < EnemyKind.BOMB_RADIUS and absi(player.mover.height - h) <= 1:
 		hurt_player(e.attack)
+
+## 投石兵の石：[落ちる所, 高さ, 残り秒, 全部の秒, ダメージ, 石の絵, 投げた所, 投げた高さ]
+var _lobs: Array = []
+
+## 投石兵が石を投げた：落ちる所に影を出し、石を山なりに飛ばす。着いたときにそこにいるとダメージ。
+func _on_enemy_lobbed(at: Vector2, h: int, delay: float, dmg: int, e: Enemy) -> void:
+	if area_state.result != AreaState.Result.PLAYING or is_switching():
+		return
+	var c := HeightMap.world_to_cell(at)
+	var ground := map.get_height(c) if map.in_bounds(c) else h
+	_effect_sprite(Props.aim_shadow(), at, ground, 0.0, delay).set_meta("steady", true)
+	var stone := _effect_sprite(Props.bullet(), e.walker.pos, e.walker.height, 6.0, delay)
+	stone.modulate = Color(0.75, 0.7, 0.62)
+	stone.set_meta("steady", true)
+	_lobs.append([at, ground, delay, delay, dmg, stone, e.walker.pos, e.walker.height])
+
+func _step_lobs(delta: float) -> void:
+	for i in range(_lobs.size() - 1, -1, -1):
+		var l = _lobs[i]
+		l[2] -= delta
+		var t := clampf(1.0 - l[2] / l[3], 0.0, 1.0)
+		var stone: StackSprite = l[5]
+		if is_instance_valid(stone):
+			stone.world_pos = (l[6] as Vector2).lerp(l[0], t)
+			var hy := lerpf(l[7] * StackSprite.LEVEL_PX, l[1] * StackSprite.LEVEL_PX, t) + 6.0 + sin(t * PI) * 34.0
+			stone.base_height = l[1]
+			stone.lift_px = hy - l[1] * StackSprite.LEVEL_PX
+		if l[2] > 0.0:
+			continue
+		_lobs.remove_at(i)
+		_effect_sprite(Props.rain_ring(10.0), l[0], l[1], 0.0, 0.25)
+		if area_state.result == AreaState.Result.PLAYING and player.mover.pos.distance_to(l[0]) < 11.0 \
+				and absi(player.mover.height - l[1]) <= 1:
+			hurt_player(l[4])
 
 ## 画面の真ん中に、少しの間だけ知らせを出す。
 func notice(text: String, seconds := LEVEL_UP_SECONDS) -> void:
@@ -508,17 +544,37 @@ func targets() -> Array:
 			out.append(b)
 	return out
 
-## 剣・矢・魔法を当てる。盾持ちの正面やボスの弱点でない所なら防がれる（false）。id は武器の品物（特色を与える）。
-func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE) -> bool:
-	if e.blocks(from):
-		_popup_text(e.walker.pos, e.walker.height, "ふせいだ", Color("b0b8c8"))
-		return false
+## 攻撃を当てる。入ったら true。source は "sword"・"arrow"・"magic"・"ball"・"bomb"。id は武器の品物（特色を与える）。
+## 敵の種類とようすで、入り方が変わる（敵は EnemyKind.hit_rule、ボスは Boss.hit_rule）：
+## 浮いている敵に剣と鉄球は「とどかない」、すけている亡霊は「すりぬけた」、盾の正面は「ふせいだ」、
+## 甲虫のかたい殻は1だけ（「かたい」）、目を回しているイノシシは2倍。
+func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, source := "sword") -> bool:
+	var rule: String = e.hit_rule(source, from)
+	var gray := Color("b0b8c8")
+	match rule:
+		"miss":
+			_popup_text(e.walker.pos, e.walker.height, "とどかない", gray)
+			return false
+		"pass":
+			_popup_text(e.walker.pos, e.walker.height, "すりぬけた", gray)
+			return false
+		"block":
+			_popup_text(e.walker.pos, e.walker.height, "ふせいだ", gray)
+			return false
+		"armor":
+			dmg = 1
+			_popup_text(e.walker.pos, e.walker.height, "かたい", gray)
+			color = gray
+		"weak":
+			dmg *= 2
+			color = Color("ffd54a")
 	e.walker.take_damage(dmg)
 	_popup(e.walker.pos, e.walker.height, dmg, color)
 	if id != "":
 		_apply_traits(e, id)
 	elif e.has_method("flash"):
 		e.flash()
+	e.on_hit(source)
 	return true
 
 func _popup_text(pos: Vector2, h: int, text: String, color: Color) -> void:
@@ -577,6 +633,7 @@ func _process(delta: float) -> void:
 		if area_state.update(delta):
 			respawn()
 		_step_bullets(delta)
+		_step_lobs(delta)
 		_step_shots(delta)
 		_step_bolts(delta)
 		_step_fires(delta)
@@ -647,7 +704,7 @@ func _play_step() -> void:
 	if run.is_near_checkpoint(area.id, c) and player.hp < player.max_hp:
 		player.set_hp(player.max_hp)
 	for e in enemies:
-		if is_instance_valid(e) and EnemyKind.contact(e.kind) and e.walker.touches(player.mover.pos, player.mover.height):
+		if is_instance_valid(e) and e.touch_hurts() and e.walker.touches(player.mover.pos, player.mover.height):
 			hurt_player(e.attack)
 			break
 	for b in bosses:
@@ -741,7 +798,7 @@ func swing_sword() -> bool:
 	for e in targets():
 		if Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, thrust, reach):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
-			damage_target(e, dmg, mv.pos, id, Color("ffb347") if fall > 0 else Color.WHITE)
+			damage_target(e, dmg, mv.pos, id, Color("ffb347") if fall > 0 else Color.WHITE, "sword")
 	if run.grave != null and run.grave.area_id == area.id:
 		var g := run.grave.cell
 		if Sword.hits(mv.pos, mv.height, mv.facing, HeightMap.cell_center(g), map.get_height(g), thrust):
@@ -875,7 +932,7 @@ func _arrow_landed(a: Arrow, dmg: int, from := Vector2.ZERO) -> void:
 	# 撃った所より高い地面に落ちた矢は、そこの敵に当たらない（下から上へは攻撃できない）
 	for e in targets():
 		if Damage.can_hit(a.from_h, land_h) and Arrow.hits(a.to, land_h, e.walker.pos, e.walker.height):
-			if damage_target(e, dmg, from, run.inventory.equipment.current(Equipment.Slot.BOW)):
+			if damage_target(e, dmg, from, run.inventory.equipment.current(Equipment.Slot.BOW), Color.WHITE, "arrow"):
 				if a.kind == Arrow.Kind.POISON:
 					e.walker.poison(Arrow.POISON_SECONDS)
 				elif a.kind == Arrow.Kind.FIRE:
@@ -908,7 +965,7 @@ func spin_slash() -> bool:
 	for e in targets():
 		if Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, float(ItemCatalog.trait_value(id, "reach", 1.0))):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0)
-			damage_target(e, dmg, mv.pos, id)
+			damage_target(e, dmg, mv.pos, id, Color.WHITE, "sword")
 	return true
 
 ## 今の装備で持ちかえられる物の姿（立ち姿・歩く姿・鉄球を放した姿）を、先に作っておく
@@ -1026,7 +1083,7 @@ func _hit_enemy(e, spell: int, from_h: int) -> bool:
 	if not Damage.can_hit(from_h, e.walker.height):
 		return false
 	var dmg := Damage.magic(current_attack(), Magic.POWER[spell], run.stats.points_in(PlayerStats.Stat.MAGIC))
-	if not damage_target(e, dmg, player.mover.pos):
+	if not damage_target(e, dmg, player.mover.pos, "", Color.WHITE, "magic"):
 		return false
 	if spell == Magic.Spell.ICE_SHARD:
 		e.walker.slow(Magic.SLOW_SECONDS)
@@ -1275,8 +1332,7 @@ func _step_bombs(delta: float) -> void:
 		_burn_gimmicks(b[0], 20.0)
 		for e in targets():
 			if e.walker.pos.distance_to(b[0]) < 20.0 and absi(e.walker.height - b[1]) <= 1 and Damage.can_hit(b[4], e.walker.height):
-				e.walker.take_damage(b[3])
-				_popup(e.walker.pos, e.walker.height, b[3], Color("ffb347"))
+				damage_target(e, b[3], b[0], "", Color("ffb347"), "bomb")
 		for g in _closed_gimmicks():
 			if g.kind == Gimmick.Kind.CRACK and g.by_ball(b[0], 1):
 				open_gimmick(g)
@@ -1461,13 +1517,8 @@ func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
 	var radius := IronBall.hit_radius(float(ItemCatalog.trait_value(id, "radius", 1.0)))
 	for e in targets():
 		if IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height, radius):
-			# 鉄球は上から落ちるので、盾では防げない。ボスの弱点は、ボスが決める（blocks_ball）
-			if e.has_method("blocks_ball") and e.blocks_ball(land_pos):
-				_popup_text(e.walker.pos, e.walker.height, "ふせいだ", Color("b0b8c8"))
-				continue
-			e.walker.take_damage(damage)
-			_popup(e.walker.pos, e.walker.height, damage, Color.WHITE)
-			_apply_traits(e, id)
+			# 鉄球は上から落ちるので、盾では防げない（浮いている敵には当たらない）。ボスの弱点は、ボスが決める
+			damage_target(e, damage, land_pos, id, Color.WHITE, "ball")
 
 func _ball_attack() -> int:
 	var extra := int(ItemCatalog.trait_value(ball.rules_ball.item, "atk", 0)) + int(buffs.value("atk"))
@@ -1796,6 +1847,22 @@ func ui_message() -> String:
 		return "WASD・矢印：移動\n地面の矢印の先へ歩くと、となりのエリアへ行ける"
 	return ""
 
+## 確認用：エリアの敵を消し、15種類の敵をプレイヤーのまわりに並べて止める（`--zoo`）。
+func _show_zoo() -> void:
+	for e in enemies:
+		e.queue_free()
+	enemies.clear()
+	var c0 := HeightMap.world_to_cell(player.mover.pos)
+	for k in EnemyKind.Kind.size():
+		var cell := c0 + Vector2i(-4 + (k % 5) * 2, -3 + (k / 5) * 2 + (1 if k >= 5 else 0))
+		var e := Enemy.new()
+		e.setup(map, cell, Vector2.DOWN, player, camera, k)
+		_area_root.add_child(e)
+		enemies.append(e)
+		e._process(0.0)
+		e.set_process(false)
+		e.refresh()
+
 ## `-- --screenshot=path.png` で数フレーム後に画面を保存して終了する（確認用）。
 ## `--area=hills` でエリア、`--player=x,y` で位置、`--angle=0.8` でカメラ角度。`--fps` で平均FPSを出す。
 ## `--offset=dx,dy` でプレイヤーをマスの中心からずらす。`--ball=dx,dy` で鉄球をプレイヤーからずらして地面に置く。
@@ -1865,6 +1932,8 @@ func _maybe_screenshot() -> void:
 		elif a == "--boss":
 			for b in bosses:
 				b.wake()
+		elif a == "--zoo":
+			get_tree().create_timer(0.02).timeout.connect(_show_zoo)
 		elif a.begins_with("--hold="):
 			hotbar.select_slot(int(a.trim_prefix("--hold=")), run.inventory.equipment)
 		elif a == "--map":

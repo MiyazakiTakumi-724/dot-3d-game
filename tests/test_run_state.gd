@@ -59,7 +59,7 @@ func test_break_without_grave_does_nothing():
 
 func test_enemy_reward():
 	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.WEAK, 1), 0)
-	assert_eq(rs.stats.exp, 2)
+	assert_eq(rs.stats.exp, EnemyKind.exp_reward(EnemyKind.Kind.WEAK, 1))
 	assert_eq(rs.on_enemy_killed(EnemyKind.Kind.MELEE, 1), 1)  # 経験 6 でレベル2
 	assert_eq(rs.stats.level, 2)
 
