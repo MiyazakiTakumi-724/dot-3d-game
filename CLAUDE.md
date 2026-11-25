@@ -5,16 +5,18 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 ## まず読むもの
 
 1. `docs/design.md`：ゲーム全体の仕様。ここを正とする。【提案】が付いた項目はClaudeの提案で、ユーザーの明確な承認はまだない。
-2. `docs/superpowers/specs/2026-11-25-tuning-2.md`：遊んでみての直し（2回目）。伸びとダメージの式を下げ、装備のレベル制限をやめて強い敵だけが落とす結晶に、
+2. `docs/superpowers/specs/2026-11-26-tuning-3.md`：遊んでみての直し（3回目）。効果音75種、高低差を増やしエリアを少し広く四角でない形に、敵とボスを大きく、
+   影と光（地面に落ちる長い影・雲の影・暗い地方の明かり・舞うもの）、操作の一覧は設定から、方位はいつも右上、1920×1080、宝箱は F、仕掛けを8種類に。下の tuning-2 と食い違う所はこちらが優先。
+3. `docs/superpowers/specs/2026-11-25-tuning-2.md`：遊んでみての直し（2回目）。伸びとダメージの式を下げ、装備のレベル制限をやめて強い敵だけが落とす結晶に、
    たき火のエリアをせまく敵なしに、ほとんどの敵が1段登る、全体マップと画面に方位・出口・門、ボスの技を増やす（巨人と岩窟のぬしは奈落を開ける）。下の balance-pass と食い違う所はこちらが優先。
-3. `docs/superpowers/specs/2026-11-25-balance-pass.md`：遊んでみての直し（敵とボスを強く賢く、敵15種・ボス11体、45エリアと地方の印、
+4. `docs/superpowers/specs/2026-11-25-balance-pass.md`：遊んでみての直し（敵とボスを強く賢く、敵15種・ボス11体、45エリアと地方の印、
    いのちとマナのバー、品物のアイコン、ボスは素材だけ落とし装備にはレベルの制限）。2026-11-25 夜の依頼で、Claudeが決めて実装した。下の設計と食い違う所はこちらが優先。
-4. `docs/superpowers/specs/2026-11-25-full-game-design.md`：ゲームを完成まで作る設計（町・せまい30エリア・敵9種・ランク1〜5の品物・素材・作る・ボス9体）。
+5. `docs/superpowers/specs/2026-11-25-full-game-design.md`：ゲームを完成まで作る設計（町・せまい30エリア・敵9種・ランク1〜5の品物・素材・作る・ボス9体）。
    ユーザーが「もう指示はしないから完成まで作って、説明しきれなかった部分は自分で補填して」と任せたので、Claudeが決めて実装した（2026-11-25）。
    `docs/superpowers/specs/2026-11-25-world-map-design.md`（大陸の全体の最初の設計）と食い違う所は、こちらが優先。
-5. `docs/superpowers/specs/2026-11-24-world-areas-design.md`：試作3「大陸のエリアをつなぐ」の設計（ユーザー承認済み、実装済み）。試作2の設計と食い違う所はこちらが優先。計画は `docs/superpowers/plans/2026-11-24-world-areas.md`。
-6. `docs/superpowers/specs/2026-11-23-death-loop-design.md`：試作2「死と取り返しの流れ」の設計（ユーザー承認済み）。持ち物・墓石・奈落のルールは試作3でもこのまま。
-7. 古い計画（完了済み）：`docs/superpowers/plans/` の 2026-11-23・2026-11-24 の試作1・試作2のもの。
+6. `docs/superpowers/specs/2026-11-24-world-areas-design.md`：試作3「大陸のエリアをつなぐ」の設計（ユーザー承認済み、実装済み）。試作2の設計と食い違う所はこちらが優先。計画は `docs/superpowers/plans/2026-11-24-world-areas.md`。
+7. `docs/superpowers/specs/2026-11-23-death-loop-design.md`：試作2「死と取り返しの流れ」の設計（ユーザー承認済み）。持ち物・墓石・奈落のルールは試作3でもこのまま。
+8. 古い計画（完了済み）：`docs/superpowers/plans/` の 2026-11-23・2026-11-24 の試作1・試作2のもの。
 
 ## 現状
 
@@ -55,7 +57,18 @@ M キーで全体マップ（`scripts/game/world_map_view.gd`、行ったエリ�
 - 全体マップに方位・自分の位置と画面の上の向き・出口（黄）・門（赤／緑）・行っていないとなり（？）。画面の右上にも方位（`Compass`）。
 - ボスの技を増やした（`boss.gd` の `_clock1`・`_clock3`）。一時的な奈落は `field.boss_pits`（ひびが出てから開き、少しして閉じる。落ちると死ぬ）。
 
-テストはGUTで約510件、すべて通る（40秒ほど）。
+2026-11-26（夜明け前）に3回目の直しを入れた（設計は `2026-11-26-tuning-3.md`）：
+- 効果音（`scripts/audio/`）：音はコードで作る（`SfxSynth` のレシピ75種）。`Sfx.play(名前, 場所)` で鳴らし、遠いほど小さい。足音は `HeroAnim.stepped`。大きさは設定のページ。
+- 地図：`gen.py` で高低差を1.5倍（`HEIGHT_BOOST`）、作ったあと大陸の列と行をランダムに写して広げ（`inflate_all`）、ふちを島の外にして四角でない形に（`roughen`）。
+  休憩所は `recarve_rest` でせまいまま。ボスのまわりは同じ高さの床。全体マップはエリアの本当の形で描く。
+- 敵は1.5倍・ボスは1.8倍の大きさで描き（`DRAW_SCALE`）、当たる所も広い（`field.body_extra`・`EnemyWalker.touch_radius`）。
+- 影と光（`scripts/render/`）：地面に落ちる木や崖の影（`ShadowMap` と `shadow.gdshader`。地面の柱の材質）、キャラの長い影、
+  画面全体の空気（`Atmosphere`：雲の影・ふちの暗さ・溶岩／廃城／塔の暗さと明かり・舞うもの）。画面の文字はレイヤー2、空気はレイヤー1。
+- 操作の一覧は設定のページから（`GameSettings.CONTROLS`）。画面の右上にいつも方位。1920×1080（初めは全画面、F11 で切りかえ）。
+- 宝箱は F で開ける（`field.try_open_chest`）。お店はスクロール中に説明を出さず、行を2行にして見切れない。
+- 仕掛けは8種類：押し板（鉄球を置く）・レバー（F）・魔法の水晶（魔法で足場がせり上がる。`Gimmick.heights`）・もろい壁（爆弾）を足した。
+
+テストはGUTで538件、すべて通る（1分ほど）。
 
 ゲームシステム（design.md 7・11・17章）を試作3の上に入れた（2026-11-24）：レベル・経験値・振り分けポイントと技能、17章のダメージ式（体力は数値、敵にもレベル）、
 インベントリ画面（装備・ステータス・設定）、剣・弓と矢・杖と魔法（マナ）、防具、簡単モード。（試すために野営地の宝箱に置いていた武器は、町のお店と鍛冶屋に替えた。）
@@ -65,7 +78,7 @@ M キーで全体マップ（`scripts/game/world_map_view.gd`、行ったエリ�
 
 ### 操作（試作3）
 
-WASD・矢印：移動／左クリック：手に持つアイテムを使う（鉄球はカーソルの場所に落とす。届くのは1.5マス。剣はカーソルの方へ振る、押したままで連続。弓は押して溜め、離して撃つ。杖は押したままで魔法を続けて使う、ホイールで使う魔法を替える。弾の魔法は敵にカーソルを重ねるとその高さへ飛ぶ）／1〜5：手に持つアイテム（鉄球・剣・弓・杖・道具。持っていない武器は選べない。最初は鉄球だけ。道具はホイールで替える）／Tab：インベントリ（装備する品物を選ぶ、ポイントを振る。開いている間も世界は動く）／Space：回転斬り（技能）／C・左Ctrl：しゃがむ（技能）／F：門を開ける・商人のそばでお店を開く／右ドラッグ・Q/E：カメラ／鉄球は近く（12px）を歩いて拾う。落ちているものはマスの中心から14pxで拾う。試作1は X/Z のまま。
+WASD・矢印：移動／左クリック：手に持つアイテムを使う（鉄球はカーソルの場所に落とす。届くのは1.5マス。剣はカーソルの方へ振る、押したままで連続。弓は押して溜め、離して撃つ。杖は押したままで魔法を続けて使う、ホイールで使う魔法を替える。弾の魔法は敵にカーソルを重ねるとその高さへ飛ぶ）／1〜5：手に持つアイテム（鉄球・剣・弓・杖・道具。持っていない武器は選べない。最初は鉄球だけ。道具はホイールで替える）／Tab：インベントリ（装備する品物を選ぶ、ポイントを振る。開いている間も世界は動く）／Space：回転斬り（技能）／C・左Ctrl：しゃがむ（技能）／F：宝箱を開ける・レバーを引く・門を開ける・商人のそばでお店を開く／F11：全画面とウィンドウ／右ドラッグ・Q/E：カメラ／鉄球は近く（12px）を歩いて拾う。落ちているものはマスの中心から14pxで拾う。試作1は X/Z のまま。
 
 ## コマンド
 
@@ -99,7 +112,7 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
                      hit_rule は攻撃（sword・arrow・magic・ball・bomb）の入り方（"" / miss / pass / block / armor / weak）
   melee_attack.gd    敵2の近接攻撃（0.5秒ためて叩く。下から上へは届かない）
   enemy_roster.gd    倒した敵の復活の時間（300秒。エリアに入ったときだけ調べる）
-  game_settings.gd   設定（簡単モード・画面の光を弱める）
+  game_settings.gd   設定（簡単モード・画面の光を弱める・効果音の大きさ・全画面）と、設定のページで見せる操作の一覧（CONTROLS）
   buffs.gd           道具の薬で少しの間だけ強くなる（つよさ・守り・足）
   shop.gd            お店の品ぞろえと買い物（町の道具屋・武器屋、地方の旅の商人）
   recipes.gd         鍛冶屋で作れる物（素材とお金）。ランク5はここだけ
@@ -123,6 +136,9 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
                      stats（PlayerStats、死んでも残る）と bosses_defeated（敵のレベル＝敵ごとのレベル＋この数）
   area_state.gd      PLAYING / DYING と再開のタイミング（CLEAR は試作2の名残で使っていない）
 scripts/render/  描画まわり
+  shadow_map.gd      地面に落ちる影（2026-11-26）。エリアの物のてっぺんの高さの絵（1マス8×8）と、地面の柱の材質（shadow.gdshader が日の方へたどる）。日は SUN
+  atmosphere.gd      画面全体の空気（2026-11-26、CanvasLayer 1）。atmosphere.gdshader をかけ算で重ねる：雲の影・ふちの暗さ・地方の暗さと明かり（set_lights、16まで）。
+                     Motes は地方ごとの舞うもの（綿毛・雪・火の粉・ほこり・きらめき）
   voxel_model.gd     ボクセルの形から輪切り画像を作る（今の素材はすべてコードで生成）。テクスチャは textures() で共有する。copy・move_box（歩く姿を作るのに使う）。
                      from_images は輪切りの画像から直接作る（地形の柱。ボクセルを1つずつ置くより何倍も速い）
   voxel_shade.gd     ボクセルの形に影を付ける（主人公・小物・木や岩で共通）。まわり26方向の空き方から面の向きを出し、4段階（影は青紫、光は暖かい白へ寄せる）。band は1点の色
@@ -159,14 +175,16 @@ scripts/game/    ノード（ルールのクラスを持って描画するだけ
   ball.gd            鉄球の見た目。放すと手元から落とした点へ山なりに落ち、着くと土ぼこり（impact_dust.gd）と画面のゆれ
 fonts/           PixelMplus（M+ FONT LICENSE。商用利用・再配布が自由）とライセンスの文。*.import はぼかさない設定なので git に入れている
 scripts/areas/   45エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）
-  gimmick.gd（scripts/rules/）  武器で開く仕掛け（CRACK・TARGET・THORNS・VINES）。close / open で地図を変え、by_ball・by_arrow・by_fire・by_sword で開くか決める
+  gimmick.gd（scripts/rules/）  武器で開く仕掛け（CRACK・TARGET・THORNS・VINES、2026-11-26 に PLATE・LEVER・CRYSTAL・BRITTLE）。close / open で地図を変え、
+                     by_ball・by_arrow・by_fire・by_sword・by_hand・by_magic・by_bomb で開くか決める。CRYSTAL は heights の高さまで足場がせり上がる
   world_map_view.gd（scripts/game/）  M キーの全体マップ
   shop_menu.gd（scripts/game/）  お店と鍛冶屋の画面
   boss.gd（scripts/game/）  ボスの動き（名前で戦い方が変わる。phase 2 で技が増える。hit_rule・touch_hurts）。boss_models.gd が姿、boss_decoy.gd は宝箱の王のにせもの
   enemy.gd（scripts/game/）  敵の種類ごとの動き（跳びかかり・急降下・突進・弾ける・突き・山なりの石 lobbed・瞬間移動・擬態）。enemy_models.gd が姿（2倍の細かさ）
   hud.gd・item_icons.gd・item_tip.gd（scripts/game/）  いのちとマナのバー・手に持つ物の箱、品物のアイコン、カーソルで出る説明
   compass.gd（scripts/game/）  方位の絵（画面の右上と全体マップで使う）
-scripts/game/field.gd エリアを入れ替えるメインシーンの中身（enter_area・切り替え・死と再開・門・UI）
+scripts/audio/   効果音（2026-11-26）。sfx_synth.gd（SfxSynth：レシピから音を作る）と sfx.gd（Sfx：鳴らす、遠いほど小さい、history はテスト用）
+scripts/game/field.gd エリアを入れ替えるメインシーンの中身（enter_area・切り替え・死と再開・門・宝箱・レバー・UI・明かり）
 scenes/field.tscn     メインシーン（試作3）
 scenes/stage_01.tscn  試作1
 tests/           GUTのテスト（test_*.gd）。tests/helpers/ はテスト用の道具（経路探索など）
