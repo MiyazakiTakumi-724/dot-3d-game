@@ -13,14 +13,18 @@ var height_px: float
 var _t := 0.0
 
 static func make(cam: StackCamera, pos: Vector2, h_px: float, amount: int, color: Color) -> DamagePopup:
+	return make_text(cam, pos, h_px, str(amount), color)
+
+## 数字でない言葉（「ふせいだ」・回復の「+6」など）。
+static func make_text(cam: StackCamera, pos: Vector2, h_px: float, text: String, color: Color) -> DamagePopup:
 	var p := DamagePopup.new()
 	UiText.style(p)
 	p.add_theme_color_override("font_outline_color", UiText.OUTLINE_COLOR)
 	p.add_theme_constant_override("outline_size", 2)
 	p.add_theme_color_override("font_color", color)
-	p.text = str(amount)
+	p.text = text
 	p.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p.size = Vector2(WIDTH, 12)
+	p.size = Vector2(maxf(WIDTH, text.length() * 12.0), 12)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.camera = cam
 	p.world_pos = pos

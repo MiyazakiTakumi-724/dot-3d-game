@@ -4,6 +4,7 @@ extends CanvasLayer
 ## 「装備」のページ：真ん中に主人公の姿、その左に武器の枠（鉄球・剣・弓・杖）、右に防具の枠。枠を選ぶと、右側に
 ## その種類の持っている品物が並び、クリックで装備するものを決める（杖なら、無の杖・炎の杖…から選ぶ）。下に持ち物（所持数は無限）。
 ## 「ステータス」のページ：レベルアップでもらったポイントを、6つの項目に振る。3ポイントごとに技能を覚える。
+## 「持ち物」のページ：お金・道具・矢・素材の数と説明（2026-11-25 に足した）。
 
 signal close_requested
 ## ポイントを振った・防具を替えた（体力の最大や足の速さを反映してもらう）
@@ -11,7 +12,7 @@ signal stats_changed
 ## 技能を覚えた（技能の名前）
 signal skill_learned(skill: String)
 
-enum Page { EQUIP, STATS, SETTINGS }
+enum Page { EQUIP, STATS, ITEMS, SETTINGS }
 
 const PANEL_POS := Vector2(8, 6)
 const PANEL_SIZE := Vector2(304, 168)
@@ -49,11 +50,13 @@ func setup(r: RunState, s: GameSettings = null) -> void:
 	add_child(_panel)
 	_page_buttons[Page.EQUIP] = _button(_panel, "装備", Vector2(4, 3), func(): show_page(Page.EQUIP))
 	_page_buttons[Page.STATS] = _button(_panel, "ステータス", Vector2(42, 3), func(): show_page(Page.STATS))
-	_page_buttons[Page.SETTINGS] = _button(_panel, "設定", Vector2(160, 3), func(): show_page(Page.SETTINGS))
+	_page_buttons[Page.ITEMS] = _button(_panel, "持ち物", Vector2(130, 3), func(): show_page(Page.ITEMS))
+	_page_buttons[Page.SETTINGS] = _button(_panel, "設定", Vector2(176, 3), func(): show_page(Page.SETTINGS))
 	var hint := _label(_panel, "Tab：閉じる", Vector2(244, 6))
 	hint.modulate.a = 0.7
 	_build_equip_page()
 	_build_stats_page()
+	_build_items_page()
 	_build_settings_page()
 	_panel.hide()
 
@@ -112,6 +115,43 @@ func _build_stats_page() -> void:
 
 var _settings_root: Control
 var _difficulty_buttons := {}
+var _flash_buttons := {}
+var _items_root: Control
+var _items_box: VBoxContainer
+
+func _build_items_page() -> void:
+	_items_root = _page_root()
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(6, 24)
+	scroll.size = Vector2(292, 140)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_items_root.add_child(scroll)
+	_items_box = VBoxContainer.new()
+	_items_box.add_theme_constant_override("separation", 1)
+	scroll.add_child(_items_box)
+
+## 持ち物のページの行（テスト用にも使う）：お金、道具、矢、素材の順。
+func item_lines() -> Array[String]:
+	var inv := run.inventory
+	var out: Array[String] = ["お金 %d" % inv.money]
+	for id in inv.tools():
+		out.append("%s ×%d　%s" % [ItemCatalog.name_of(id), inv.count(id), ItemCatalog.trait_of(id)])
+	for k in Arrow.KINDS:
+		if inv.arrow_count(k) > 0:
+			out.append("%s ×%d" % [Arrow.NAMES[k], inv.arrow_count(k)])
+	for id in inv.materials():
+		out.append("%s ×%d　（素材）" % [ItemCatalog.name_of(id), inv.count(id)])
+	return out
+
+func _refresh_items() -> void:
+	for c in _items_box.get_children():
+		_items_box.remove_child(c)
+		c.queue_free()
+	for line in item_lines():
+		_label(_items_box, line, Vector2.ZERO)
+	if run.inventory.tools().size() > 0:
+		var hint := _label(_items_box, "道具は 5 で持ち、ホイールで替えてクリックで使う", Vector2.ZERO)
+		hint.modulate.a = 0.7
 
 func _build_settings_page() -> void:
 	_settings_root = _page_root()
@@ -120,6 +160,15 @@ func _build_settings_page() -> void:
 	_difficulty_buttons[true] = _button(_settings_root, "", Vector2(124, 27), func(): set_easy(true))
 	var note := _label(_settings_root, "簡単：敵から受けるダメージだけが半分になる。\nほかのルールは普通と同じ。", Vector2(6, 52))
 	note.modulate.a = 0.75
+	_label(_settings_root, "画面の光", Vector2(6, 90))
+	_flash_buttons[false] = _button(_settings_root, "", Vector2(60, 87), func(): set_soft_flash(false))
+	_flash_buttons[true] = _button(_settings_root, "", Vector2(124, 87), func(): set_soft_flash(true))
+	var note2 := _label(_settings_root, "弱い：画面が白く光る演出を弱くする。", Vector2(6, 110))
+	note2.modulate.a = 0.75
+
+func set_soft_flash(v: bool) -> void:
+	settings.soft_flash = v
+	refresh()
 
 func set_easy(v: bool) -> void:
 	settings.easy_mode = v
@@ -169,7 +218,7 @@ func choose_arrow(kind: Arrow.Kind) -> bool:
 func _add_arrow_choices() -> void:
 	var inv := run.inventory
 	_label(_rank_box, "撃つ矢", Vector2.ZERO)
-	for k in [Arrow.Kind.NORMAL, Arrow.Kind.POISON]:
+	for k in Arrow.KINDS:
 		var kind: Arrow.Kind = k
 		var mark := "●" if inv.arrow_kind == kind else "○"
 		var text := "%s %s ×%d" % [mark, Arrow.NAMES[kind], inv.arrow_count(kind)]
@@ -204,6 +253,7 @@ func refresh() -> void:
 	_equip_root.visible = page == Page.EQUIP
 	_stats_root.visible = page == Page.STATS
 	_settings_root.visible = page == Page.SETTINGS
+	_items_root.visible = page == Page.ITEMS
 	var pts := run.stats.points
 	_page_buttons[Page.STATS].text = "ステータス" + ("（%d）" % pts if pts > 0 else "")
 	for p in _page_buttons:
@@ -213,10 +263,15 @@ func refresh() -> void:
 			_refresh_equip()
 		Page.STATS:
 			_refresh_stats()
+		Page.ITEMS:
+			_refresh_items()
 		Page.SETTINGS:
 			for easy in _difficulty_buttons:
 				var on: bool = settings.easy_mode == easy
 				_difficulty_buttons[easy].text = ("● " if on else "○ ") + ("簡単" if easy else "普通")
+			for soft in _flash_buttons:
+				var on: bool = settings.soft_flash == soft
+				_flash_buttons[soft].text = ("● " if on else "○ ") + ("弱い" if soft else "ふつう")
 
 ## 主人公の姿に出す物：[手に持つ物, 防具]。鉄球・剣・弓・杖の枠を選んでいるときは、その枠の品物を持たせる。
 func portrait_look() -> Array:
@@ -252,7 +307,7 @@ func _refresh_equip() -> void:
 		var rank := ItemCatalog.rank(id)
 		var text := "%s %s ランク%d\n　つよさ＋%d" % [mark, ItemCatalog.name_of(id), rank, Equipment.rank_attack(rank)]
 		if Equipment.ARMOR.has(selected_slot):
-			text = "%s %s ランク%d\n　いのち＋%d" % [mark, ItemCatalog.name_of(id), rank, rank * Equipment.HP_PER_ARMOR_RANK]
+			text = "%s %s ランク%d\n　いのち＋%d" % [mark, ItemCatalog.name_of(id), rank, rank * Equipment.HP_PER_ARMOR_RANK + int(ItemCatalog.trait_value(id, "hp", 0))]
 		var t := ItemCatalog.trait_of(id)
 		if selected_slot == Equipment.Slot.STAFF:
 			var names: Array[String] = []
@@ -269,8 +324,8 @@ func _refresh_equip() -> void:
 	if selected_slot == Equipment.Slot.BOW:
 		_add_arrow_choices()
 	var inv := run.inventory
-	_items.text = "回復 ×%d　素材 ×%d\n矢 ×%d　毒矢 ×%d\nお金 %d" % [inv.heals, inv.materials,
-		inv.arrow_count(Arrow.Kind.NORMAL), inv.arrow_count(Arrow.Kind.POISON), inv.money]
+	_items.text = "お金 %d　道具 %d種\n矢 ×%d　素材 %d種\n（くわしくは「持ち物」）" % [inv.money, inv.tools().size(),
+		inv.arrow_count(Arrow.Kind.NORMAL), inv.materials().size()]
 
 func _refresh_stats() -> void:
 	var st := run.stats

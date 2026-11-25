@@ -48,34 +48,34 @@ func _open_cell() -> Vector2i:
 				return c
 	return Vector2i(-1, -1)
 
-func test_starts_in_camp_at_bonfire():
-	assert_eq(f.area.id, "camp")
+func test_starts_in_town_at_bonfire():
+	assert_eq(f.area.id, "town")
 	assert_eq(f.player.mover.cell(), Continent.START_CELL)
 
 func test_walking_out_through_exit_switches_area():
-	var ex := _exit("camp", "hills")
+	var ex := _exit("town", "hills")
 	var from := _mid(ex)
 	_walk_out(ex)
 	assert_eq(f.area.id, "hills")
-	var expect: Dictionary = f.world.arrival("camp", ex, from)
+	var expect: Dictionary = f.world.arrival("town", ex, from)
 	assert_eq(f.player.mover.cell(), expect["cell"])
 	assert_false(f.is_switching())
 
 func test_standing_on_exit_does_not_switch():
-	var ex := _exit("camp", "hills")
+	var ex := _exit("town", "hills")
 	f.player.mover.place(_mid(ex))
 	for i in 10:
 		f._process(0.1)
-	assert_eq(f.area.id, "camp")
+	assert_eq(f.area.id, "town")
 
 func test_arrival_does_not_bounce_back():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	for i in 20:
 		f._process(0.1)
 	assert_eq(f.area.id, "hills")
 
 func test_input_ignored_while_switching():
-	var ex := _exit("camp", "hills")
+	var ex := _exit("town", "hills")
 	f.player.mover.place(_mid(ex))
 	f.player.mover.move(Vector2(ex.outward()) * 12.0)
 	f._process(0.016)
@@ -85,28 +85,28 @@ func test_input_ignored_while_switching():
 	assert_false(f.open_inventory())
 
 func test_area_title_shown_on_enter():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	assert_string_contains(f.ui_message(), "丘陵")
 	f._process(2.5)
 	assert_false(f.ui_message().contains("丘陵"))
 
 func test_killed_enemy_stays_dead_on_death_and_returns_after_300s_and_reentry():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var e: Enemy = f.enemies[0]
 	var idx: int = f.enemy_index(e)
 	e.walker.take_damage(10)
 	f.kill_player(false)
 	_finish_death()
-	assert_eq(f.area.id, "camp")
-	_walk_out(_exit("camp", "hills"))
+	assert_eq(f.area.id, "town")
+	_walk_out(_exit("town", "hills"))
 	assert_false(f.has_enemy(idx))
 	f.roster.tick(300.0)
-	_walk_out(_exit("hills", "camp"))
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("hills", "town"))
+	_walk_out(_exit("town", "hills"))
 	assert_true(f.has_enemy(idx))
 
 func test_enemy_not_back_while_staying_in_area():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var e: Enemy = f.enemies[0]
 	var idx: int = f.enemy_index(e)
 	e.walker.take_damage(10)
@@ -116,31 +116,31 @@ func test_enemy_not_back_while_staying_in_area():
 	assert_false(f.has_enemy(idx))
 
 func test_enemies_skip_entry_cells():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var safe: Dictionary = f.area.entry_safe_cells()
 	for e in f.enemies:
 		assert_eq(e.walker.forbidden, safe)
 
 func test_grave_blocks_only_in_its_area():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var c := _open_cell()
 	f.player.mover.place(c)
 	f.kill_player(false)
 	_finish_death()
 	assert_eq(f.run.grave.area_id, "hills")
 	assert_false(f.map.is_grave(c))
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	assert_true(f.map.is_grave(c))
 	assert_string_contains(f.status_text(), "墓石：丘陵")
 
 func test_ball_on_grave_breaks_it_in_its_area():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var c := _open_cell()
 	f.run.inventory.money = 40
 	f.player.mover.place(c)
 	f.kill_player(false)
 	_finish_death()
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	f.player.mover.place(c + Vector2i(-1, 0))
 	var b: IronBall = f.ball.rules_ball
 	assert_true(b.drop_at(f.player.mover, f.map, HeightMap.cell_center(c)))
@@ -150,23 +150,23 @@ func test_ball_on_grave_breaks_it_in_its_area():
 	assert_eq(f.run.inventory.money, 40)
 
 func test_gate_closed_from_camp_and_opens_from_forest():
-	var camp_gate := _exit("camp", "forest", true)
+	var camp_gate := _exit("town", "forest", true)
 	f.player.mover.place(_mid(camp_gate, 1))
 	assert_false(f.try_open_door())
 	f.player.mover.move(Vector2(camp_gate.outward()) * 20.0)
 	f._process(0.016)
 	assert_false(f.is_switching())
 	# 丘陵を通って奥の森へ
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	_walk_out(_exit("hills", "forest"))
 	assert_eq(f.area.id, "forest")
-	var gate := _exit("forest", "camp", true)
+	var gate := _exit("forest", "town", true)
 	f.player.mover.place(_mid(gate, 1))
 	assert_string_contains(f.ui_message(), "門を開ける")
 	assert_true(f.try_open_door())
 	assert_true(f.run.is_door_open(gate.door_id))
 	_walk_out(gate)
-	assert_eq(f.area.id, "camp")
+	assert_eq(f.area.id, "town")
 	_walk_out(camp_gate)
 	assert_eq(f.area.id, "forest")
 
@@ -179,7 +179,7 @@ func test_clock_runs_while_inventory_open():
 	f.close_inventory()
 
 func test_ball_hits_enemy_where_aimed():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var c := _open_cell()
 	var e: Enemy = f.enemies[0]
 	e.set_process(false)
@@ -195,24 +195,24 @@ func test_ball_hits_enemy_where_aimed():
 
 func test_death_places_grave_and_respawns_at_bonfire():
 	f.run.inventory.money = 30
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var c := _open_cell()
 	f.player.mover.place(c)
 	f.kill_player(false)
 	assert_eq(f.run.grave.cell, c)
 	_finish_death()
-	assert_eq(f.area.id, "camp")
-	assert_eq(f.player.mover.cell(), Continent.START_CELL)
+	assert_eq(f.area.id, "town")
+	assert_eq(f.player.mover.cell(), f.run.respawn_cell())
 	assert_eq(f.player.hp, f.player.max_hp)
 	assert_eq(f.run.inventory.money, 15)
 
-func test_checkpoint_heals_in_camp():
+func test_checkpoint_heals_in_town():
 	f.player.set_hp(1)
 	f._process(0.016)
 	assert_eq(f.player.hp, f.player.max_hp)
 
 func test_walking_on_pickup_collects_it():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var p = f.area.pickups[0]
 	f.player.mover.place(p[0])
 	f._process(0.016)
@@ -230,7 +230,7 @@ func test_respawn_clears_invulnerability():
 	assert_true(f.player.take_hit())
 
 func test_melee_enemy_hit_hurts_player():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	for e in f.enemies:
 		if e.kind == EnemyKind.Kind.MELEE:
 			e.melee_hit.emit()
@@ -253,19 +253,19 @@ func test_start_hint_then_nothing():
 	assert_eq(f.ui_message(), "")
 
 func test_arrows_on_open_exits_only():
-	# 野営地：西・東・南（町）の出口に矢印、北の門には矢印なし
+	# 町：西・東・南の出口に矢印、北の門と南西の封印の門には矢印なし
 	assert_eq(f.arrow_count(), 9)
 
 ## 死んでいる間に着いた鉄球で、できたばかりの墓石が壊れない（レビューの指摘）
 func test_ball_landing_while_dying_does_not_break_new_grave():
 	f.run.inventory.money = 40
-	f.run.inventory.materials = 3
+	f.run.inventory.add("hide", 3)
 	var b: IronBall = f.ball.rules_ball
 	assert_true(b.drop_at(f.player.mover, f.map, f.player.mover.pos + Vector2(6, 0)))
 	f.kill_player(false)
 	b.update(1.0, f.player.mover, f.map, f.rules)
 	assert_not_null(f.run.grave)
-	assert_eq(f.run.inventory.materials, 0)
+	assert_eq(f.run.inventory.count("hide"), 0)
 
 ## 遊んでいる間に、ほかのエリアのモデルを少しずつ作っておく（初めて入るエリアで待たせない）
 func test_other_areas_models_warm_in_background():
@@ -281,7 +281,7 @@ func test_other_areas_models_warm_in_background():
 
 ## 読み込みで長い1フレームがあっても、明るくする演出を飛ばさない
 func test_fade_in_not_skipped_by_long_frame():
-	var ex := _exit("camp", "hills")
+	var ex := _exit("town", "hills")
 	f.player.mover.place(_mid(ex))
 	f.player.mover.move(Vector2(ex.outward()) * 12.0)
 	f._process(0.016)
@@ -290,7 +290,7 @@ func test_fade_in_not_skipped_by_long_frame():
 	assert_true(f.is_switching())
 
 func test_pickup_collected_from_next_cell_edge():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var p = f.area.pickups[0]
 	var c: Vector2i = p[0]
 	f.player.mover.place(c)
@@ -315,7 +315,7 @@ func test_easy_mode_halves_damage():
 
 ## 鉄球のダメージは17章の式（初期の攻撃力5、同じ高さなら5）
 func test_ball_damage_uses_formula():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var c := _open_cell()
 	var e: Enemy = f.enemies[0]
 	e.set_process(false)
@@ -330,7 +330,7 @@ func test_ball_damage_uses_formula():
 	assert_eq(hp - e.walker.hp, Damage.iron_ball(5, b.fall_levels, 1))
 
 func test_killing_enemies_levels_up_and_raises_max_hp_with_points():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	for e in f.enemies.duplicate():
 		e.walker.take_damage(999)
 	assert_gt(f.run.stats.level, 1)
@@ -339,15 +339,18 @@ func test_killing_enemies_levels_up_and_raises_max_hp_with_points():
 	f.apply_stats()
 	assert_eq(f.player.max_hp, 10 + PlayerStats.HP_PER_POINT)
 
-func test_heal_restores_fixed_amount():
-	f.run.inventory.heals = 1
+func test_potion_restores_fixed_amount():
+	f.run.inventory.add("potion", 1)
+	f.hotbar.select_slot(5)
 	f.player.set_hp(2)
-	assert_true(f.use_heal())
-	assert_eq(f.player.hp, 2 + Inventory.HEAL_AMOUNT)
+	assert_true(f.use_item())
+	assert_eq(f.player.hp, 2 + 6)
+	assert_eq(f.run.inventory.count("potion"), 0)
+	assert_false(f.use_tool())
 
 func test_enemy_level_follows_bosses():
 	f.run.bosses_defeated = 2
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	var e: Enemy = f.enemies[0]
 	assert_eq(e.level, 3)
 	assert_eq(e.walker.max_hp, EnemyKind.hp(e.kind, 3))
@@ -364,19 +367,20 @@ func test_allocate_from_menu_applies_stats():
 
 ## 画面で鉄球のランクを選ぶと、手に持つ鉄球が替わり攻撃力に足される
 func test_choose_ball_rank_in_menu():
-	f.run.inventory.equipment.gain("ball_2")
+	f.run.inventory.equipment.gain("ball_heavy")
 	f.open_inventory()
 	f.menu.select_slot(Equipment.Slot.BALL)
-	assert_true(f.menu.choose("ball_2"))
+	assert_true(f.menu.choose("ball_heavy"))
 	f._process(0.016)
 	assert_eq(f.ball_rank, 2)
 	assert_true(f.ball.rules_ball.strong)
-	assert_eq(f.player.held_look, "ball_2")
-	assert_eq(f.current_attack(), 5 + Equipment.ATTACK_PER_RANK)
+	assert_eq(f.player.held_look, "ball_heavy")
+	assert_eq(f.current_attack(), 5 + Equipment.ATTACK_PER_RANK + 2)  # 重い鉄球の特色：つよさ＋2
 	assert_false(f.menu.choose("sword_1"))  # 持っていない品物は選べない
 
 ## 杖の枠は1つで、持っている杖（無の杖・炎の杖…）の中から選ぶ
 func test_choose_staff_in_menu():
+	f.run.inventory.equipment.gain("staff_none_1")
 	f.run.inventory.equipment.gain("staff_fire_3")
 	f.open_inventory()
 	f.menu.select_slot(Equipment.Slot.STAFF)
@@ -386,21 +390,22 @@ func test_choose_staff_in_menu():
 	assert_eq(f.usable_spells(), [Magic.Spell.FIREBALL])
 	assert_string_contains(f.hotbar_text(), "炎の杖★3")
 
-## ランク2の鉄球は当たる範囲が広い
-func test_rank2_ball_hits_wider():
-	assert_false(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(1)))
-	assert_true(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(2)))
+## 広がる鉄球は当たる範囲が広い（特色 radius）
+func test_wide_ball_hits_wider():
+	var r := float(ItemCatalog.trait_value("ball_wide", "radius", 1.0))
+	assert_false(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(1.0)))
+	assert_true(IronBall.hits(Vector2.ZERO, 0, Vector2(10, 0), 0, IronBall.hit_radius(r)))
 
-## 野営地の宝箱で剣を手に入れ、2で持ちかえて振ると、前の敵に当たる
-func test_pick_sword_in_camp_and_swing():
-	var p = f.area.pickups[0]
-	assert_eq(p[1], RunState.PickupKind.SWORD)
-	f.player.mover.place(p[0])
-	f._process(0.016)
+## 町の武器屋で剣を買い、2で持ちかえて振ると、前の敵に当たる
+func test_buy_sword_in_town_and_swing():
+	f.run.inventory.money = 40
+	f.shop_menu.open("weapon")
+	assert_true(f.shop_menu.choose(0))
+	assert_eq(f.run.inventory.money, 0)
 	assert_eq(f.run.inventory.equipment.effective(Equipment.Slot.SWORD), 1)
-	assert_string_contains(f.ui_message(), "剣")
 	assert_true(f.hotbar.select_slot(2, f.run.inventory.equipment))
-	_walk_out(_exit("camp", "hills"))
+	f.shop_menu.close()
+	_walk_out(_exit("town", "hills"))
 	f.hotbar.select_slot(2, f.run.inventory.equipment)
 	var c := _open_cell()
 	var e: Enemy = f.enemies[0]
@@ -477,19 +482,10 @@ func test_sword_down_but_not_up():
 	assert_true(f.swing_sword())
 	assert_eq(e.walker.hp, hp)
 
-func _get_camp_pickup(kind) -> void:
-	for i in f.area.pickups.size():
-		var p = f.area.pickups[i]
-		if p[1] == kind:
-			f.player.mover.place(p[0])
-			f._process(0.016)
-			return
-	fail_test("野営地にない: %s" % kind)
-
-## 野営地で弓と矢を拾い、溜めて離すと、壁の向こうの敵にも山なりで当たる
+## 弓と矢を持ち、溜めて離すと、壁の向こうの敵にも山なりで当たる
 func test_bow_from_camp_hits_over_wall():
-	_get_camp_pickup(RunState.PickupKind.BOW)
-	_get_camp_pickup(RunState.PickupKind.ARROWS)
+	f.run.inventory.add("bow_1")
+	f.run.inventory.add("arrow", 50)
 	assert_eq(f.run.inventory.arrow_count(Arrow.Kind.NORMAL), 50)
 	assert_true(f.hotbar.select_slot(3, f.run.inventory.equipment))
 	var m := HeightMap.new(Vector2i(10, 3))
@@ -573,8 +569,10 @@ func _use_map(m: HeightMap, cell: Vector2i) -> void:
 	f.player.mover.map = m
 	f.player.mover.place(cell)
 
-## 最初から無の杖を持っている。敵にカーソルを重ねて無の弾を使うと、その高さへまっすぐ飛んで当たる
+## 無の杖で、敵にカーソルを重ねて無の弾を使うと、その高さへまっすぐ飛んで当たる
 func test_null_bolt_auto_aims_enemy():
+	assert_false(f.hotbar.select_slot(4, f.run.inventory.equipment))  # 最初は鉄球だけ
+	f.run.inventory.add("staff_none_1")
 	assert_true(f.hotbar.select_slot(4, f.run.inventory.equipment))
 	var m := HeightMap.new(Vector2i(12, 3))
 	for y in 3:
@@ -595,15 +593,17 @@ func test_null_bolt_auto_aims_enemy():
 
 ## マナが足りなければ使えない
 func test_no_mana_no_cast():
+	f.run.inventory.add("staff_none_1")
 	f.hotbar.select_slot(4, f.run.inventory.equipment)
 	f.mana.value = 2.0
 	assert_false(f.cast_spell(Vector2(200, 90)))
 	assert_string_contains(f.ui_message(), "マナが足りない")
 
-## 野営地で炎の杖（ランク3）を拾い、持ちかえる。魔法に3ポイント振ると2つ目が使え、ホイールで替えられる
-func test_fire_staff_from_camp_and_wheel():
-	_get_camp_pickup(RunState.PickupKind.STAFF_FIRE)
+## 炎の杖（ランク3）に持ちかえる。魔法に3ポイント振ると2つ目が使え、ホイールで替えられる
+func test_fire_staff_and_wheel():
 	var eq: Equipment = f.run.inventory.equipment
+	eq.gain("staff_none_1")
+	eq.gain("staff_fire_3")
 	assert_eq(eq.current(Equipment.Slot.STAFF), "staff_none_1")
 	assert_true(eq.equip("staff_fire_3"))
 	f.hotbar.select_slot(4, eq)
@@ -628,15 +628,6 @@ func test_fireball_does_not_burn_higher_ground():
 	assert_eq(f.fires_burning(), 0)
 	f._explode(HeightMap.cell_center(Vector2i(2, 1)), 0.0, 0)
 	assert_eq(f.fires_burning(), 1)
-
-## 野営地には、試すための炎の杖が2つ（ランク3と、魔法が3つの炎の大杖ランク9）ある
-func test_camp_has_two_fire_staffs():
-	var ranks := []
-	for p in f.area.pickups:
-		if p[1] == RunState.PickupKind.STAFF_FIRE:
-			ranks.append(p[2])
-	assert_eq(ranks, [3, 9])
-	assert_eq(ItemCatalog.spells("staff_fire_9").size(), 3)
 
 ## 火柱は下の敵に当たってやけどにする。崖の上（自分より高い所）の敵には当たらない
 func test_fire_pillar_only_hits_at_or_below():
@@ -671,8 +662,8 @@ func test_fire_pillar_only_hits_at_or_below():
 ## 火の玉は当たった所で弾けて敵をやけどにし、地面が少しの間燃える
 func test_fireball_burns():
 	var eq: Equipment = f.run.inventory.equipment
-	eq.gain("staff_fire_1")
-	eq.equip("staff_fire_1")
+	eq.gain("staff_fire_2")
+	eq.equip("staff_fire_2")
 	f.hotbar.select_slot(4, eq)
 	var m := HeightMap.new(Vector2i(12, 3))
 	_use_map(m, Vector2i(1, 1))
@@ -682,15 +673,15 @@ func test_fireball_burns():
 	assert_true(f.cast_spell(screen))
 	for i in 60:
 		f._step_bolts(1.0 / 60)
-	assert_eq(hp - e.walker.hp, Damage.magic(5, Magic.POWER[Magic.Spell.FIREBALL], 0))
+	assert_eq(hp - e.walker.hp, Damage.magic(f.current_attack(), Magic.POWER[Magic.Spell.FIREBALL], 0))
 	assert_true(e.walker.is_burning())
 	assert_eq(f.fires_burning(), 1)
 
 ## 炎の雨：高い所から使うほど広い。自分より高い所の敵には当たらない
 func test_fire_rain_from_high_ground():
 	var eq: Equipment = f.run.inventory.equipment
-	eq.gain("staff_fire_9")
-	eq.equip("staff_fire_9")
+	eq.gain("staff_star")
+	eq.equip("staff_star")
 	f.run.stats.add_exp(PlayerStats.exp_to_reach(8))
 	for i in 9:
 		f.run.stats.allocate(PlayerStats.Stat.MAGIC)
@@ -711,13 +702,13 @@ func test_fire_rain_from_high_ground():
 ## 敵の落とし物は拾える（エリアを出ると消える）
 func test_enemy_drop_and_pick():
 	var c := Continent.START_CELL + Vector2i(2, 0)
-	f.spawn_drop(c, RunState.PickupKind.HEAL, 1)
+	f.spawn_drop(c, "potion", 1)
 	f.player.mover.place(c)
 	f._process(0.016)
-	assert_eq(f.run.inventory.heals, 1)
+	assert_eq(f.run.inventory.count("potion"), 1)
 	assert_eq(f.drops_left(), 0)
-	f.spawn_drop(c, RunState.PickupKind.HEAL, 1)
-	_walk_out(_exit("camp", "hills"))
+	f.spawn_drop(c, "potion", 1)
+	_walk_out(_exit("town", "hills"))
 	assert_eq(f.drops_left(), 0)
 
 ## 技能（体の動き）：しゃがみ・受け身・よじ登りが、ポイントを振ると使えるようになる
@@ -745,9 +736,10 @@ func test_crouch_dodges_bullets():
 	f._step_bullets(0.016)
 	assert_eq(f.player.hp, f.player.max_hp)
 
-## 防具を拾うと最大いのちが増える
-func test_armor_from_camp():
-	_get_camp_pickup(RunState.PickupKind.ARMOR)
+## 防具を手に入れると最大いのちが増える
+func test_armor_raises_max_hp():
+	f.run.inventory.add("armor_1")
+	f._process(0.016)
 	assert_eq(f.player.max_hp, 10 + Equipment.HP_PER_ARMOR_RANK)
 
 ## 回転斬り：剣の技能を3つ覚えると、Space で後ろの敵にも当たる
@@ -790,6 +782,7 @@ func test_hero_look_follows_held_item():
 	assert_eq(f.player.anim.pose(), "release")
 	assert_same(f.player._layers, HeroModel.build("", "", "release").textures())
 	f.player.anim.update(HeroAnim.RELEASE_TIME, 0.0)
+	eq.gain("staff_none_1")
 	assert_true(f.hotbar.select_slot(4, eq))
 	f._process(0.016)
 	assert_eq(f.player.held_look, "staff_none_1")
@@ -802,7 +795,7 @@ func test_hero_look_follows_held_item():
 
 ## 放した鉄球は、主人公の手元（体の前、足元より上）から落とした点へ落ちていき、着くと土ぼこりが立つ
 func test_dropped_ball_falls_from_hands_to_target():
-	_walk_out(_exit("camp", "hills"))
+	_walk_out(_exit("town", "hills"))
 	f.player.mover.place(_open_cell())
 	f.player.mover.facing = Vector2.RIGHT
 	var target: Vector2 = f.player.mover.pos + Vector2(14, 0)
@@ -847,11 +840,12 @@ func test_portrait_holds_selected_slot_item():
 
 ## 動きの姿：薬を飲む・杖をふるう・ダメージ・倒れる・再開で、主人公の姿が変わる
 func test_actions_set_hero_poses():
-	f.run.inventory.heals = 1
+	f.run.inventory.add("potion", 1)
 	f.player.set_hp(2)
-	assert_true(f.use_heal())
+	assert_true(f.use_tool())
 	assert_eq(f.player.anim.pose(), "drink")
 	f.player.anim.update(HeroAnim.DRINK_TIME, 0.0)
+	f.run.inventory.add("staff_none_1")
 	assert_true(f.hotbar.select_slot(4, f.run.inventory.equipment))
 	assert_true(f.cast_spell(Vector2(200, 90)))
 	assert_eq(f.player.anim.pose(), "cast")
@@ -881,7 +875,7 @@ func _gimmick_area(kind: Gimmick.Kind) -> String:
 	return ""
 
 func test_resting_at_another_bonfire_sets_respawn_there():
-	f.enter_area("mt_2", Vector2i(14, 22))
+	f.enter_area("mt_2", Vector2i(2, 2))
 	var info: Dictionary = Continent.load_map(f.area)[1]
 	var fire: Vector2i = info["checkpoint"]
 	f.player.mover.place(fire + Vector2i(0, 1))
@@ -893,10 +887,11 @@ func test_resting_at_another_bonfire_sets_respawn_there():
 	assert_eq(f.player.mover.cell(), fire + Vector2i(0, 1))
 
 func test_entering_an_area_marks_it_visited():
-	assert_true(f.run.has_visited("camp"))
-	_walk_out(_exit("camp", "town"))
-	assert_eq(f.area.id, "town")
 	assert_true(f.run.has_visited("town"))
+	assert_false(f.run.has_visited("hills"))
+	_walk_out(_exit("town", "hills"))
+	assert_eq(f.area.id, "hills")
+	assert_true(f.run.has_visited("hills"))
 
 func test_ball_from_above_breaks_a_crack():
 	var id := _gimmick_area(Gimmick.Kind.CRACK)
@@ -910,7 +905,7 @@ func test_ball_from_above_breaks_a_crack():
 	assert_false(f.map.is_wall(g.cells[0]))
 	assert_eq(f.gimmick_markers(g.id), 0)
 	# 出て入り直しても、開いたまま
-	f.enter_area("camp", Continent.START_CELL)
+	f.enter_area("town", Continent.START_CELL)
 	f.enter_area(id, g.cells[0])
 	assert_false(f.map.is_wall(g.cells[0]))
 
@@ -959,28 +954,168 @@ func test_tower_seal_needs_four_bosses():
 	f.player.mover.place(_mid(ex, 1))
 	assert_string_contains(f.ui_message(), "封印")
 	assert_false(f.try_open_door())
-	f.run.bosses_defeated = 4
+	for b in RunState.REGION_BOSSES:
+		f.run.on_boss_killed(b, 1)
 	assert_true(f.try_open_door())
 	assert_true(f.run.is_door_open(RunState.SEAL_DOOR))
 
-func test_merchant_and_statue_talk():
-	f.enter_area("town", Vector2i(12, 13))
-	var info: Dictionary = Continent.load_map(f.area)[1]
-	var m: Vector2i = info["merchants"][0]
-	f.player.mover.place(m + Vector2i(0, 1))
+## 町の商人のそばで F を押すとお店が開き、買える。鍛冶屋では素材とお金で作る
+func test_town_shops_and_smith():
+	f.enter_area("town", Continent.START_CELL)
+	var shops: Array = f.area.merchants
+	assert_eq(shops.map(func(m): return m[1]), ["tool", "weapon", "smith"])
+	f.player.mover.place(shops[0][0] + Vector2i(0, 1))
 	f._title_time = 0.0
 	f._start_hint_time = 0.0
-	assert_string_contains(f.ui_message(), "準備中")
-	f.enter_area("mt_5", Continent.START_CELL)
-	var b: Vector2i = f.area.bosses[0][0]
-	f.player.mover.place(b + Vector2i(0, 1))
-	f._title_time = 0.0
-	assert_string_contains(f.ui_message(), "岩転がしの巨人")
+	assert_string_contains(f.ui_message(), "道具屋")
+	assert_true(f.try_open_shop())
+	assert_true(f.shop_menu.is_open())
+	assert_eq(f.shop_menu.shop_id, "tool")
+	assert_false(f.shop_menu.choose(0))  # お金がない
+	f.run.inventory.money = 15
+	assert_true(f.shop_menu.choose(0))
+	assert_eq(f.run.inventory.count("potion"), 1)
+	f.player.mover.place(Continent.START_CELL + Vector2i(0, 6))
+	f._process(0.016)
+	assert_false(f.shop_menu.is_open(), "離れると閉じる")
+	# 鍛冶屋：丈夫な枝2と鉄くず2とお金10で剣
+	f.player.mover.place(shops[2][0] + Vector2i(0, 1))
+	assert_true(f.try_open_shop())
+	f.run.inventory.money = 10
+	f.run.inventory.add("wood", 2)
+	f.run.inventory.add("scrap", 2)
+	var idx := -1
+	for i in Recipes.LIST.size():
+		if Recipes.LIST[i][0] == "sword_1":
+			idx = i
+	assert_true(f.shop_menu.choose(idx))
+	assert_true(f.run.inventory.equipment.has("sword_1"))
+	assert_eq(f.run.inventory.count("wood"), 0)
+
+## 敵を倒すと、お金とその地方の素材などを落とす
+func test_enemy_drops_loot():
+	_walk_out(_exit("town", "hills"))
+	var e: Enemy = f.enemies[0]
+	e.walker.take_damage(999)
+	assert_gt(f.drops_left(), 0)
+	assert_eq(f._drops[0][1], "money")
+
+## 盾持ちは正面からの剣を防ぎ、背中からは通る
+func test_shield_blocks_front():
+	f.run.inventory.add("sword_1")
+	f.hotbar.select_slot(2, f.run.inventory.equipment)
+	var m := HeightMap.new(Vector2i(8, 3))
+	_use_map(m, Vector2i(2, 1))
+	for e in f.enemies:
+		e.queue_free()
+	f.enemies.clear()
+	var e := Enemy.new()
+	e.setup(m, Vector2i(3, 1), Vector2.LEFT, f.player, f.camera, EnemyKind.Kind.SHIELD)
+	add_child_autofree(e)
+	e.set_process(false)
+	f.enemies.append(e)
+	f.player.mover.facing = Vector2.RIGHT
+	var hp: int = e.walker.hp
+	assert_true(f.swing_sword())
+	assert_eq(e.walker.hp, hp)
+	e.walker.dir = Vector2.RIGHT  # 背中を向けた
+	f.sword.update(1.0)
+	assert_true(f.swing_sword())
+	assert_lt(e.walker.hp, hp)
+
+## 防具の守りで受けるダメージが減り、足の速い服で速くなる
+func test_armor_traits():
+	f.run.inventory.add("armor_leather")
+	f.run.inventory.add("armor_travel")
+	f.run.inventory.equipment.equip("armor_leather")
+	f.apply_stats()
+	var hp: int = f.player.hp
+	f.hurt_player(4)
+	assert_eq(hp - f.player.hp, 4 - 1)
+	f.run.inventory.equipment.equip("armor_travel")
+	f.apply_stats()
+	assert_almost_eq(f.player.speed_mult, 1.1, 0.001)
+
+## 道具はホイールで替える。力の薬で少しの間つよさ＋3
+func test_tools_cycle_and_power_potion():
+	f.run.inventory.add("potion", 1)
+	f.run.inventory.add("power", 1)
+	f.hotbar.select_slot(5)
+	assert_eq(f.run.inventory.current_tool(), "potion")
+	f.run.inventory.cycle_tool(1)
+	assert_eq(f.run.inventory.current_tool(), "power")
+	var before: int = f.current_attack()
+	assert_true(f.use_item())
+	assert_eq(f.current_attack(), before + 3)
+	assert_string_contains(f.status_text(), "力")
+	f._process(31.0)
+	assert_eq(f.current_attack(), before)
+
+## ボス：ボスの間に入るといて、倒すと覚えられ、ランク4の品物とボスの素材を落とす。入り直しても戻らない
+func test_boss_defeat_is_remembered():
+	f.enter_area("mt_5", Vector2i(10, 18))
+	assert_eq(f.bosses.size(), 1)
+	var b: Boss = f.bosses[0]
+	assert_eq(b.group, "岩転がしの巨人")
+	b.walker.take_damage(9999)
+	assert_true(f.run.is_boss_defeated("岩転がしの巨人"))
+	var ids: Array = f._drops.map(func(d): return d[1])
+	assert_true("sword_giant" in ids)
+	assert_true("giant_core" in ids)
+	f.enter_area("mt_5", Vector2i(10, 18))
+	assert_eq(f.bosses.size(), 0)
+
+## 死んだらボスの体力は戻る
+func test_boss_heals_when_player_dies():
+	f.enter_area("gr_5", Vector2i(2, 9))
+	var b: Boss = f.bosses[0]
+	b.walker.take_damage(10)
+	f.kill_player(false)
+	_finish_death()
+	f.enter_area("gr_5", Vector2i(2, 9))
+	assert_eq(f.bosses[0].walker.hp, f.bosses[0].walker.max_hp)
+
+## 双子は2体で、両方倒すと1つのボスとして数える
+func test_twins_count_once():
+	f.enter_area("tw_2", Vector2i(9, 2))
+	assert_eq(f.bosses.size(), 2)
+	f.bosses[0].walker.take_damage(9999)
+	assert_false(f.run.is_boss_defeated("双子"))
+	f.bosses[1].walker.take_damage(9999)
+	assert_true(f.run.is_boss_defeated("双子"))
+	assert_eq(f.run.bosses_defeated, 1)
+
+## らせん塔の番人は背中にしか攻撃が効かない
+func test_guardian_only_hurt_from_behind():
+	f.enter_area("tw_3", Vector2i(9, 1))
+	var b: Boss = f.bosses[0]
+	var front: Vector2 = b.walker.pos + b.facing() * 20.0
+	var back: Vector2 = b.walker.pos - b.facing() * 20.0
+	assert_true(b.blocks(front))
+	assert_false(b.blocks(back))
+
+## ブライトの光で画面が白くなる。設定で弱められる
+func test_bright_flash_can_be_softened():
+	f.flash_screen(1.5)
+	f._process(0.016)
+	var strong: float = f._flash.color.a
+	f.settings.soft_flash = true
+	f._process(0.016)
+	assert_gt(strong, 0.5)
+	assert_lt(f._flash.color.a, strong)
+
+## ブライトを倒すとゲームの終わり（そのあとも遊べる）
+func test_bright_ends_the_game():
+	f.enter_area("tw_4", Vector2i(9, 1))
+	f.bosses[0].walker.take_damage(99999)
+	assert_true(f.run.cleared)
+	assert_string_contains(f.ui_message(), "おわり")
+	assert_eq(f.area_state.result, AreaState.Result.PLAYING)
 
 func test_map_toggles_with_m():
 	assert_false(f.map_view.visible)
 	f.toggle_map()
 	assert_true(f.map_view.visible)
-	assert_eq(f.map_view.current_id, "camp")
+	assert_eq(f.map_view.current_id, "town")
 	f.toggle_map()
 	assert_false(f.map_view.visible)

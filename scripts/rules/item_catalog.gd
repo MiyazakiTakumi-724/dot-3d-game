@@ -144,7 +144,7 @@ static func exists(id: String) -> bool:
 static func is_material(id: String) -> bool:
 	return MATERIALS.has(id)
 
-static func is_tool(id: String) -> bool:
+static func is_tool_item(id: String) -> bool:
 	return TOOLS.has(id)
 
 static func is_arrow(id: String) -> bool:
@@ -152,7 +152,7 @@ static func is_arrow(id: String) -> bool:
 
 ## 数で持つ品物（素材・道具・矢）か。
 static func is_counted(id: String) -> bool:
-	return is_material(id) or is_tool(id) or is_arrow(id)
+	return is_material(id) or is_tool_item(id) or is_arrow(id)
 
 ## どれかの品物か（お金も含む）。
 static func known(id: String) -> bool:
@@ -184,7 +184,7 @@ static func trait_value(id: String, key: String, dflt = 0):
 
 ## 特色の説明（なければ空）。
 static func trait_of(id: String) -> String:
-	if is_tool(id):
+	if is_tool_item(id):
 		return TOOLS[id]["info"]
 	var parts: Array[String] = []
 	var t := traits(id)

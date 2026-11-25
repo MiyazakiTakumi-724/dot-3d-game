@@ -241,7 +241,7 @@ static func pickup(id: String) -> VoxelModel:
 			for x in range(3, 14):
 				var w := 2 if x < 11 else 1
 				VoxelDraw.fill(m, Vector3i(x, 4 - w, 1), Vector3i(x, 4 + w, 1), TOOL_TINT["feather"])
-		elif ItemCatalog.is_tool(id):
+		elif ItemCatalog.is_tool_item(id):
 			# 薬：丸いびん・首・せん・光
 			m.size = Vector3i(10, 10, 14)
 			VoxelDraw.ellipsoid(m, Vector3(4.5, 4.5, 4.0), Vector3(3.8, 3.8, 3.8), TOOL_TINT.get(id, HeroModel.POTION))
@@ -406,7 +406,7 @@ static func merchant(v := 0) -> VoxelModel:
 	if not _cache.has(key):
 		var m := VoxelModel.new()
 		m.size = Vector3i(24, 24, 40)
-		var cloth: Color = [Color("4f7a3a"), Color("8a3a3a"), Color("5a4a8a")][v]
+		var cloth: Color = [Color("4f7a3a"), Color("8a3a3a"), Color("5a4a8a"), Color("5a4636")][v]  # 道具屋・武器屋・旅の商人・鍛冶屋
 		var skin := Color("f0c49a")
 		VoxelDraw.fill(m, Vector3i(8, 9, 0), Vector3i(10, 12, 5), Color("4a3020"))  # 足
 		VoxelDraw.fill(m, Vector3i(13, 9, 0), Vector3i(15, 12, 5), Color("4a3020"))

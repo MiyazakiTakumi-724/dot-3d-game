@@ -50,7 +50,7 @@ func materials() -> Array:
 	return ids(ItemCatalog.is_material)
 
 func tools() -> Array:
-	return ids(ItemCatalog.is_tool)
+	return ids(ItemCatalog.is_tool_item)
 
 ## 手に持つ道具。選んだものがなくなっていれば、持っている道具の最初のもの。何もなければ空。
 func current_tool() -> String:

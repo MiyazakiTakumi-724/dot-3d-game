@@ -840,7 +840,7 @@ def make_town():
         if (x in (0, 23) or y in (0, 19)) and (x, y) not in g.reserved:
             g.O[y][x] = g.rng.choice('TPTB')
     scatter_theme(g, 607, avoid=lambda x, y: g.O[y][x] == 's')
-    g.start = (12, 12)
+    g.start = (12, 11)
     return g
 
 # ---------------------------------------------------------------- はじまりの地

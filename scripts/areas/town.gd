@@ -8,7 +8,7 @@ const THEME := "town"
 const ORIGIN := Vector2i(0, 0)
 ## 広場（たき火・町・ボスの間）。広い平地があってよい
 const OPEN_FLAT := true
-const START := Vector2i(12, 12)
+const START := Vector2i(12, 11)
 const HEIGHTS := [
 	"111222211233321111111111",
 	"111111111233321111111111",
