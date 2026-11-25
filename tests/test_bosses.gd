@@ -124,6 +124,7 @@ func test_snake_burrows_and_comes_up_under_player():
 ## 溶岩：2段目は満ち引きが速く、火柱が立つ（先に印）
 func test_lava_pillars_in_phase_two():
 	var b := _enter("満ち引きする溶岩")
+	_quiet(b)
 	_half(b)
 	_run(3.2)
 	assert_gt(f.strikes_count(), 0)

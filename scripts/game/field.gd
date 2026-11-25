@@ -329,6 +329,7 @@ func _spawn_enemies() -> void:
 		e.melee_hit.connect(_on_melee_hit.bind(e))
 		e.exploded.connect(_on_enemy_exploded.bind(e))
 		e.lobbed.connect(_on_enemy_lobbed.bind(e))
+		_wire_enemy(e)
 		e.walker.died.connect(_on_enemy_died.bind(area.id, i, e.kind, lv, e.walker))
 		_area_root.add_child(e)
 		enemies.append(e)
@@ -387,10 +388,41 @@ func spawn_minion(kind: EnemyKind.Kind, at: Vector2) -> Enemy:
 	e.melee_hit.connect(_on_melee_hit.bind(e))
 	e.exploded.connect(_on_enemy_exploded.bind(e))
 	e.lobbed.connect(_on_enemy_lobbed.bind(e))
+	_wire_enemy(e)
 	_area_root.add_child(e)
 	enemies.append(e)
 	_effect_sprite(Props.rain_ring(8.0), e.walker.pos, e.walker.height, 0.0, 0.3)
 	return e
+
+## 敵の技（2026-11-26）に要るつなぎ：落ちてくる矢を調べる・スライムが分かれる・魔術師が呼ぶ。
+func _wire_enemy(e: Enemy) -> void:
+	e.field = self
+	e.split.connect(_on_slime_split)
+	e.summon.connect(_on_enemy_summon)
+
+## スライムが倒れて、小さい2匹に分かれる（落とし物も経験値もない）。
+func _on_slime_split(pos: Vector2, _h: int) -> void:
+	if area_state.result != AreaState.Result.PLAYING or is_switching():
+		return
+	for k in 2:
+		var at := pos + Vector2(-6.0 if k == 0 else 6.0, 0.0)
+		var s := spawn_minion(EnemyKind.Kind.WEAK, at)
+		if s == null:
+			s = spawn_minion(EnemyKind.Kind.WEAK, pos)
+		if s != null:
+			s.make_small()
+
+func _on_enemy_summon(kind: EnemyKind.Kind, at: Vector2) -> void:
+	if area_state.result == AreaState.Result.PLAYING and not is_switching():
+		spawn_minion(kind, at)
+
+## 飛んでいる矢のうち、pos から r 以内に落ちるものの落ちる所（なければ Vector2.INF）。ゴブリンがよけるのに使う。
+func incoming_arrow(pos: Vector2, r: float) -> Vector2:
+	for sh in _shots:
+		var a: Arrow = sh[0]
+		if a.to.distance_to(pos) < r:
+			return a.to
+	return Vector2.INF
 
 ## ボスの体の一部（宝箱の王のにせものなど）をエリアに置く。
 func add_boss_part(n: Node) -> void:
@@ -809,6 +841,8 @@ func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, s
 		"block":
 			_popup_text(e.walker.pos, e.walker.height, "ふせいだ", gray)
 			Sfx.play("block", e.walker.pos)
+			if e.has_method("on_blocked"):
+				e.on_blocked()
 			return false
 		"armor":
 			dmg = 1
