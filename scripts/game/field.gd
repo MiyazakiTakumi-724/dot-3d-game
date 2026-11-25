@@ -1636,7 +1636,7 @@ func _build_ui() -> void:
 	_guide.text = "クリック:使う　1〜5:持ちかえ　Tab:持ち物　M:地図　右ドラッグ:カメラ"
 	layer.add_child(_guide)
 	_boss_bar = Control.new()
-	_boss_bar.position = Vector2(80, 152)
+	_boss_bar.position = Vector2(80, 24)
 	_boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_boss_bar)
 	var bg := ColorRect.new()
