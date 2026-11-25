@@ -39,6 +39,11 @@ var shadow_radius := 0.0
 var rim_sides := 0
 var rim_layer := 0
 var rim_color := Color.WHITE
+## 地面の柱の上の面に落ちる影（2026-11-26）。shade_layer に、material（ShadowMap.material）で影を描く
+var shade_on := false
+var shade_cell := Vector2i.ZERO
+var shade_height := 0
+var shade_layer := 0
 
 ## 画面（320×180）から、これだけ外にはみ出したものは描かない。広いエリアで描画を軽くするため。
 ## 輪切りを回すと、マスより少し大きく見えるので、その分の余裕。
@@ -99,11 +104,16 @@ func _on_screen() -> bool:
 		and position.y + m > 0.0 and position.y - _layers.size() * layer_step() - m < 180.0
 
 ## 足元の影。横長の楕円（ドット絵らしく、少ない色の半透明の黒）。
+## 2026-11-26：日の向き（ShadowMap.SUN）の逆へのびる、青みのある長い影も重ねる（地面の木や崖の影と同じ向き）。
 func _draw_shadow() -> void:
 	if shadow_radius <= 0.0:
 		return
+	var dir := (-ShadowMap.SUN).normalized().rotated(-camera.angle)
+	var cast := ShadowMap.SHADE_COLOR
+	draw_set_transform(Vector2(0, lift_px) + dir * shadow_radius * 0.8, dir.angle(), Vector2(1.6, 0.7))
+	draw_circle(Vector2.ZERO, shadow_radius, Color(cast.r, cast.g, cast.b, 0.3), true, -1.0, false)
 	draw_set_transform(Vector2(0, lift_px), 0.0, Vector2(1.0, 0.6))
-	draw_circle(Vector2.ZERO, shadow_radius, Color(0, 0, 0, 0.32), true, -1.0, false)
+	draw_circle(Vector2.ZERO, shadow_radius, Color(0, 0, 0, 0.3), true, -1.0, false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func needs_redraw() -> bool:
@@ -115,6 +125,7 @@ func _draw() -> void:
 	_drawn_angle = camera.angle
 	_draw_shadow()
 	_draw_stack(turn - camera.angle)
+	_draw_shade()
 	_draw_rim()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -143,6 +154,13 @@ func layer_step() -> float:
 func _layer_pos(i: int, skip: int, stretch: float) -> Vector2:
 	var y := (skip - i) * layer_step() * stretch
 	return Vector2(0, roundf(y * StackCamera.PIXEL_SCALE) / StackCamera.PIXEL_SCALE)
+
+## 上の面に落ちる影（地面の柱だけ）。色にマスと高さを入れて、材質のシェーダーが影を決める。
+func _draw_shade() -> void:
+	if not shade_on:
+		return
+	draw_set_transform(Vector2(0, -shade_layer), -camera.angle, Vector2.ONE)
+	draw_texture_rect(ShadowMap.white(), Rect2(-8, -8, 16, 16), false, ShadowMap.cell_code(shade_cell, shade_height))
 
 ## 上の面のふちの明るい線（地面の柱だけ）。
 func _draw_rim() -> void:

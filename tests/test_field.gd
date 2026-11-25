@@ -1421,3 +1421,21 @@ func test_hotbar_slots_show_icons_and_counts():
 	f.run.inventory.add("bomb", 2)
 	assert_eq(f.hotbar_slot(Hotbar.Item.TOOL)["id"], "bomb")
 	assert_eq(f.hotbar_slot(Hotbar.Item.TOOL)["count"], 2)
+
+## 2026-11-26（3回目の直し）：地方ごとの空気（暗さ・明かり・舞うもの）と、地面の影
+func test_atmosphere_follows_region_and_lights_the_dark():
+	assert_eq(f.atmosphere.theme, "town")
+	assert_false(f.atmosphere.is_dark())
+	f.enter_area("lv_1", Continent.START_CELL)
+	assert_eq(f.atmosphere.theme, "lava")
+	assert_true(f.atmosphere.is_dark())
+	assert_gt(f._lava_cells.size(), 0, "溶岩のマスは明かりになる")
+	f._process(0.016)
+
+func test_ground_columns_draw_shadows():
+	var n := 0
+	for s in f._terrain_root.get_children():
+		if s is StackSprite and s.shade_on:
+			n += 1
+			assert_not_null(s.material)
+	assert_gt(n, 100)

@@ -175,6 +175,8 @@ static var _models := {}
 const DECO_BIAS := 5
 
 static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dictionary = {}) -> void:
+	# 地面に落ちる木や崖の影（2026-11-26）。エリアの地面の柱で1つの材質を使う
+	var shade := ShadowMap.material(map, deco)
 	for y in map.size.y:
 		for x in map.size.x:
 			var cell := Vector2i(x, y)
@@ -189,6 +191,11 @@ static func build(map: HeightMap, camera: StackCamera, parent: Node2D, deco: Dic
 				s.rim_sides = lower_sides(map, cell)
 				s.rim_layer = (h - bottom) * StackSprite.LEVEL_PX
 				s.rim_color = top_color(h).lightened(0.38)
+				s.material = shade
+				s.shade_on = true
+				s.shade_cell = cell
+				s.shade_height = h
+				s.shade_layer = s.rim_layer
 			if keys.size() > 1:
 				_place(parent, camera, cell, h, DECO_BIAS, _cached(keys[1]))
 

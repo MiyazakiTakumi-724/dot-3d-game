@@ -69,6 +69,10 @@ var _boss_fill: ColorRect
 var _boss_label: Label
 var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・墓石のあるエリア（文字。画面には出さず、hud が描く）
 var hud: Hud  ## いのちとマナのバー・手に持つ物の箱・杖の魔法の待ち時間
+## 画面全体の空気：雲の影・地方の暗さと明かり・舞うもの（2026-11-26）
+var atmosphere: Atmosphere
+## 今のエリアの溶岩のマス（明かりにする）
+var _lava_cells: Array[Vector2i] = []
 var _message: Label  ## 真ん中：エリアの名前・門のヒント・やられた
 var _popups: Control  ## ダメージの数字を置く所（エリアを切り替えると片付ける）
 ## 真ん中に少しの間だけ出す知らせ（レベルアップ・武器を手に入れたなど）
@@ -118,6 +122,9 @@ func _ready() -> void:
 	camera = StackCamera.new()
 	add_child(camera)
 	Terrain.add_background(self)
+	atmosphere = Atmosphere.new()
+	add_child(atmosphere)
+	atmosphere.setup(camera)
 	_area_root = Node2D.new()
 	add_child(_area_root)
 
@@ -216,11 +223,17 @@ func enter_area(id: String, cell: Vector2i) -> void:
 
 	area = world.area(id)
 	player.step_sound = STEP_SOUNDS.get(area.theme, "step_grass")
+	if atmosphere != null:
+		atmosphere.set_theme(area.theme)
 	run.visit(id)
 	var loaded := Continent.load_map(area)
 	map = loaded[0]
 	var info: Dictionary = loaded[1]
 	_deco = info["deco"]
+	_lava_cells.clear()
+	for k in _deco:
+		if k is Vector2i and _deco[k] == "lava":
+			_lava_cells.append(k)
 	for g in area.gimmicks:
 		if run.is_gimmick_open(g.id):
 			_apply_open(g)
@@ -883,6 +896,7 @@ func _process(delta: float) -> void:
 		elif area_state.result == AreaState.Result.DYING and player.mover.fell:
 			player.modulate.a = 0.0
 	_update_aim()
+	_update_lights()
 	if map_view != null and map_view.visible:
 		_sync_map()
 	_flash_time = maxf(0.0, _flash_time - delta)
@@ -1955,6 +1969,35 @@ func _burn_gimmicks(point: Vector2, radius: float) -> void:
 		if g.by_fire(point, radius):
 			open_gimmick(g)
 
+## 明かり（2026-11-26）：たき火・燃えている所・火の玉・溶岩・主人公（暗い地方だけ）。Atmosphere が画面を照らす。
+func _update_lights() -> void:
+	if atmosphere == null:
+		return
+	var list := []
+	var flick := 0.92 + 0.08 * sin(_arrow_blink * 13.0) * sin(_arrow_blink * 7.3)
+	if _campfire_cell.x >= 0:
+		list.append([HeightMap.cell_center(_campfire_cell), map.get_height(_campfire_cell) * StackSprite.LEVEL_PX + 6.0, 100.0 * flick, 1.0])
+	if atmosphere.is_dark():
+		var mv := player.mover
+		list.append([mv.pos, mv.height * StackSprite.LEVEL_PX + 8.0, 64.0, 0.8])
+	for f in _fires:
+		list.append([f[0], f[1] * StackSprite.LEVEL_PX + 4.0, 44.0 * flick, 0.9])
+	for b in _bolts:
+		var p: Pellet = b[0]
+		list.append([p.pos, p.z, 30.0, 0.8])
+	if not _lava_cells.is_empty():
+		var f := camera.focus
+		var near := []
+		for c in _lava_cells:
+			var d := HeightMap.cell_center(c).distance_squared_to(f)
+			if d < 150.0 * 150.0 and (c.x + c.y) % 2 == 0:  # 画面の近くの、1つおきのマス
+				near.append([d, c])
+		near.sort_custom(func(a, b): return a[0] < b[0])
+		for e in near.slice(0, 8):
+			var c: Vector2i = e[1]
+			list.append([HeightMap.cell_center(c), map.get_height(c) * StackSprite.LEVEL_PX, 40.0 * flick, 0.55])
+	atmosphere.set_lights(list)
+
 ## 魔法（弾・炎・雷）が point のまわり radius に当たった。水晶が光る。
 func _magic_gimmicks(point: Vector2, radius: float) -> void:
 	for g in _closed_gimmicks():
@@ -2071,6 +2114,7 @@ func toggle_map() -> void:
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
+	layer.layer = 2  # 画面全体の空気（Atmosphere、レイヤー1）より上
 	add_child(layer)
 	_status = UiText.label()
 	_status.position = Vector2(4, 2)
