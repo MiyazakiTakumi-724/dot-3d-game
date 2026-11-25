@@ -149,8 +149,9 @@ func setup(f: Node, name_: String, cell: Vector2i, map: HeightMap, cam: StackCam
 	sort_by_cell = true
 	always_redraw = true
 	draw_bias = 1
-	shadow_radius = 9.0 if group != "宝箱の王" else 7.0
-	voxel_scale = BossModels.VOXEL_SCALE
+	shadow_radius = 16.0 if group != "宝箱の王" else 12.0
+	voxel_scale = BossModels.DRAW_SCALE
+	walker.touch_radius = EnemyWalker.TOUCH_RADIUS + BossModels.BODY_EXTRA
 	outline_color = Player.OUTLINE_COLOR
 	set_model(BossModels.model(group))
 	walker.died.connect(_on_died)

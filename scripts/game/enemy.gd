@@ -108,8 +108,9 @@ func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, 
 	draw_bias = 1
 	sort_by_cell = true
 	always_redraw = true  # 向きが変わる
-	shadow_radius = 5.0 if kind != EnemyKind.Kind.WASP else 3.0
-	voxel_scale = EnemyModels.VOXEL_SCALE
+	shadow_radius = 7.5 if kind != EnemyKind.Kind.WASP else 4.5
+	voxel_scale = EnemyModels.DRAW_SCALE
+	walker.touch_radius = EnemyWalker.TOUCH_RADIUS + EnemyModels.BODY_EXTRA
 	outline_color = Player.OUTLINE_COLOR
 	_cooldown = first_shot_delay
 	_home = walker.pos

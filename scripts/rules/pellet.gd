@@ -78,6 +78,6 @@ func _substep(s: float, map: HeightMap) -> void:
 		alive = false
 
 ## target に立つ、高さ target_h のものの体に当たっているか。
-func hits_body(target: Vector2, target_h: int) -> bool:
+func hits_body(target: Vector2, target_h: int, extra := 0.0) -> bool:
 	var base := target_h * 8.0
-	return alive and pos.distance_to(target) < HIT_RADIUS and z >= base - 1.0 and z <= base + BODY_PX + 1.0
+	return alive and pos.distance_to(target) < HIT_RADIUS + extra and z >= base - 1.0 and z <= base + BODY_PX * (1.0 + extra / 8.0) + 1.0

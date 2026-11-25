@@ -408,7 +408,7 @@ func boss_roll(from: Vector2, dir: Vector2, dmg: int, model: VoxelModel = null) 
 	var h := map.get_height(c)
 	var s := _effect_sprite(model if model != null else BossModels.model("", "boulder"), from, h, 0.0, 30.0)
 	if model == null:
-		s.voxel_scale = BossModels.VOXEL_SCALE
+		s.voxel_scale = BossModels.DRAW_SCALE
 	s.set_meta("steady", true)
 	_rollers.append([from, dir, ROLL_WAIT, dmg, s, h])
 	Sfx.play("roll", from)
@@ -753,6 +753,14 @@ func targets() -> Array:
 ## 敵の種類とようすで、入り方が変わる（敵は EnemyKind.hit_rule、ボスは Boss.hit_rule）：
 ## 浮いている敵に剣と鉄球は「とどかない」、すけている亡霊は「すりぬけた」、盾の正面は「ふせいだ」、
 ## 甲虫のかたい殻は1だけ（「かたい」）、目を回しているイノシシは2倍。
+## 敵・ボスの体が大きい分、攻撃が当たる範囲を広げる量（px。2026-11-26 に敵とボスを大きくした）。
+static func body_extra(e) -> float:
+	if e is Boss:
+		return BossModels.BODY_EXTRA
+	if e is Enemy:
+		return EnemyModels.BODY_EXTRA
+	return 0.0
+
 func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, source := "sword") -> bool:
 	var rule: String = e.hit_rule(source, from)
 	var gray := Color("b0b8c8")
@@ -1041,7 +1049,7 @@ func swing_sword() -> bool:
 		if g.by_sword(mv.pos, mv.height, mv.facing, map, thrust):
 			open_gimmick(g)
 	for e in targets():
-		if Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, thrust, reach):
+		if Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, thrust, reach + body_extra(e) / Sword.REACH):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
 			damage_target(e, dmg, mv.pos, id, Color("ffb347") if fall > 0 else Color.WHITE, "sword")
 	if run.grave != null and run.grave.area_id == area.id:
@@ -1178,7 +1186,7 @@ func _arrow_landed(a: Arrow, dmg: int, from := Vector2.ZERO) -> void:
 	var land_h := map.get_height(c)
 	# 撃った所より高い地面に落ちた矢は、そこの敵に当たらない（下から上へは攻撃できない）
 	for e in targets():
-		if Damage.can_hit(a.from_h, land_h) and Arrow.hits(a.to, land_h, e.walker.pos, e.walker.height):
+		if Damage.can_hit(a.from_h, land_h) and Arrow.hits(a.to, land_h, e.walker.pos, e.walker.height, body_extra(e)):
 			if damage_target(e, dmg, from, run.inventory.equipment.current(Equipment.Slot.BOW), Color.WHITE, "arrow"):
 				if a.kind == Arrow.Kind.POISON:
 					e.walker.poison(Arrow.POISON_SECONDS)
@@ -1211,7 +1219,7 @@ func spin_slash() -> bool:
 	Sfx.play("spin")
 	var id := run.inventory.equipment.current(Equipment.Slot.SWORD)
 	for e in targets():
-		if Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, float(ItemCatalog.trait_value(id, "reach", 1.0))):
+		if Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, float(ItemCatalog.trait_value(id, "reach", 1.0)) + body_extra(e) / Sword.REACH):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0)
 			damage_target(e, dmg, mv.pos, id, Color.WHITE, "sword")
 	return true
@@ -1379,7 +1387,7 @@ func _step_bolts(delta: float) -> void:
 		p.step(delta, map)
 		if p.alive and playing:
 			for e in targets():
-				if Damage.can_hit(from_h, e.walker.height) and p.hits_body(e.walker.pos, e.walker.height):
+				if Damage.can_hit(from_h, e.walker.height) and p.hits_body(e.walker.pos, e.walker.height, body_extra(e)):
 					if spell != Magic.Spell.FIREBALL:
 						_hit_enemy(e, spell, from_h)
 					p.alive = false
@@ -1786,7 +1794,7 @@ func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
 	var damage := Damage.iron_ball(current_attack() if hotbar.selected == Hotbar.Item.IRON_BALL else _ball_attack(), ball.rules_ball.fall_levels)
 	var radius := IronBall.hit_radius(float(ItemCatalog.trait_value(id, "radius", 1.0)))
 	for e in targets():
-		if IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height, radius):
+		if IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height, radius + body_extra(e)):
 			# 鉄球は上から落ちるので、盾では防げない（浮いている敵には当たらない）。ボスの弱点は、ボスが決める
 			damage_target(e, damage, land_pos, id, Color.WHITE, "ball")
 

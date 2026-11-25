@@ -70,5 +70,5 @@ func direction() -> Vector2:
 	return (to - from).normalized()
 
 ## 落ちた点（地面の高さ land_h）が、other_pos に立つ高さ other_h のものに当たるか。
-static func hits(land_pos: Vector2, land_h: int, other_pos: Vector2, other_h: int) -> bool:
-	return land_h == other_h and land_pos.distance_to(other_pos) < HIT_RADIUS
+static func hits(land_pos: Vector2, land_h: int, other_pos: Vector2, other_h: int, extra := 0.0) -> bool:
+	return land_h == other_h and land_pos.distance_to(other_pos) < HIT_RADIUS + extra

@@ -15,7 +15,7 @@ func setup(map: HeightMap, cell: Vector2i, cam: StackCamera) -> void:
 	sort_by_cell = true
 	draw_bias = 1
 	shadow_radius = 7.0
-	voxel_scale = BossModels.VOXEL_SCALE
+	voxel_scale = BossModels.DRAW_SCALE
 	outline_color = Player.OUTLINE_COLOR
 	turn = Vector2.DOWN.angle() - PI / 2
 	set_model(BossModels.model("宝箱の王", "decoy"))

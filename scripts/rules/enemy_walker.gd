@@ -11,6 +11,8 @@ const SPEED := 24.0
 const MAX_HP := 3
 ## 体当たりになる、中心どうしの距離（px）。敵の体は8px、プレイヤーは6px。
 const TOUCH_RADIUS := 9.0
+## 体当たりの範囲（大きい敵・ボスは広い。2026-11-26）
+var touch_radius := TOUCH_RADIUS
 const CHASE_RANGE := 48.0  ## これより近いと寄ってくる（3マス）
 const CHASE_STOP := 10.0  ## これより近づいたら止まる（重ならないように）
 
@@ -117,7 +119,7 @@ func is_slowed() -> bool:
 
 ## pos に立っている、高さ h のものに触れているか。
 func touches(p: Vector2, h: int) -> bool:
-	return alive and h == height and pos.distance_to(p) < TOUCH_RADIUS
+	return alive and h == height and pos.distance_to(p) < touch_radius
 
 ## 毒にする（毒矢）。seconds 秒の間、毎秒 DOT_DAMAGE。もう毒なら長い方にする。
 func poison(seconds: float) -> void:

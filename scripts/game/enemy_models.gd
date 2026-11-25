@@ -4,6 +4,10 @@ extends RefCounted
 ## 前は +y、上は +z。影は VoxelShade（まわりの空き方から面の向きを出して4段階）。一度作った形は使い回す。
 
 const VOXEL_SCALE := 0.5
+## 画面に描く大きさ（2026-11-26 の3回目の直し：敵を1.5倍に）。形は同じで、描くときに大きくする。
+const DRAW_SCALE := VOXEL_SCALE * 1.5
+## 体が大きくなった分、攻撃が当たる範囲を広げる量（px）
+const BODY_EXTRA := 2.5
 
 const EYE := Color("fff8e0")
 const PUPIL := Color("1a1420")
