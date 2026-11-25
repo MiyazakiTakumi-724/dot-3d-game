@@ -49,13 +49,13 @@ func test_exit_arrow_points_its_way():
 func test_props_are_even_sized_and_cached():
 	var models := [Props.bonfire(0), Props.bonfire(2), Props.chest(), Props.grave(), Props.gate(), Props.bolt(true), Props.bolt(false),
 		Props.bullet(), Props.flame(1), Props.pillar(), Props.rain_ring(13.0), Props.aim_shadow(), Props.aim_ring()]
-	for k in [RunState.PickupKind.MONEY, RunState.PickupKind.MATERIAL, RunState.PickupKind.HEAL, RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS]:
+	for k in ["money", "hide", "star_shard", "giant_core", "potion", "bomb", "feather", "arrow", "arrow_fire"]:
 		models.append(Props.pickup(k))
 	for m: VoxelModel in models:
 		assert_gt(m.voxels().size(), 0)
 		assert_eq(m.size.x % 2, 0, str(m.size))
 		assert_eq(m.size.y % 2, 0, str(m.size))
-	assert_same(Props.chest(), Props.pickup(RunState.PickupKind.SWORD))
+	assert_same(Props.chest(), Props.pickup("sword_1"))
 	assert_same(Props.grave(), Props.grave())
 	assert_ne(Props.bonfire(0), Props.bonfire(1))
 

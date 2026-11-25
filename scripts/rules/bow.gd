@@ -37,22 +37,23 @@ func release() -> float:
 	return r
 
 ## チャージ率 r で、dh 段低い所（高い所なら負）へ届く距離。
-static func max_range(r: float, dh: int) -> float:
-	return maxf(MIN_RANGE, BASE_RANGE * r + RANGE_PER_LEVEL * dh)
+## range_mult は弓の特色 range（届く距離の倍率）。
+static func max_range(r: float, dh: int, range_mult := 1.0) -> float:
+	return maxf(MIN_RANGE, BASE_RANGE * r * range_mult + RANGE_PER_LEVEL * dh)
 
 ## from（高さ from_h）から target を狙って、チャージ率 r で撃ったときに落ちる点。
 ## 届けば target、届かなければ同じ向きの、届く一番遠い点。途中の地面の高さで届く距離が変わるので、2pxずつ調べる。
-static func landing(from: Vector2, from_h: int, target: Vector2, r: float, map: HeightMap) -> Vector2:
+static func landing(from: Vector2, from_h: int, target: Vector2, r: float, map: HeightMap, range_mult := 1.0) -> Vector2:
 	var d := target - from
 	var dist := d.length()
-	if dist < 0.01 or dist <= max_range(r, from_h - _ground(map, target)):
+	if dist < 0.01 or dist <= max_range(r, from_h - _ground(map, target), range_mult):
 		return target
 	var dir := d / dist
 	var best := 0.0
 	var s := 0.0
 	while s <= dist:
 		var p := from + dir * s
-		if s <= max_range(r, from_h - _ground(map, p)):
+		if s <= max_range(r, from_h - _ground(map, p), range_mult):
 			best = s
 		s += 2.0
 	return from + dir * best

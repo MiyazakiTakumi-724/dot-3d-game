@@ -13,6 +13,18 @@ const POISON_HEAD := Color("8fdc5a")
 const FEATHER := Color("f4f1ea")
 const FEATHER_BAND := Color("d9463b")
 const POISON_FEATHER := Color("5c9e3c")
+## 矢の種類ごとの矢じりの色
+const ARROW_HEADS := {Arrow.Kind.POISON: POISON_HEAD, Arrow.Kind.FIRE: Color("ff8a3a"), Arrow.Kind.IRON: Color("8a919c")}
+## 素材の箱の色（素材ごと）と、道具のびんの色
+const MATERIAL_TINT := {
+	"hide": Color("a0704a"), "bone": Color("e8e0cc"), "scrap": Color("8a8f98"), "wood": Color("9a6a3c"), "herb": Color("6fbf5a"),
+	"iron_ore": Color("6a6f7a"), "snow": Color("dff4ff"), "scale": Color("5f9a6a"), "old_steel": Color("7a8290"),
+	"silver": Color("d8dde6"), "obsidian": Color("3a2f45"), "fire_stone": Color("e8602a"), "star_shard": Color("fff0a0"),
+}
+const TOOL_TINT := {
+	"potion": Color("ff8fb8"), "potion_m": Color("ff5f8f"), "potion_l": Color("e8304f"), "ether": Color("7fa8ff"),
+	"power": Color("ff9a3a"), "guard": Color("8ab0c8"), "swift": Color("8fe38f"), "feather": Color("f4f1ea"), "bomb": Color("3a3a42"),
+}
 
 ## 矢の長さ（ボクセル）と、模型の大きさ。矢の真ん中が模型の真ん中に来る
 const ARROW_LEN := 20
@@ -38,7 +50,7 @@ static func arrow_raw(kind: Arrow.Kind, pitch: float) -> VoxelModel:
 	var center := Vector3(ARROW_BOX) / 2.0 - Vector3(0.5, 0.5, 0.5)
 	var fwd := Vector3(0, cos(pitch), sin(pitch))
 	var up := Vector3(0, -sin(pitch), cos(pitch))  # 矢から見た上
-	var head_c := POISON_HEAD if kind == Arrow.Kind.POISON else ARROW_HEAD
+	var head_c: Color = ARROW_HEADS.get(kind, ARROW_HEAD)
 	var feather_c := POISON_FEATHER if kind == Arrow.Kind.POISON else FEATHER
 	var half := ARROW_LEN / 2.0
 	# 軸（後ろから前へ、半ボクセルずつ置いて切れ目がないように）
@@ -188,55 +200,66 @@ static func gate() -> VoxelModel:
 		_cache["gate"] = VoxelShade.apply(m)
 	return _cache["gate"]
 
-## 落ちている物（拾いもの・敵の落とし物）。武器と防具は宝箱、強い鉄球は鉄球そのもの。
-static func pickup(kind: RunState.PickupKind) -> VoxelModel:
-	match kind:
-		RunState.PickupKind.SWORD, RunState.PickupKind.BOW, RunState.PickupKind.STAFF_FIRE, RunState.PickupKind.ARMOR:
-			return chest()
-		RunState.PickupKind.STRONG_BALL:
-			return HeroModel.ball_model(true)
-	var key := "pickup|%d" % kind
+## 落ちている物（拾いもの・敵の落とし物）。品物の id で決める：装備は宝箱、お金は金貨、素材は色つきの小箱、
+## 道具は色つきのびん（爆弾は黒い玉、帰りの羽は羽根）、矢は束、ボスの素材は光る玉。
+static func pickup(id: String) -> VoxelModel:
+	if ItemCatalog.exists(id):
+		return chest()
+	var key := "pickup|%s" % id
 	if not _cache.has(key):
 		var m := VoxelModel.new()
-		match kind:
-			RunState.PickupKind.MONEY:
-				# 金貨を3枚、少しずらして重ねる
-				m.size = Vector3i(12, 12, 6)
-				for i in 3:
-					var c := Vector2(5.5 + (i % 2) * 1.5, 5.5 + (i / 2) * 1.0 - (i % 2))
-					VoxelDraw.cylinder(m, c, 3.6, i * 2, i * 2 + 1, GOLD.darkened(0.25))
-					VoxelDraw.cylinder(m, c, 2.6, i * 2 + 1, i * 2 + 1, GOLD)
-			RunState.PickupKind.MATERIAL:
-				# 素材：板の小箱
-				m.size = Vector3i(10, 10, 8)
-				VoxelDraw.fill(m, Vector3i(1, 1, 0), Vector3i(8, 8, 7), WOOD_LIGHT)
-				for z in [0, 7]:
-					VoxelDraw.fill(m, Vector3i(1, 1, z), Vector3i(8, 8, z), WOOD_DARK)
-				VoxelDraw.rod(m, Vector3(1, 8, 0), Vector3(8, 1, 7), WOOD_DARK, 1)
-			RunState.PickupKind.HEAL:
-				# 回復の薬：丸いびん・首・せん・光
-				m.size = Vector3i(10, 10, 14)
-				VoxelDraw.ellipsoid(m, Vector3(4.5, 4.5, 4.0), Vector3(3.8, 3.8, 3.8), HeroModel.POTION)
-				VoxelDraw.fill(m, Vector3i(4, 4, 8), Vector3i(5, 5, 10), HeroModel.GLASS_SHINE)
-				VoxelDraw.fill(m, Vector3i(4, 4, 11), Vector3i(5, 5, 12), WOOD_DARK)
-				m.set_voxel(Vector3i(3, 6, 6), HeroModel.GLASS_SHINE)
-			RunState.PickupKind.ARROWS, RunState.PickupKind.POISON_ARROWS:
-				# 矢の束：3本を横に寝かせてひもでしばる
-				m.size = Vector3i(20, 8, 4)
-				var head := POISON_HEAD if kind == RunState.PickupKind.POISON_ARROWS else ARROW_HEAD
-				var feather := POISON_FEATHER if kind == RunState.PickupKind.POISON_ARROWS else FEATHER
-				for i in 3:
-					var y := 2 + i * 2
-					var z := 1 if i == 1 else 0
-					VoxelDraw.fill(m, Vector3i(3, y, z), Vector3i(16, y, z), SHAFT)
-					VoxelDraw.fill(m, Vector3i(17, y, z), Vector3i(19, y, z), head)
-					VoxelDraw.fill(m, Vector3i(0, y, z), Vector3i(3, y, z), feather)
-					m.set_voxel(Vector3i(1, y - 1, z), feather)
-					m.set_voxel(Vector3i(1, y + 1, z), feather)
-				VoxelDraw.fill(m, Vector3i(9, 1, 0), Vector3i(10, 7, 2), FEATHER_BAND)
-			_:
-				m.size = Vector3i(8, 8, 8)
-				VoxelDraw.ellipsoid(m, Vector3(3.5, 3.5, 3.5), Vector3.ONE * 3.6, HeroModel.STRONG_BALL)
+		if id == ItemCatalog.MONEY:
+			# 金貨を3枚、少しずらして重ねる
+			m.size = Vector3i(12, 12, 6)
+			for i in 3:
+				var c := Vector2(5.5 + (i % 2) * 1.5, 5.5 + (i / 2) * 1.0 - (i % 2))
+				VoxelDraw.cylinder(m, c, 3.6, i * 2, i * 2 + 1, GOLD.darkened(0.25))
+				VoxelDraw.cylinder(m, c, 2.6, i * 2 + 1, i * 2 + 1, GOLD)
+		elif ItemCatalog.is_arrow(id):
+			# 矢の束：3本を横に寝かせてひもでしばる
+			var kind: int = Arrow.ID.find_key(id)
+			m.size = Vector3i(20, 8, 4)
+			var head: Color = ARROW_HEADS.get(kind, ARROW_HEAD)
+			var feather := POISON_FEATHER if kind == Arrow.Kind.POISON else FEATHER
+			for i in 3:
+				var y := 2 + i * 2
+				var z := 1 if i == 1 else 0
+				VoxelDraw.fill(m, Vector3i(3, y, z), Vector3i(16, y, z), SHAFT)
+				VoxelDraw.fill(m, Vector3i(17, y, z), Vector3i(19, y, z), head)
+				VoxelDraw.fill(m, Vector3i(0, y, z), Vector3i(3, y, z), feather)
+				m.set_voxel(Vector3i(1, y - 1, z), feather)
+				m.set_voxel(Vector3i(1, y + 1, z), feather)
+			VoxelDraw.fill(m, Vector3i(9, 1, 0), Vector3i(10, 7, 2), FEATHER_BAND)
+		elif id == "bomb":
+			m.size = Vector3i(10, 10, 12)
+			VoxelDraw.ellipsoid(m, Vector3(4.5, 4.5, 4.0), Vector3(4.0, 4.0, 4.0), TOOL_TINT["bomb"])
+			VoxelDraw.fill(m, Vector3i(4, 4, 8), Vector3i(5, 5, 9), WOOD_DARK)
+			m.set_voxel(Vector3i(5, 5, 10), Color("ffcf4a"))
+		elif id == "feather":
+			m.size = Vector3i(16, 8, 4)
+			VoxelDraw.rod(m, Vector3(1, 4, 0), Vector3(14, 3, 1), SHAFT, 1)
+			for x in range(3, 14):
+				var w := 2 if x < 11 else 1
+				VoxelDraw.fill(m, Vector3i(x, 4 - w, 1), Vector3i(x, 4 + w, 1), TOOL_TINT["feather"])
+		elif ItemCatalog.is_tool(id):
+			# 薬：丸いびん・首・せん・光
+			m.size = Vector3i(10, 10, 14)
+			VoxelDraw.ellipsoid(m, Vector3(4.5, 4.5, 4.0), Vector3(3.8, 3.8, 3.8), TOOL_TINT.get(id, HeroModel.POTION))
+			VoxelDraw.fill(m, Vector3i(4, 4, 8), Vector3i(5, 5, 10), HeroModel.GLASS_SHINE)
+			VoxelDraw.fill(m, Vector3i(4, 4, 11), Vector3i(5, 5, 12), WOOD_DARK)
+			m.set_voxel(Vector3i(3, 6, 6), HeroModel.GLASS_SHINE)
+		elif MATERIAL_TINT.has(id):
+			# 素材：板の小箱に、素材の色のかたまりを乗せる
+			m.size = Vector3i(10, 10, 10)
+			VoxelDraw.fill(m, Vector3i(1, 1, 0), Vector3i(8, 8, 5), WOOD_LIGHT)
+			for z in [0, 5]:
+				VoxelDraw.fill(m, Vector3i(1, 1, z), Vector3i(8, 8, z), WOOD_DARK)
+			VoxelDraw.ellipsoid(m, Vector3(4.5, 4.5, 7.0), Vector3(3.0, 3.0, 2.2), MATERIAL_TINT[id])
+		else:
+			# ボスの素材など：光る玉
+			m.size = Vector3i(10, 10, 10)
+			VoxelDraw.ellipsoid(m, Vector3(4.5, 4.5, 4.5), Vector3.ONE * 4.0, Color("ffd36a"))
+			VoxelDraw.fill(m, Vector3i(3, 3, 6), Vector3i(4, 4, 7), Color("fff6d0"))
 		_cache[key] = VoxelShade.apply(m)
 	return _cache[key]
 

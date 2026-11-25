@@ -48,9 +48,16 @@ func test_continent_has_no_problems():
 	assert_eq(world.problems(), [])
 
 func test_all_areas():
-	assert_eq(world.ids().size(), 31)
-	for id in ["camp", "forest", "town", "mt_5", "gr_5", "cs_5", "lv_5", "tw_4"]:
+	assert_eq(world.ids().size(), 30)
+	for id in ["town", "rocks", "hills", "forest", "mt_5", "gr_5", "cs_5", "lv_5", "tw_4"]:
 		assert_not_null(world.area(id), id)
+	assert_null(world.area("camp"), "野営地は町に作り替えた")
+
+## エリアはせまい（2026-11-25 の指示）。いちばん大きくても 24×26 か 32×14 くらい
+func test_areas_are_small():
+	for id in world.ids():
+		var s := world.area(id).size()
+		assert_lte(s.x * s.y, 32 * 20, "%s %s" % [id, s])
 
 func test_heights_within_0_to_8():
 	for id in world.ids():
@@ -114,70 +121,77 @@ func test_no_enemy_near_entries():
 		for e in world.area(id).enemies:
 			assert_false(safe.has(e[0]), "%s %s" % [id, e[0]])
 
-func test_shooters_only_in_forest():
+## 町のほかのすべてのエリアに敵がいる（ボスの間はボスだけ）。種類は地方ごと、レベルは地方のレベル
+func test_enemies_everywhere_but_town():
 	for id in world.ids():
-		var weak := 0
-		var melee := 0
-		for e in world.area(id).enemies:
-			if e[2] == EnemyKind.Kind.SHOOTER:
-				assert_eq(id, "forest")
-			elif e[2] == EnemyKind.Kind.WEAK:
-				weak += 1
-			else:
-				melee += 1
-		if id in ["rocks", "hills"]:
-			assert_gt(weak, melee, id)
+		var a := world.area(id)
+		if id == "town":
+			assert_eq(a.enemies.size(), 0)
+			continue
+		if not a.bosses.is_empty():
+			continue
+		assert_gt(a.enemies.size(), 0, id)
+		for e in a.enemies:
+			assert_eq(e[3], Loot.region_level(a.region), id)
 
-func test_one_strong_ball_in_forest_and_heals():
-	var balls := 0
-	var heals := 0
+func test_many_enemy_kinds():
+	var kinds := {}
+	for id in world.ids():
+		for e in world.area(id).enemies:
+			kinds[e[2]] = true
+	assert_eq(kinds.size(), EnemyKind.Kind.size())
+
+## 拾いものはすべて品物の id。装備は宝箱だけのものがなく、ランク5は落ちていない
+func test_pickups_are_known_items_and_no_chest_only_gear():
+	var potions := 0
 	for id in world.ids():
 		for p in world.area(id).pickups:
-			if p[1] == RunState.PickupKind.STRONG_BALL:
-				balls += 1
-				assert_eq(id, "forest")
-			elif p[1] == RunState.PickupKind.HEAL:
-				heals += 1
-	assert_eq(balls, 1)
-	assert_gt(heals, 1)
+			assert_true(ItemCatalog.known(p[1]), "%s %s" % [id, p[1]])
+			if p[1] == "potion":
+				potions += 1
+			if ItemCatalog.exists(p[1]):
+				assert_lt(ItemCatalog.rank(p[1]), 5, p[1])
+				var other := ItemCatalog.sources(p[1]).filter(func(s): return s != "chest")
+				assert_gt(other.size(), 0, p[1])
+	assert_gt(potions, 1)
 
-func _strong_ball() -> Vector2i:
+func _heavy_ball() -> Vector2i:
 	for p in world.area("forest").pickups:
-		if p[1] == RunState.PickupKind.STRONG_BALL:
+		if p[1] == "ball_heavy":
 			return p[0]
 	return Vector2i(-1, -1)
 
-## たき火→丘陵→奥の森の強い鉄球まで、歩いて90秒以上
-func test_route_to_strong_ball_is_long():
-	var to_hills := _exit_to("camp", "hills", false)
-	var from_camp := _exit_to("hills", "camp", false)
-	var to_forest := _exit_to("hills", "forest", false)
-	var from_hills := _exit_to("forest", "hills", false)
-	var d1 := Reach.distance(maps["camp"], rules, Continent.START_CELL, _mid("camp", to_hills, 0))
-	var d2 := Reach.distance(maps["hills"], rules, _mid("hills", from_camp, 1), _mid("hills", to_forest, 0))
-	var d3 := Reach.distance(maps["forest"], rules, _mid("forest", from_hills, 1), _strong_ball())
-	assert_gt(d1, 0)
-	assert_gt(d2, 0)
-	assert_gt(d3, 0)
-	assert_gt((d1 + d2 + d3) / CELLS_PER_SECOND, 90.0)
-
-## 門を開けた後は、強い鉄球のあたり→たき火が30秒以内
+## 門を開けた後は、奥の森の台地（重い鉄球）のあたり→町のたき火が30秒以内
 func test_gate_is_a_short_way_back():
-	var gate := _exit_to("forest", "camp", true)
-	var camp_gate := _exit_to("camp", "forest", true)
+	var gate := _exit_to("forest", "town", true)
+	var town_gate := _exit_to("town", "forest", true)
 	assert_true(gate.opens_here)
-	assert_false(camp_gate.opens_here)
-	var r1 := Reach.distance(maps["forest"], rules, _strong_ball(), _mid("forest", gate, 0))
-	var r2 := Reach.distance(maps["camp"], rules, _mid("camp", camp_gate, 1), Continent.START_CELL)
+	assert_false(town_gate.opens_here)
+	var r1 := Reach.distance(maps["forest"], rules, _heavy_ball(), _mid("forest", gate, 0))
+	var r2 := Reach.distance(maps["town"], rules, _mid("town", town_gate, 1), Continent.START_CELL)
 	assert_gt(r1, 0)
 	assert_gt(r2, 0)
 	assert_lt((r1 + r2) / CELLS_PER_SECOND, 30.0)
 
-func test_camp_has_bonfire_and_no_enemies():
-	var info: Dictionary = Continent.load_map(world.area("camp"))[1]
+func test_town_has_bonfire_shops_and_no_enemies():
+	var a := world.area("town")
+	var info: Dictionary = Continent.load_map(a)[1]
 	assert_true(info.has("checkpoint"))
-	assert_eq(world.area("camp").enemies.size(), 0)
+	assert_eq(a.enemies.size(), 0)
+	var shops := a.merchants.map(func(m): return m[1])
+	assert_eq(shops, ["tool", "weapon", "smith"])
+	assert_eq(info.get("merchants", []).size(), 3)
 
+## 旅の商人は4つの地方の休憩所に1人ずつ
+func test_travelling_merchants():
+	var shops := {}
+	for id in world.ids():
+		for m in world.area(id).merchants:
+			assert_true(Shop.NAMES.has(m[1]), m[1])
+			shops[m[1]] = id
+	for r in ["山岳", "草原", "廃城", "溶岩"]:
+		assert_true(shops.has(r), r)
+		assert_eq(world.area(shops[r]).region, r)
 
 # ---- 大陸の全体（2026-11-25）
 
@@ -198,10 +212,10 @@ func _exits_from(id: String, cell: Vector2i, use_all: bool) -> Array[ExitDef]:
 				break
 	return out
 
-## 野営地から出口をたどって行けるエリア。門と封印は開けられるものとする。
+## 町から出口をたどって行けるエリア。門と封印は開けられるものとする。
 func _reachable_areas(use_all: bool) -> Dictionary:
-	var seen := {"camp": true}
-	var queue := [["camp", Continent.START_CELL]]
+	var seen := {"town": true}
+	var queue := [["town", Continent.START_CELL]]
 	while not queue.is_empty():
 		var cur = queue.pop_front()
 		for ex in _exits_from(cur[0], cur[1], use_all):
@@ -243,11 +257,6 @@ func test_regions_have_bonfire_boss_and_shortcut():
 	for d in ["forest_gate", "mt_gate", "gr_gate", "cs_gate", "lv_gate", RunState.SEAL_DOOR]:
 		assert_true(gates.has(d), d)
 
-func test_town_has_bonfire_and_merchants():
-	var info: Dictionary = Continent.load_map(world.area("town"))[1]
-	assert_true(info.has("checkpoint"))
-	assert_eq(info.get("merchants", []).size(), 2)
-
 func test_bonfire_has_room_to_respawn():
 	for id in world.ids():
 		var info: Dictionary = Continent.load_map(world.area(id))[1]
@@ -275,9 +284,3 @@ func test_gimmick_rewards_locked_until_opened():
 				locked += 1
 				assert_true(opened.has(p[0]), "%s %s" % [id, p[0]])
 	assert_gt(locked, 8)
-
-func test_no_regular_enemies_outside_the_start_region():
-	for id in world.ids():
-		var a := world.area(id)
-		if a.region != "はじまりの地":
-			assert_eq(a.enemies.size(), 0, id)

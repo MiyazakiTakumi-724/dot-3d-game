@@ -1,12 +1,15 @@
 class_name Arrow
 extends RefCounted
 ## 飛んでいる矢と、矢の種類。山なりに飛ぶので途中の壁には当たらず、落ちた所でだけ当たる。
-## 種類：普通の矢（倍率1.0）、毒矢（倍率0.5、当たると5秒間、毎秒1ダメージ）。毒矢は弓の技能「矢の種類」で使える。
+## 種類：普通の矢（倍率1.0）、毒矢（倍率0.5、当たると5秒間、毎秒1ダメージ）、火矢（倍率0.8、やけど）、鉄の矢（倍率1.5）。
+## 普通の矢のほかは、弓の技能「矢の種類」で使える。持ち物では ItemCatalog.ARROWS の id（ID）で数える。
 
-enum Kind { NORMAL, POISON }
+enum Kind { NORMAL, POISON, FIRE, IRON }
 
-const NAMES := {Kind.NORMAL: "矢", Kind.POISON: "毒矢"}
-const MULT := {Kind.NORMAL: 1.0, Kind.POISON: 0.5}
+const NAMES := {Kind.NORMAL: "矢", Kind.POISON: "毒矢", Kind.FIRE: "火矢", Kind.IRON: "鉄の矢"}
+const MULT := {Kind.NORMAL: 1.0, Kind.POISON: 0.5, Kind.FIRE: 0.8, Kind.IRON: 1.5}
+const ID := {Kind.NORMAL: "arrow", Kind.POISON: "arrow_poison", Kind.FIRE: "arrow_fire", Kind.IRON: "arrow_iron"}
+const KINDS := [Kind.NORMAL, Kind.POISON, Kind.FIRE, Kind.IRON]
 const POISON_SECONDS := 5.0
 const HIT_RADIUS := 8.0  ## 落ちた点からこの半径の中にいる、同じ高さのものに当たる
 const SPEED := 220.0  ## 横に進む速さ（px/秒）
@@ -23,7 +26,7 @@ var to_px := 0.0
 var duration := 0.0
 var t := 0.0
 
-## 毒矢は、弓の技能を1つ（「矢の種類」）覚えていないと使えない。
+## 普通の矢のほかは、弓の技能を1つ（「矢の種類」）覚えていないと使えない。
 static func usable(k: Kind, bow_skills: int) -> bool:
 	return k == Kind.NORMAL or bow_skills >= 1
 

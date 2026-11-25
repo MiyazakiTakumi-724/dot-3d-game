@@ -130,7 +130,7 @@ static func raw(held: String, armor: String, pose := "") -> VoxelModel:
 		return m
 	match ItemCatalog.slot(held) if ItemCatalog.exists(held) else -1:
 		Equipment.Slot.BALL:
-			_iron_ball(m, s, STRONG_BALL if ItemCatalog.rank(held) >= 2 else BALL)
+			_iron_ball(m, s, ball_color(held))
 		Equipment.Slot.SWORD:
 			_sword(m)
 		Equipment.Slot.BOW:
@@ -144,20 +144,36 @@ static func raw(held: String, armor: String, pose := "") -> VoxelModel:
 	return m
 
 ## 地面に落ちている鉄球（手に持つ鉄球と同じ細かさ・同じ大きさ・同じ影の付け方）。
-static func ball_model(strong: bool) -> VoxelModel:
-	var key := "ball|%s" % strong
+static func ball_model(id: String) -> VoxelModel:
+	var key := "ball|%s" % id
 	if not _cache.has(key):
 		var m := VoxelModel.new()
 		m.size = Vector3i.ONE * BALL_BOX
 		var c := (BALL_BOX - 1) / 2.0
-		_ball(m, Vector3(c, c, c), STRONG_BALL if strong else BALL)
+		_ball(m, Vector3(c, c, c), ball_color(id))
 		_cache[key] = _shade(m)
 	return _cache[key]
 
+## 鉄球の色（品物ごと）。ランク1はいつもの灰色。
+const BALL_COLORS := {
+	"ball_heavy": STRONG_BALL, "ball_wide": Color("8a6a3a"), "ball_spike": Color("4f6b3a"), "ball_chain": Color("8f98a6"),
+	"ball_ember": Color("b5482a"), "ball_rock": Color("76695c"), "ball_lava": Color("5a1a14"), "ball_quake": Color("a8843c"),
+	"ball_star": Color("e8dca0"), "ball_meteor": Color("6a4a9a"),
+}
+
+static func ball_color(id: String) -> Color:
+	return BALL_COLORS.get(id, BALL)
+
 ## 杖の先の玉の色（杖の種類で決まる）。
+const ORB_COLORS := {
+	"staff_fire": FIRE_ORB, "staff_lava": Color("d8341e"), "staff_ice": Color("9fe0ff"), "staff_frost": Color("cfefff"),
+	"staff_heal": Color("8fe39a"), "staff_thunder": Color("ffe35a"), "staff_star": Color("fff4c8"), "staff_storm": Color("6fd8d0"),
+}
+
 static func orb_color(staff_id: String) -> Color:
-	if staff_id.begins_with("staff_fire"):
-		return FIRE_ORB
+	for k in ORB_COLORS:
+		if staff_id.begins_with(k):
+			return ORB_COLORS[k]
 	return NONE_ORB
 
 # ---------------------------------------------------------------- 形を作る道具

@@ -7,19 +7,21 @@ var eq: Equipment
 func before_each():
 	eq = Equipment.new()
 
-func test_starts_with_ball_and_none_staff():
+## 最初は鉄球だけ（2026-11-25）
+func test_starts_with_only_the_ball():
 	assert_true(eq.has("ball_1"))
 	assert_eq(eq.effective(Equipment.Slot.BALL), 1)
-	assert_eq(eq.current(Equipment.Slot.STAFF), "staff_none_1")
+	assert_eq(eq.current(Equipment.Slot.STAFF), "")
+	assert_eq(eq.effective(Equipment.Slot.ARMOR), 0)
 	assert_eq(eq.effective(Equipment.Slot.SWORD), 0)
 	assert_eq(eq.items(Equipment.Slot.SWORD), [])
 
 func test_gain_and_equip_higher_rank():
-	assert_false(eq.equip("ball_2"))
-	assert_true(eq.gain("ball_2"))
-	assert_eq(eq.items(Equipment.Slot.BALL), ["ball_1", "ball_2"])
+	assert_false(eq.equip("ball_heavy"))
+	assert_true(eq.gain("ball_heavy"))
+	assert_eq(eq.items(Equipment.Slot.BALL), ["ball_1", "ball_heavy"])
 	assert_eq(eq.effective(Equipment.Slot.BALL), 1)  # 拾っただけでは替えない
-	assert_true(eq.equip("ball_2"))
+	assert_true(eq.equip("ball_heavy"))
 	assert_eq(eq.effective(Equipment.Slot.BALL), 2)
 
 func test_unknown_item_is_ignored():
@@ -37,13 +39,14 @@ func test_attack_bonus_by_rank():
 
 ## 死ぬと最低ランク（ランク1）以外は墓石へ。装備の好みは残り、取り返すと元に戻る
 func test_death_keeps_rank1_and_grave_returns_the_rest():
-	eq.gain("ball_2")
-	eq.equip("ball_2")
+	eq.gain("ball_heavy")
+	eq.equip("ball_heavy")
 	eq.gain("sword_1")
+	eq.gain("staff_none_1")
 	eq.gain("staff_fire_3")
 	eq.equip("staff_fire_3")
 	var taken := eq.take_for_grave()
-	assert_eq(taken, ["ball_2", "staff_fire_3"])
+	assert_eq(taken, ["ball_heavy", "staff_fire_3"])
 	assert_eq(eq.items(Equipment.Slot.BALL), ["ball_1"])
 	assert_eq(eq.effective(Equipment.Slot.BALL), 1)
 	assert_eq(eq.current(Equipment.Slot.STAFF), "staff_none_1")  # 無の杖に戻る
@@ -63,10 +66,16 @@ func test_armor_adds_hp():
 	assert_eq(eq.armor_hp(), 0)
 	eq.gain("armor_1")
 	assert_eq(eq.armor_hp(), Equipment.HP_PER_ARMOR_RANK)
+	eq.gain("armor_dragon")
+	eq.equip("armor_dragon")
+	assert_eq(eq.armor_hp(), Equipment.HP_PER_ARMOR_RANK * 5 + 10)
+	assert_eq(eq.armor_bonus("def"), 3.0)
+	assert_eq(eq.trait_of(Equipment.Slot.ARMOR, "regen"), 1)
 
 ## 杖は1つの枠で、持っている杖（無の杖・炎の杖…）から選ぶ
 func test_staffs_share_one_slot():
 	assert_eq(Equipment.WEAPONS, [Equipment.Slot.BALL, Equipment.Slot.SWORD, Equipment.Slot.BOW, Equipment.Slot.STAFF])
+	eq.gain("staff_none_1")
 	eq.gain("staff_fire_3")
 	assert_eq(eq.current(Equipment.Slot.STAFF), "staff_none_1")  # 拾っただけでは持ち替えない
 	assert_eq(eq.items(Equipment.Slot.STAFF), ["staff_none_1", "staff_fire_3"])
@@ -75,6 +84,8 @@ func test_staffs_share_one_slot():
 
 ## 並びはランクの低い順。同じランクなら品物の一覧の順（無の杖が先）
 func test_items_sorted_by_rank_then_catalog():
-	eq.gain("staff_fire_9")
-	eq.gain("staff_fire_1")
-	assert_eq(eq.items(Equipment.Slot.STAFF), ["staff_none_1", "staff_fire_1", "staff_fire_9"])
+	eq.gain("staff_star")
+	eq.gain("staff_ice_2")
+	eq.gain("staff_fire_2")
+	eq.gain("staff_none_1")
+	assert_eq(eq.items(Equipment.Slot.STAFF), ["staff_none_1", "staff_fire_2", "staff_ice_2", "staff_star"])

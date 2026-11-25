@@ -1,11 +1,13 @@
-# 大陸の4エリア（野営地・岩場・丘陵・奥の森）の地図を作り、scripts/areas/*.gd に書き出す。
+# 大陸の30エリアの地図を作り、scripts/areas/*.gd に書き出す。
 # 使い方: python3 gen.py [--preview]   （--preview で preview_<id>.png も作る。Pillow が要る）
+# 並べ方と中身は docs/superpowers/specs/2026-11-25-full-game-design.md（2026-11-25：野営地を町にし、エリアをせまくし、
+# すべてのエリアに敵を置いた）。
 #
 # 地形の作り方
 # 1. ノイズで高さを作る（エリアごとの傾きと、細かい段差）。隣との差は1段までにならす。
-# 2. 崖のある高台・台地を足す（ここだけ2段以上の差になる）。登り道（1段ずつの階段）をつける。
-# 3. 木・岩・川の列で道を折り返させ、歩く距離をのばす（すき間を交互にあける）。
-# 4. 出口の前は平らにし、敵1のいる所には6×6の平地を作る。
+# 2. 崖のある高台を足す（ここだけ2段以上の差になる）。登り道（1段ずつの階段）をつける。
+# 3. 仕掛け（寄り道）・たき火・商人・ボスの居場所を先に置き、地方の飾りを散らす。
+# 4. 敵を置く（段差を登らない敵には4×4の平地を作る）。拾いものをばらまく。
 # 5. 行かなければならない所（出口・拾いもの・敵）がつながっているか確かめ、
 #    落ちたら戻れないくぼみは茂みでふさぐ。
 import math, os, random, sys
@@ -20,96 +22,93 @@ CLIMB, DROP = 1, 3
 SPEED_CELLS = 60.0 / 16.0    # プレイヤーの速さ（マス/秒）
 
 # ---------------------------------------------------------------- 大陸の上の置き方
-# エリア：id → 名前・地方（theme）・大陸の上の左上のマス・大きさ。
-# 地方の並び（docs/superpowers/specs/2026-11-25-world-map-design.md 2章）：
-# 真ん中に「はじまりの地」（野営地・岩場・丘陵・奥の森）、西に山岳、東に草原、北に廃城、南に町と溶岩、町の西に神秘の塔。
+# エリア：id → 名前・地方の見た目（theme）・大陸の上の左上のマス・大きさ。
+# 真ん中に「はじまりの地」（町・岩場・丘陵・奥の森）。町の西に岩場、東に丘陵、北に奥の森。
+# 岩場の西に山岳、丘陵の東に草原、奥の森の北に廃城、町の南に溶岩と神秘の塔（封印の門）。
+# 地方は 入口 → 休憩所（たき火）→ 奥1 → 奥2（休憩所と奥1の両方に接する。休憩所への近道の門）→ ボスの間。
+def A(title, theme, origin, size):
+    return dict(title=title, theme=theme, origin=origin, size=size)
+
 AREAS = {
-    # はじまりの地
-    'camp':   dict(title='野営地', theme='grass', origin=(0, 0),     size=(24, 20)),
-    'rocks':  dict(title='岩場',   theme='grass', origin=(-40, -6),  size=(40, 32)),
-    'hills':  dict(title='丘陵',   theme='grass', origin=(24, 0),    size=(48, 36)),
-    'forest': dict(title='奥の森', theme='grass', origin=(8, -40),   size=(56, 40)),
-    'town':   dict(title='町',     theme='town',  origin=(0, 20),    size=(24, 24)),
-    # 山岳
-    'mt_1': dict(title='山すそ',     theme='mountain', origin=(-88, -10),  size=(48, 40)),
-    'mt_2': dict(title='山小屋',     theme='mountain', origin=(-80, -50),  size=(28, 40)),
-    'mt_3': dict(title='岩の尾根',   theme='mountain', origin=(-128, -50), size=(48, 40)),
-    'mt_4': dict(title='雪の峠',     theme='mountain', origin=(-128, -90), size=(76, 40)),
-    'mt_5': dict(title='巨人の岩棚', theme='mountain', origin=(-120, -130), size=(48, 40)),
-    'mt_x': dict(title='岩窟',       theme='mountain', origin=(-156, -40), size=(28, 24)),
-    # 草原
-    'gr_1': dict(title='草原の入口',   theme='grass', origin=(72, 4),   size=(48, 36)),
-    'gr_2': dict(title='風見の休み場', theme='grass', origin=(120, 8),  size=(28, 24)),
-    'gr_3': dict(title='花の丘',       theme='grass', origin=(120, -32), size=(48, 40)),
-    'gr_4': dict(title='背高草の野',   theme='grass', origin=(148, 8),  size=(44, 40)),
-    'gr_5': dict(title='大蛇の草むら', theme='grass', origin=(192, 12), size=(48, 40)),
-    # 廃城
-    'cs_1': dict(title='城下の跡',   theme='castle', origin=(16, -76),  size=(48, 36)),
-    'cs_2': dict(title='崩れた兵舎', theme='castle', origin=(24, -112), size=(28, 36)),
-    'cs_3': dict(title='城壁の道',   theme='castle', origin=(-24, -112), size=(48, 36)),
-    'cs_4': dict(title='城の中庭',   theme='castle', origin=(-24, -148), size=(76, 36)),
-    'cs_5': dict(title='王の間',     theme='castle', origin=(-8, -184), size=(48, 36)),
-    # 溶岩
-    'lv_1': dict(title='灰の道',         theme='lava', origin=(0, 44),   size=(28, 32)),
-    'lv_2': dict(title='湯けむりの休み場', theme='lava', origin=(0, 76),   size=(28, 24)),
-    'lv_3': dict(title='溶岩の川',       theme='lava', origin=(28, 76),  size=(44, 24)),
-    'lv_4': dict(title='火口のふち',     theme='lava', origin=(0, 100),  size=(64, 36)),
-    'lv_5': dict(title='満ち引きのくぼ地', theme='lava', origin=(8, 136), size=(48, 36)),
-    'lv_x': dict(title='溶岩洞',         theme='lava', origin=(-28, 104), size=(28, 24)),
-    # 神秘の塔
-    'tw_1': dict(title='塔のふもと', theme='tower', origin=(-32, 26), size=(32, 28)),
-    'tw_2': dict(title='塔の中',     theme='tower', origin=(-32, 54), size=(32, 32)),
-    'tw_3': dict(title='塔の外周',   theme='tower', origin=(-64, 54), size=(32, 32)),
-    'tw_4': dict(title='塔の最上階', theme='tower', origin=(-64, 86), size=(32, 24)),
+    'town':   A('はじまりの町', 'town', (0, 0), (24, 20)),
+    'rocks':  A('岩場', 'grass', (-22, 2), (22, 18)),
+    'hills':  A('丘陵', 'grass', (24, -8), (24, 26)),
+    'forest': A('奥の森', 'grass', (0, -18), (24, 18)),
+    'mt_1': A('山すそ', 'mountain', (-44, 4), (22, 16)),
+    'mt_2': A('山小屋', 'mountain', (-40, -12), (16, 16)),
+    'mt_3': A('岩の尾根', 'mountain', (-56, -12), (16, 16)),
+    'mt_4': A('雪の峠', 'mountain', (-56, -26), (32, 14)),
+    'mt_5': A('巨人の岩棚', 'mountain', (-52, -46), (24, 20)),
+    'mt_x': A('岩窟', 'mountain', (-74, -12), (18, 14)),
+    'gr_1': A('草原の入口', 'grass', (48, 0), (22, 16)),
+    'gr_2': A('風見の休み場', 'grass', (70, 0), (16, 16)),
+    'gr_3': A('花の丘', 'grass', (70, -16), (16, 16)),
+    'gr_4': A('背高草の野', 'grass', (86, -16), (14, 32)),
+    'gr_5': A('大蛇の草むら', 'grass', (100, -10), (24, 20)),
+    'cs_1': A('城下の跡', 'castle', (0, -34), (22, 16)),
+    'cs_2': A('崩れた兵舎', 'castle', (2, -50), (16, 16)),
+    'cs_3': A('城壁の道', 'castle', (-14, -50), (16, 16)),
+    'cs_4': A('城の中庭', 'castle', (-14, -64), (32, 14)),
+    'cs_5': A('王の間', 'castle', (-10, -84), (24, 20)),
+    'lv_1': A('灰の道', 'lava', (6, 20), (18, 16)),
+    'lv_2': A('湯けむりの休み場', 'lava', (6, 36), (16, 16)),
+    'lv_3': A('溶岩の川', 'lava', (22, 36), (16, 16)),
+    'lv_4': A('火口のふち', 'lava', (6, 52), (32, 14)),
+    'lv_5': A('満ち引きのくぼ地', 'lava', (10, 66), (24, 20)),
+    'lv_x': A('溶岩洞', 'lava', (-12, 52), (18, 14)),
+    'tw_1': A('塔のふもと', 'tower', (-14, 20), (20, 18)),
+    'tw_2': A('塔の中', 'tower', (-34, 20), (20, 18)),
+    'tw_3': A('塔の外周', 'tower', (-34, 38), (20, 18)),
+    'tw_4': A('塔の最上階', 'tower', (-34, 56), (20, 16)),
 }
-REGION = {'camp': 'はじまりの地', 'rocks': 'はじまりの地', 'hills': 'はじまりの地', 'forest': 'はじまりの地', 'town': 'はじまりの地'}
+REGION = {}
 for k in AREAS:
-    if k not in REGION:
-        REGION[k] = ({'mt': '山岳', 'gr': '草原', 'cs': '廃城', 'lv': '溶岩', 'tw': '神秘の塔'}[k[:2]])
+    REGION[k] = {'mt': '山岳', 'gr': '草原', 'cs': '廃城', 'lv': '溶岩', 'tw': '神秘の塔'}.get(k[:2], 'はじまりの地')
+# 地方ごとの敵の基本のレベル（scripts/rules/loot.gd の REGION_LEVEL と同じ）
+REGION_LEVEL = {'はじまりの地': 1, '山岳': 2, '草原': 2, '廃城': 3, '溶岩': 3, '神秘の塔': 5}
 
 # つながり：(エリアa, エリアb, 大陸の上のマスの範囲 g0〜g1, 門の id, 門を開けられる側)。
 # 2つのエリアは辺を接していて、範囲はその辺に沿った大陸の座標（東西の辺なら y、南北の辺なら x）。
 LINKS = [
-    ('camp', 'rocks', 8, 10, '', None),
-    ('camp', 'hills', 8, 10, '', None),
-    ('hills', 'forest', 50, 52, '', None),
-    ('camp', 'forest', 10, 12, 'forest_gate', 'forest'),
-    ('camp', 'town', 10, 12, '', None),
+    ('town', 'rocks', 9, 11, '', None),
+    ('town', 'hills', 9, 11, '', None),
+    ('forest', 'hills', -6, -4, '', None),
+    ('town', 'forest', 10, 12, 'forest_gate', 'forest'),
+    ('town', 'lv_1', 14, 16, '', None),
+    ('town', 'tw_1', 2, 4, 'tower_seal', 'town'),   # 神秘の塔の封印の門（4つの地方のボスを倒すと町の側から開けられる）
     # 山岳
-    ('rocks', 'mt_1', 14, 16, '', None),
-    ('mt_1', 'mt_2', -68, -66, '', None),
-    ('mt_2', 'mt_3', -24, -22, '', None),
-    ('mt_3', 'mt_4', -110, -108, '', None),
-    ('mt_4', 'mt_2', -68, -66, 'mt_gate', 'mt_4'),
-    ('mt_4', 'mt_5', -100, -97, '', None),
-    ('mt_3', 'mt_x', -30, -28, '', None),
+    ('rocks', 'mt_1', 11, 13, '', None),
+    ('mt_1', 'mt_2', -32, -30, '', None),
+    ('mt_2', 'mt_3', -6, -4, '', None),
+    ('mt_3', 'mt_4', -50, -48, '', None),
+    ('mt_4', 'mt_2', -30, -28, 'mt_gate', 'mt_4'),
+    ('mt_4', 'mt_5', -42, -39, '', None),
+    ('mt_3', 'mt_x', -4, -2, '', None),
     # 草原
-    ('hills', 'gr_1', 18, 20, '', None),
-    ('gr_1', 'gr_2', 18, 20, '', None),
-    ('gr_2', 'gr_3', 132, 134, '', None),
-    ('gr_3', 'gr_4', 156, 158, '', None),
-    ('gr_4', 'gr_2', 20, 22, 'gr_gate', 'gr_4'),
-    ('gr_4', 'gr_5', 28, 31, '', None),
+    ('hills', 'gr_1', 6, 8, '', None),
+    ('gr_1', 'gr_2', 6, 8, '', None),
+    ('gr_2', 'gr_3', 76, 78, '', None),
+    ('gr_3', 'gr_4', -10, -8, '', None),
+    ('gr_4', 'gr_2', 8, 10, 'gr_gate', 'gr_4'),
+    ('gr_4', 'gr_5', -2, 1, '', None),
     # 廃城
-    ('forest', 'cs_1', 36, 38, '', None),
-    ('cs_1', 'cs_2', 36, 38, '', None),
-    ('cs_2', 'cs_3', -90, -88, '', None),
-    ('cs_3', 'cs_4', -6, -4, '', None),
-    ('cs_4', 'cs_2', 36, 38, 'cs_gate', 'cs_4'),
-    ('cs_4', 'cs_5', 14, 17, '', None),
+    ('forest', 'cs_1', 10, 12, '', None),
+    ('cs_1', 'cs_2', 8, 10, '', None),
+    ('cs_2', 'cs_3', -44, -42, '', None),
+    ('cs_3', 'cs_4', -8, -6, '', None),
+    ('cs_4', 'cs_2', 10, 12, 'cs_gate', 'cs_4'),
+    ('cs_4', 'cs_5', 1, 4, '', None),
     # 溶岩
-    ('town', 'lv_1', 10, 12, '', None),
-    ('lv_1', 'lv_2', 8, 10, '', None),
-    ('lv_2', 'lv_3', 86, 88, '', None),
-    ('lv_3', 'lv_4', 50, 52, '', None),
+    ('lv_1', 'lv_2', 12, 14, '', None),
+    ('lv_2', 'lv_3', 42, 44, '', None),
+    ('lv_3', 'lv_4', 28, 30, '', None),
     ('lv_4', 'lv_2', 12, 14, 'lv_gate', 'lv_4'),
-    ('lv_4', 'lv_5', 30, 33, '', None),
-    ('lv_4', 'lv_x', 116, 118, '', None),
-    # 神秘の塔（町の西の封印の門。4体のボスを倒すと町の側から開けられる）
-    ('town', 'tw_1', 32, 34, 'tower_seal', 'town'),
-    ('tw_1', 'tw_2', -18, -16, '', None),
-    ('tw_2', 'tw_3', 70, 72, '', None),
-    ('tw_3', 'tw_4', -50, -48, '', None),
+    ('lv_4', 'lv_5', 20, 23, '', None),
+    ('lv_4', 'lv_x', 58, 60, '', None),
+    # 神秘の塔
+    ('tw_1', 'tw_2', 27, 29, '', None),
+    ('tw_2', 'tw_3', -26, -24, '', None),
+    ('tw_3', 'tw_4', -26, -24, '', None),
 ]
 
 def _link_exits(a, b, g0, g1, door, opener):
@@ -367,6 +366,8 @@ def new_area(name, seed):
     g.theme = AREAS[name]['theme']
     g.gimmicks = []   # (id, 種類, ふさぐマス, 当てるマス)
     g.bosses = []     # (x, y, 名前, 色)
+    g.merchants = []  # (x, y, お店の id)
+    g.region = REGION[name]
     g.locked = set()  # 仕掛けを開けるまで行けないマス（拾いもの・出口）。つながりの確かめから外す
     g.open_flat = False  # 広場（たき火・町・ボスの間）。広い平地があってよい
     g.must_extra = []    # つながっていなければならないマス（仕掛けの前・像の前・商人の前など）
@@ -454,7 +455,7 @@ def pad(g, x, y, r=3):
     return h
 
 def enemy(g, x, y, kind, d='RIGHT'):
-    g.enemies.append((x, y, d, kind))
+    g.enemies.append((x, y, d, kind, REGION_LEVEL[g.region]))
     g.reserved.add((x, y))
     g.O[y][x] = '.'
 
@@ -463,175 +464,6 @@ def pickup(g, x, y, kind, amount):
     g.reserved.add((x, y))
     g.O[y][x] = '.'
 
-# ---------------------------------------------------------------- 野営地
-def make_camp():
-    g = new_area('camp', 3)
-    n = value_noise(31, 5)
-    for x, y in g.cells():
-        g.H[y][x] = 1 + (1 if n(x, y) > 0.72 else 0)
-    # 真ん中の広場（たき火）は平ら
-    flatten(g, 6, 5, 17, 14, 1)
-    g.O[10][12] = 'C'
-    g.reserved |= {(x, y) for x in range(6, 18) for y in range(5, 15)}
-    flatten_exits(g)
-    # まわりを木で囲む（出口はあける）
-    for x, y in g.cells():
-        if (x in (0, 1, 22, 23) or y in (0, 1, 18, 19)) and (x, y) not in g.reserved:
-            g.O[y][x] = g.rng.choice('TPTB')
-    scatter(g, [('F', 3), ('T', 1), ('B', 1)], 0.10, 5)
-    # 試すための武器の宝箱（本来はボスの落とし物。ボスができたら移す）
-    pickup(g, 9, 8, 'SWORD', 1)
-    pickup(g, 15, 8, 'BOW', 1)
-    pickup(g, 15, 12, 'ARROWS', 50)
-    pickup(g, 9, 12, 'POISON_ARROWS', 10)
-    pickup(g, 12, 6, 'STAFF_FIRE', 3)
-    pickup(g, 10, 6, 'STAFF_FIRE', 9)
-    pickup(g, 14, 6, 'HEAL', 3)
-    pickup(g, 8, 10, 'ARMOR', 1)
-    g.start = (12, 11)
-    return g
-
-# ---------------------------------------------------------------- 岩場（行き止まり。素材と回復がある）
-def make_rocks():
-    g = new_area('rocks', 5)
-    nb = value_noise(51, 11)
-    noise_heights(g, lambda x, y: 1.0 + 4.0 * nb(x, y) + (x / 40.0) * 1.0, fine=1.8)
-    # 崖で囲まれた高台（北西）。登り道は裏（西）にだけある
-    cx, cy = 10, 9
-    mesa = lambda x, y: math.hypot((x - cx) / 7.5, (y - cy) / 5.5) < 1.0
-    top = max(g.H[y][x] for x, y in g.cells() if mesa(x, y))
-    for x, y in g.cells():
-        if mesa(x, y):
-            g.H[y][x] = min(8, top + 2)
-    stair(g, [(0, 15), (1, 14), (2, 13), (2, 12), (2, 11), (3, 10)])
-    # 南の、崖の上の細い尾根
-    for x in range(14, 30):
-        for y in (24, 25):
-            g.H[y][x] = min(8, g.H[y][x] + 2)
-    stair(g, [(31, 26), (30, 25)])
-    # 岩をたくさん
-    scatter(g, [('R', 6), ('B', 2), ('P', 1)], 0.13, 7)
-    flatten_exits(g)
-    pad(g, 30, 8); enemy(g, 30, 8, 'WEAK', 'DOWN')
-    pad(g, 20, 17); enemy(g, 20, 17, 'WEAK')
-    pad(g, 9, 24); enemy(g, 9, 24, 'WEAK', 'DOWN')
-    pad(g, 26, 29); enemy(g, 26, 29, 'WEAK')
-    enemy(g, 16, 6, 'MELEE', 'DOWN')
-    pickup(g, 10, 9, 'MATERIAL', 3)    # 高台の上
-    pickup(g, 11, 8, 'HEAL', 1)
-    pickup(g, 22, 24, 'MATERIAL', 2)   # 尾根の上
-    pickup(g, 5, 28, 'MONEY', 20)
-    pickup(g, 33, 4, 'MATERIAL', 1)
-    pickup(g, 24, 13, 'MONEY', 10)
-    pickup(g, 3, 2, 'HEAL', 1)
-    g.start = None
-    return g
-
-# ---------------------------------------------------------------- 丘陵（川と生け垣で折り返す）
-def river_x(y):
-    return 19.5 + 1.8 * math.sin(y / 5.0)
-
-def make_hills():
-    g = new_area('hills', 9)
-    nb = value_noise(91, 13)
-    noise_heights(g, lambda x, y: 0.5 + 3.2 * (x / 48.0 + (35 - y) / 35.0) / 2 * 2 + 1.5 * nb(x, y), fine=1.5)
-    # 東側の段々畑：生け垣の列ごとに1段ずつ高くする（列の上が段のふち）
-    rows = [(27, 'W'), (20, 'E'), (13, 'W'), (6, 'E')]
-    # 川（北から南へ）。橋は南の端だけ
-    for y in range(g.h):
-        rx = river_x(y)
-        for x in range(g.w):
-            if abs(x - rx) < 1.3:
-                g.O[y][x] = '~'
-                g.reserved.add((x, y))
-    for x in range(g.w):
-        if g.O[31][x] == '~':
-            g.O[31][x] = '='
-    # 生け垣の列（川の東の岸から東の端まで）。すき間を東と西に交互にあける
-    for y, gap in rows:
-        x0 = int(math.ceil(river_x(y) + 1.3))
-        for x in range(x0, g.w):
-            in_gap = (gap == 'E' and x >= g.w - 3) or (gap == 'W' and x < x0 + 3)
-            if not in_gap:
-                g.O[y][x] = 'T' if (x + y) % 3 else 'B'
-                g.hedge.add((x, y))
-            g.reserved.add((x, y))  # すき間にも木を置かない
-    # 西の岸の木立
-    scatter(g, [('T', 3), ('P', 1), ('B', 2), ('F', 3)], 0.10, 11,
-            avoid=lambda x, y: x > river_x(y) - 2 and x < river_x(y) + 2)
-    flatten_exits(g)
-    pad(g, 8, 20); enemy(g, 8, 20, 'WEAK')
-    pad(g, 8, 30); enemy(g, 8, 30, 'WEAK')
-    pad(g, 35, 30); enemy(g, 35, 30, 'WEAK')
-    pad(g, 34, 17); enemy(g, 34, 17, 'WEAK')
-    pad(g, 40, 9); enemy(g, 40, 9, 'WEAK', 'DOWN')
-    enemy(g, 30, 24, 'MELEE', 'DOWN')
-    enemy(g, 30, 10, 'MELEE')
-    pickup(g, 45, 33, 'MONEY', 20)
-    pickup(g, 4, 33, 'MATERIAL', 2)
-    pickup(g, 45, 16, 'HEAL', 1)
-    pickup(g, 24, 3, 'MONEY', 10)
-    pickup(g, 13, 4, 'MATERIAL', 1)
-    g.start = None
-    return g
-
-# ---------------------------------------------------------------- 奥の森（高い台地と、門の近道）
-PLATEAU_X = 18   # これより西が台地
-GATE_ZONE_Y = 31 # これより南の西側は、門の前の低い所
-
-def make_forest():
-    g = new_area('forest', 13)
-    nb = value_noise(131, 12)
-    noise_heights(g, lambda x, y: 2.0 + 2.5 * nb(x, y) + (39 - y) / 39.0 * 1.5, fine=1.5)
-    # 西の台地（崖で囲まれた高い所、6〜8段）。北東の階段からだけ登れる
-    np_ = value_noise(137, 3.0)
-    for x, y in g.cells():
-        if x < PLATEAU_X and y < GATE_ZONE_Y:
-            g.H[y][x] = 6 + int(2.6 * np_(x, y))
-    relax(g, lambda x, y: x < PLATEAU_X and y < GATE_ZONE_Y)
-    # 門の前の低い所（台地から3段飛び降りられる）
-    for x, y in g.cells():
-        if x < PLATEAU_X and y >= GATE_ZONE_Y:
-            g.H[y][x] = 4
-    # 台地のすぐ東は台地のふちより2段以上低くする（崖の下から登れないように）。下げた所からは、なだらかにならす
-    for y in range(GATE_ZONE_Y):
-        g.H[y][PLATEAU_X] = min(g.H[y][PLATEAU_X], g.H[y][PLATEAU_X - 1] - 2)
-    relax(g, lambda x, y: x >= PLATEAU_X)
-    # 台地の北東の階段（崖の下 → 台地）
-    stair(g, [(PLATEAU_X + 6, 2), (PLATEAU_X + 5, 2), (PLATEAU_X + 4, 2), (PLATEAU_X + 3, 2),
-              (PLATEAU_X + 2, 2), (PLATEAU_X + 1, 2), (PLATEAU_X, 2), (PLATEAU_X - 1, 2)])
-    # 東の森：とがった木の列で折り返す
-    rows = [(34, 'W'), (28, 'E'), (22, 'W'), (16, 'E'), (10, 'W')]
-    for y, gap in rows:
-        for x in range(PLATEAU_X, g.w):
-            in_gap = (gap == 'E' and x >= g.w - 3) or (gap == 'W' and x < PLATEAU_X + 3)
-            if not in_gap:
-                g.O[y][x] = 'P' if (x + y) % 4 else 'T'
-                g.hedge.add((x, y))
-            g.reserved.add((x, y))  # すき間にも木を置かない
-    # 奈落の裂け目（東の森の真ん中、細い道の横）
-    for c in line_cells([(34, 19), (38, 20), (42, 18), (47, 19)], 0.6):
-        if g.inside(*c):
-            g.O[c[1]][c[0]] = '_'
-            g.reserved.add(c)
-    scatter(g, [('P', 4), ('T', 3), ('B', 1)], 0.16, 17)
-    flatten_exits(g)
-    enemy(g, 30, 36, 'MELEE')
-    enemy(g, 45, 25, 'MELEE')
-    enemy(g, 40, 13, 'MELEE', 'DOWN')
-    enemy(g, 8, 12, 'MELEE', 'DOWN')
-    pad(g, 34, 6, 2); enemy(g, 34, 6, 'SHOOTER')
-    pad(g, 50, 13, 2); enemy(g, 50, 13, 'SHOOTER', 'DOWN')
-    pickup(g, 5, 6, 'STRONG_BALL', 1)
-    pickup(g, 12, 20, 'MATERIAL', 3)
-    pickup(g, 52, 36, 'HEAL', 1)
-    pickup(g, 26, 5, 'MATERIAL', 2)
-    pickup(g, 46, 3, 'MONEY', 30)
-    g.start = None
-    return g
-
-# ---------------------------------------------------------------- 地方のエリア（2026-11-25）
-# 地方ごとの飾り（散らす物と割合）と、囲いに使う物
 THEME_DECO = {
     'mountain': ([('R', 6), ('P', 2), ('B', 1)], 0.11),
     'grass':    ([('T', 2), ('B', 2), ('F', 3), ('g', 4)], 0.15),
@@ -645,6 +477,7 @@ WALL_CH = {'mountain': 'R', 'grass': 'T', 'lava': 'R', 'castle': 'W', 'tower': '
 BOSS_TINT = {'岩転がしの巨人': '8d8f94', '草むらの大蛇': '6f9a5a', '満ち引きする溶岩': '7a4a3a', '廃城の主': '8a7f9a',
              '双子（左）': 'c9c3b6', '双子（右）': 'c9c3b6', 'らせん塔の番人': 'b8b2a4', 'ブライト': 'e8e2f0',
              '岩窟のぬし': '6a6c73', '溶岩洞のぬし': '9a3a2a'}
+
 
 def field(name, seed, base, amp, fine=1.5, tilt=(0.0, 0.0), scale=11):
     g = new_area(name, seed)
@@ -699,7 +532,7 @@ def ruins(g, n, seed):
     """崩れた石の建物：石の壁の四角に、すき間と柱。中は石畳。"""
     rng = random.Random(seed)
     for _ in range(n):
-        w, h = rng.randint(5, 9), rng.randint(4, 7)
+        w, h = rng.randint(4, 7), rng.randint(3, 5)
         x0, y0 = rng.randint(2, g.w - w - 3), rng.randint(2, g.h - h - 3)
         ring = [(x, y) for x in range(x0, x0 + w + 1) for y in range(y0, y0 + h + 1)
                 if x in (x0, x0 + w) or y in (y0, y0 + h)]
@@ -826,22 +659,21 @@ def barrier(g, x, kind, gate_y, ch):
     g.locked |= {(x, gate_y), (x + 1, gate_y)}
     return gid
 
-def statue(g, x, y, name):
-    g.O[y][x] = 'K'
-    protect(g, [(x, y)])
+def boss(g, x, y, name):
+    """ボスの居場所。ボスはここに現れて動く（倒したあとは何もない）。"""
+    g.O[y][x] = '.'
+    g.reserved.add((x, y))
     g.bosses.append((x, y, name, BOSS_TINT.get(name, '9a968e')))
-    front = (x, y + 1)
-    g.O[front[1]][front[0]] = '.'
-    g.H[front[1]][front[0]] = g.H[y][x]
-    g.reserved.add(front)
-    g.must_extra.append(front)
+    g.must_extra.append((x, y))
 
-def merchant(g, x, y):
+def merchant(g, x, y, shop):
+    """商人。前（南）に立って F でお店が開く。"""
     g.O[y][x] = 'M'
     protect(g, [(x, y)])
     g.O[y + 1][x] = '.'
     g.reserved.add((x, y + 1))
     g.must_extra.append((x, y + 1))
+    g.merchants.append((x, y, shop))
 
 def plaza(g, cx, cy, rx=4, ry=3, paving=False, fire=True):
     h = flatten(g, cx - rx, cy - ry, cx + rx, cy + ry)
@@ -859,32 +691,91 @@ def plaza(g, cx, cy, rx=4, ry=3, paving=False, fire=True):
         g.must_extra.append((cx, cy + 1))
     return h
 
-def loot(g, seed, n, table):
-    """拾いもの（お金・素材・回復）を、たどり着ける所にばらまく。"""
+def loot(g, seed, n, table=None):
+    """拾いもの（お金・素材・道具）を、たどり着ける所にばらまく。"""
+    table = table or LOOT[g.region]
     rng = random.Random(seed)
-    free = [(x, y) for x, y in g.cells() if g.O[y][x] in '.Fgs' and (x, y) not in g.reserved and g.H[y][x] >= 0]
+    free = [(x, y) for x, y in g.cells() if g.O[y][x] in '.Fgs' and (x, y) not in g.reserved and g.H[y][x] >= 0
+            and (x, y) not in g.locked]
     rng.shuffle(free)
     placed = []
     for c in free:
         if len(placed) >= n:
             break
-        if all(abs(c[0] - p[0]) + abs(c[1] - p[1]) > 8 for p in placed):
-            kind, amount = table[len(placed) % len(table)]
+        if all(abs(c[0] - p[0]) + abs(c[1] - p[1]) > 6 for p in placed):
+            kind, amount = table[(len(placed) + seed) % len(table)]
             pickup(g, c[0], c[1], kind, amount)
             placed.append(c)
 
-LOOT = [('MONEY', 20), ('MATERIAL', 2), ('HEAL', 1), ('MONEY', 30), ('MATERIAL', 3)]
+# 地方ごとの拾いもの（品物の id と数）
+LOOT = {
+    'はじまりの地': [('money', 15), ('herb', 2), ('wood', 2), ('potion', 1), ('hide', 2), ('scrap', 2)],
+    '山岳': [('iron_ore', 2), ('snow', 2), ('money', 30), ('potion', 1), ('bone', 2), ('arrow', 10)],
+    '草原': [('herb', 3), ('scale', 2), ('money', 30), ('potion', 1), ('wood', 2), ('arrow', 10)],
+    '廃城': [('old_steel', 2), ('silver', 1), ('money', 40), ('potion_m', 1), ('scrap', 3), ('ether', 1)],
+    '溶岩': [('obsidian', 2), ('fire_stone', 2), ('money', 40), ('potion_m', 1), ('bomb', 2)],
+    '神秘の塔': [('star_shard', 1), ('silver', 2), ('money', 60), ('potion_m', 1), ('ether', 1)],
+}
+
+# 地方ごとの敵の種類（EnemyKind.Kind の名前）
+REGION_ENEMIES = {
+    'はじまりの地': ['WEAK', 'MELEE', 'SHOOTER'],
+    '山岳': ['MELEE', 'CHARGER', 'SHOOTER', 'FLYER'],
+    '草原': ['WEAK', 'CHARGER', 'SHADOW', 'SHOOTER'],
+    '廃城': ['SHIELD', 'GHOST', 'SHOOTER', 'MELEE'],
+    '溶岩': ['BOMBER', 'FLYER', 'SHIELD', 'SHOOTER'],
+    '神秘の塔': ['SHADOW', 'GHOST', 'SHIELD', 'FLYER'],
+}
+FLAT_KINDS = {'WEAK', 'SHOOTER', 'CHARGER'}   # 段差を登らない敵（4×4の平地を作る）
+DIR_NAMES = ['RIGHT', 'DOWN', 'LEFT', 'UP']
+
+def spawn(g, seed, n, kinds=None):
+    """敵を n 体置く。出口・たき火・仕掛けから離れた、たどり着ける所。敵どうしも離す。"""
+    kinds = kinds or REGION_ENEMIES[g.region]
+    rng = random.Random(seed)
+    exits = [c for e in g.exits for c in exit_cells(g.name, *e[1:4])]
+    fire = getattr(g, 'campfire', None)
+    cand = [(x, y) for x, y in g.cells() if 2 <= x < g.w - 2 and 2 <= y < g.h - 2]
+    rng.shuffle(cand)
+    placed = 0
+    for i in range(n):
+        kind = kinds[(i + seed) % len(kinds)]
+        for (x, y) in cand:
+            if g.O[y][x] not in '.Fgs' or (x, y) in g.reserved or (x, y) in g.locked or g.H[y][x] < 0:
+                continue
+            if min(max(abs(x - ex), abs(y - ey)) for ex, ey in exits) < 4:
+                continue
+            if fire and max(abs(x - fire[0]), abs(y - fire[1])) < 5:
+                continue
+            if any(max(abs(x - ex), abs(y - ey)) < 4 for ex, ey, *_ in g.enemies):
+                continue
+            if any(max(abs(x - bx), abs(y - by)) < 7 for bx, by, *_ in g.bosses):
+                continue
+            if kind in FLAT_KINDS:
+                sq = [(xx, yy) for xx in range(x - 2, x + 2) for yy in range(y - 2, y + 2)]
+                if any(not g.inside(*c) or c in g.reserved or c in g.locked or c in g.hedge or g.O[c[1]][c[0]] in '~_L'
+                       or g.H[c[1]][c[0]] < 0 for c in sq):
+                    continue
+                hs = [g.H[c[1]][c[0]] for c in sq]
+                if max(hs) - min(hs) > 1:
+                    continue
+                pad(g, x, y, 2)
+            enemy(g, x, y, kind, DIR_NAMES[(x + y) % 4])
+            placed += 1
+            break
+    if placed < n:
+        print('  敵を置けなかった:', g.name, n - placed)
 
 def region_field(name, seed, base, amp, mesa_n=3, fine=1.5, tilt=(0.0, 0.0), pre=None):
     g = field(name, seed, base, amp, fine=fine, tilt=tilt)
     if pre:
         pre(g)   # 仕掛け・たき火などを先に置く（高台がかぶらないように）
     if g.theme == 'mountain':
-        mesas(g, mesa_n, seed + 1, rise=2, r=(3, 6))
+        mesas(g, mesa_n, seed + 1, rise=2, r=(2, 4))
     elif g.theme == 'castle':
-        mesas(g, max(1, mesa_n - 1), seed + 1, rise=2, r=(3, 5))
+        mesas(g, max(1, mesa_n - 1), seed + 1, rise=2, r=(2, 3.5))
     else:
-        mesas(g, mesa_n, seed + 1, rise=2, r=(3, 5))
+        mesas(g, mesa_n, seed + 1, rise=2, r=(2, 3.5))
     return g
 
 def dress(g, seed):
@@ -892,239 +783,41 @@ def dress(g, seed):
     if g.theme == 'grass':
         grass_patches(g, seed + 5)
     if g.theme == 'castle':
-        ruins(g, 4, seed + 6)
+        ruins(g, max(1, g.w * g.h // 200), seed + 6)
     scatter_theme(g, seed + 7)
     flatten_exits(g)
 
-# ---- 山岳
-def make_mt_1():
-    def _pre_882(g):
-        pocket(g, 'CRACK', 36, 6, 40, 9, 'S', ('MATERIAL', 4))
-    g = region_field('mt_1', 201, 1.5, 4.5, mesa_n=4, pre=_pre_882)
-    dress(g, 201); loot(g, 202, 4, LOOT); return g
 
-def make_mt_2():
-    def _pre_887(g):
-        plaza(g, 14, 20)
-    g = region_field('mt_2', 211, 3.0, 3.0, mesa_n=1, pre=_pre_887)
-    dress(g, 211); loot(g, 212, 2, LOOT); return g
+def area(name, seed, base, amp, mesa_n=2, fine=1.4, tilt=(0.0, 0.0), pre=None, enemies=4, loot_n=3, after=None):
+    """地方のふつうのエリア：ノイズの地形・高台・仕掛け（pre）・飾り・敵・拾いもの。"""
+    g = region_field(name, seed, base, amp, mesa_n=mesa_n, fine=fine, tilt=tilt, pre=pre)
+    if after:
+        after(g)
+    dress(g, seed)
+    spawn(g, seed + 3, enemies)
+    loot(g, seed + 2, loot_n)
+    return g
 
-def make_mt_3():
-    def _pre_892(g):
-        barrier(g, 7, 'TARGET', 21, '~')
-    g = region_field('mt_3', 221, 2.5, 4.5, mesa_n=4, pre=_pre_892)
-    dress(g, 221); loot(g, 222, 4, LOOT); return g
-
-def make_mt_4():
-    def _pre_897(g):
-        pocket(g, 'VINES', 44, 14, 48, 17, 'S', ('ARROWS', 30))
-    g = region_field('mt_4', 231, 3.5, 4.0, mesa_n=6, tilt=(0.0, -1.5), pre=_pre_897)
-    dress(g, 231); loot(g, 232, 6, LOOT); return g
-
-def make_mt_5():
-    g = field('mt_5', 241, 2.0, 2.0, fine=1.2)
-    g.open_flat = True
-    for x, y in g.cells():
-        if 12 <= x <= 35 and 3 <= y <= 13:
-            g.H[y][x] = 7   # 巨人の岩棚（まわりより3段以上高い）
-        elif 12 <= x <= 35 and 14 <= y <= 15:
-            g.H[y][x] = 3
-    stair(g, [(11, 21), (11, 20), (11, 19), (11, 18), (11, 17), (11, 16), (11, 15), (11, 14), (11, 13), (12, 13)])
-    for x in range(38, 46):
-        for y in range(4, 18):
-            g.H[y][x] = 8   # 東の尾根（岩棚を見下ろせる）
-    stair(g, [(41, 26), (41, 25), (41, 24), (41, 23), (41, 22), (41, 21), (41, 20), (41, 19), (41, 18), (41, 17)])
-    statue(g, 24, 7, '岩転がしの巨人')
-    protect(g, [(x, y) for x in range(12, 36) for y in range(3, 14)])
-    for x, y in g.cells():
-        if (x, y) not in g.reserved and g.O[y][x] == '.' and random.Random(x * 99 + y).random() < 0.06:
-            g.O[y][x] = 'R'
-    flatten_exits(g); loot(g, 242, 2, LOOT); return g
-
-def make_mt_x():
-    g = field('mt_x', 251, 2.0, 1.5, fine=1.0)
-    g.open_flat = True
-    for x, y in g.cells():
-        if math.hypot((x - 12) / 11.0, (y - 11.5) / 9.5) > 1.0:
-            g.O[y][x] = 'R'
-    statue(g, 8, 11, '岩窟のぬし')
-    flatten_exits(g); loot(g, 252, 2, [('MATERIAL', 5), ('MONEY', 50)]); return g
-
-# ---- 草原
-def make_gr_1():
+def rest(name, seed, base, amp, cx, cy, mx, my, shop=None, paving=False, enemies=2, rx=3, ry=2):
+    """休憩所：たき火の広場と旅の商人。"""
     def _pre(g):
-        pocket(g, 'CRACK', 6, 24, 10, 28, 'N', ('MONEY', 40))
-        river(g, [(30, 0), (28, 12), (31, 24), (29, 35)], '~', 0.7, gaps=(9, 40), bridge='=')
-    g = region_field('gr_1', 301, 0.8, 2.6, mesa_n=3, fine=1.3, pre=_pre)
-    dress(g, 301); loot(g, 302, 4, LOOT); return g
+        plaza(g, cx, cy, rx=rx, ry=ry, paving=paving)
+        if shop:
+            merchant(g, mx, my, shop)
+    g = region_field(name, seed, base, amp, mesa_n=1, fine=1.0, pre=_pre)
+    dress(g, seed)
+    spawn(g, seed + 3, enemies)
+    loot(g, seed + 2, 2)
+    return g
 
-def make_gr_2():
-    def _pre_938(g):
-        plaza(g, 14, 12)
-        merchant(g, 17, 9)
-    g = region_field('gr_2', 311, 1.0, 1.5, mesa_n=1, fine=1.0, pre=_pre_938)
-    dress(g, 311); loot(g, 312, 2, LOOT); return g
-
-def make_gr_3():
-    def _pre_944(g):
-        pocket(g, 'THORNS', 30, 6, 34, 9, 'S', ('HEAL', 3))
-    g = region_field('gr_3', 321, 1.2, 3.0, mesa_n=4, fine=1.4, pre=_pre_944)
-    dress(g, 321)
-    grass_patches(g, 329, threshold=0.55, ch='F')
-    loot(g, 322, 4, LOOT); return g
-
-def make_gr_4():
-    def _pre_951(g):
-        pocket(g, 'TARGET', 30, 28, 34, 31, 'N', ('ARROWS', 40))
-    g = region_field('gr_4', 331, 1.0, 2.4, mesa_n=3, fine=1.3, pre=_pre_951)
-    dress(g, 331)
-    grass_patches(g, 338, threshold=0.5)
-    loot(g, 332, 4, LOOT); return g
-
-def make_gr_5():
-    g = field('gr_5', 341, 0.8, 1.6, fine=1.0, scale=14)
-    g.open_flat = True
-    statue(g, 24, 20, '草むらの大蛇')
-    for x, y in g.cells():
-        if (x, y) in g.reserved or g.O[y][x] != '.':
-            continue
-        d = math.hypot((x - 24) / 20.0, (y - 20) / 16.0)
-        r = random.Random(x * 131 + y * 7).random()
-        if d < 1.0 and r < 0.75:
-            g.O[y][x] = 'g'
-        elif d >= 1.0 and r < 0.25:
-            g.O[y][x] = random.Random(x + y * 57).choice('TBTF')
-    flatten_exits(g); loot(g, 342, 2, LOOT); return g
-
-# ---- 廃城
-def make_cs_1():
-    def _pre_974(g):
-        pocket(g, 'VINES', 36, 14, 40, 17, 'W', ('MATERIAL', 4))
-    g = region_field('cs_1', 401, 1.0, 2.5, mesa_n=3, fine=1.3, pre=_pre_974)
-    dress(g, 401); loot(g, 402, 4, LOOT); return g
-
-def make_cs_2():
-    def _pre_979(g):
-        plaza(g, 14, 17, paving=True)
-        merchant(g, 17, 14)
-    g = region_field('cs_2', 411, 1.5, 2.0, mesa_n=2, fine=1.2, pre=_pre_979)
-    dress(g, 411); loot(g, 412, 2, LOOT); return g
-
-def make_cs_3():
-    def _pre_985(g):
-        pocket(g, 'CRACK', 6, 6, 10, 9, 'S', ('MONEY', 50))
-    g = region_field('cs_3', 421, 1.5, 3.0, mesa_n=3, fine=1.4, pre=_pre_985)
-    dress(g, 421); loot(g, 422, 4, LOOT); return g
-
-def make_cs_4():
-    def _pre_990(g):
-        pocket(g, 'THORNS', 64, 6, 68, 9, 'S', ('HEAL', 3))
-    g = region_field('cs_4', 431, 1.5, 3.0, mesa_n=4, fine=1.4, pre=_pre_990)
-    dress(g, 431); loot(g, 432, 6, LOOT); return g
-
-def make_cs_5():
-    g = field('cs_5', 441, 1.0, 0.5, fine=0.4)
-    g.open_flat = True
-    h = flatten(g, 3, 2, 44, 33, 1)
-    for x in range(3, 45):
-        for y in range(2, 34):
-            edge = x in (3, 44) or y in (2, 33)
-            if edge and not (y == 33 and 21 <= x <= 26):
-                g.O[y][x] = 'W'
-            elif x in (4, 5, 42, 43) or y in (3, 4):
-                g.H[y][x] = 3   # 崩れた壁の上（高い通り道）
-                g.O[y][x] = '.'
-            else:
-                g.O[y][x] = 's'
-    for y in range(8, 30, 4):
-        for x in (12, 35):
-            g.O[y][x] = 'I'
-    stair(g, [(9, 30), (8, 30), (7, 30), (6, 30), (5, 30)])
-    stair(g, [(38, 30), (39, 30), (40, 30), (41, 30), (42, 30)])
-    for y in range(31, 33):
-        for x in range(4, 44):
-            if g.O[y][x] == 's' and g.H[y][x] > 1:
-                g.H[y][x] = 1
-    statue(g, 24, 7, '廃城の主')
-    g.O[8][24] = 's'
-    flatten_exits(g); loot(g, 442, 2, LOOT); return g
-
-# ---- 溶岩
-def make_lv_1():
-    def _pre(g):
-        pocket(g, 'CRACK', 19, 4, 23, 7, 'W', ('MATERIAL', 3))
-        river(g, [(0, 16), (9, 14), (18, 18), (27, 15)], 'L', 0.7, gaps=(6, 24))
-    g = region_field('lv_1', 501, 1.5, 3.0, mesa_n=2, fine=1.4, pre=_pre)
-    dress(g, 501); loot(g, 502, 3, LOOT); return g
-
-def make_lv_2():
-    def _pre_1029(g):
-        plaza(g, 14, 11)
-    g = region_field('lv_2', 511, 2.0, 1.5, mesa_n=1, fine=1.0, pre=_pre_1029)
-    dress(g, 511); loot(g, 512, 2, LOOT); return g
-
-def make_lv_3():
-    def _pre(g):
-        pocket(g, 'THORNS', 36, 4, 40, 7, 'S', ('HEAL', 2))
-        river(g, [(10, 0), (14, 9), (12, 16), (16, 23)], 'L', 0.7, gaps=(5, 18))
-        river(g, [(30, 0), (27, 8), (31, 15), (28, 23)], 'L', 0.7, gaps=(8, 20))
-    g = region_field('lv_3', 521, 1.5, 3.0, mesa_n=2, fine=1.4, pre=_pre)
-    dress(g, 521); loot(g, 522, 3, LOOT); return g
-
-def make_lv_4():
-    def _pre_1041(g):
-        barrier(g, 6, 'VINES', 17, 'L')
-    g = region_field('lv_4', 531, 2.0, 3.5, mesa_n=4, fine=1.5, pre=_pre_1041)
-    river(g, [(20, 10), (34, 14), (46, 9), (58, 13)], 'L', 0.7, gaps=(4, 22, 40))
-    dress(g, 531); loot(g, 532, 5, LOOT); return g
-
-def make_lv_5():
-    g = field('lv_5', 541, 4.0, 1.0, fine=0.6)
-    g.open_flat = True
-    rng = random.Random(545)
-    for x, y in g.cells():
-        d = math.hypot((x - 24) / 19.0, (y - 18) / 14.0)
-        if d < 1.0:
-            g.H[y][x] = 1
-            if 0.55 < d < 0.75:
-                g.O[y][x] = 'L'   # 低い所を囲む溶岩の輪（ボスで満ち引きする所）
-    for k, (ix, iy) in enumerate([(14, 12), (34, 12), (14, 25), (34, 25)]):
-        for x, y in g.cells():
-            if math.hypot(x - ix, y - iy) < 2.6:
-                g.H[y][x] = 3 + k % 2
-                g.O[y][x] = '.'
-    # 溶岩の輪をまたぐ道（北・南・西・東）
-    for (x0, y0, x1, y1) in [(23, 2, 25, 9), (23, 27, 25, 34), (5, 17, 13, 19), (35, 17, 43, 19)]:
-        for x in range(x0, x1 + 1):
-            for y in range(y0, y1 + 1):
-                if g.O[y][x] == 'L':
-                    g.O[y][x] = '.'
-    relax(g)
-    for x, y in g.cells():
-        if math.hypot(x - 24, y - 18) < 3.2:
-            g.H[y][x] = 3
-    statue(g, 24, 17, '満ち引きする溶岩')
-    flatten_exits(g); loot(g, 542, 2, LOOT); return g
-
-def make_lv_x():
-    g = field('lv_x', 551, 2.0, 1.0, fine=0.8)
-    g.open_flat = True
-    for x, y in g.cells():
-        if math.hypot((x - 13) / 12.0, (y - 12) / 10.5) > 1.0:
-            g.O[y][x] = 'R'
-        elif math.hypot(x - 15, y - 6) < 2.5 or math.hypot(x - 16, y - 18) < 2.2:
-            g.O[y][x] = 'L'
-    statue(g, 8, 12, '溶岩洞のぬし')
-    flatten_exits(g); loot(g, 552, 2, [('MATERIAL', 5), ('HEAL', 3)]); return g
-
-# ---- 町
+# ---------------------------------------------------------------- はじまりの町（前の野営地。2026-11-25 に町へ作り替えた）
 def make_town():
     g = new_area('town', 601)
     n = value_noise(611, 5)
     for x, y in g.cells():
         g.H[y][x] = 1 + (1 if n(x, y) > 0.75 else 0)
-    plaza(g, 12, 12, rx=7, ry=5, paving=True)
-    for (x0, y0, x1, y1) in [(2, 2, 6, 5), (15, 2, 20, 5), (2, 18, 6, 21), (16, 18, 21, 21)]:
+    plaza(g, 12, 10, rx=5, ry=3, paving=True)
+    for (x0, y0, x1, y1) in [(2, 2, 6, 5), (16, 2, 21, 5), (7, 15, 10, 17), (18, 15, 21, 17)]:
         flatten(g, x0 - 1, y0 - 1, x1 + 1, y1 + 1, 1)
         for x in range(x0, x1 + 1):
             for y in range(y0, y1 + 1):
@@ -1134,93 +827,319 @@ def make_town():
             for y in range(y0 - 1, y1 + 2):
                 if g.O[y][x] != 'H':
                     g.O[y][x] = '.'
-    g.O[9][8] = 'O'
-    protect(g, [(8, 9)])
-    merchant(g, 16, 9)    # 道具屋
-    merchant(g, 7, 14)    # 武器屋
+    flatten(g, 3, 12, 5, 14, 1)
+    g.O[13][4] = 'O'   # 井戸
+    protect(g, [(4, 13)])
+    merchant(g, 8, 7, 'tool')     # 道具屋
+    merchant(g, 12, 7, 'weapon')  # 武器屋
+    merchant(g, 16, 7, 'smith')   # 鍛冶屋
+    pickup(g, 9, 12, 'money', 30)
+    pickup(g, 15, 12, 'potion', 2)
     flatten_exits(g)
     for x, y in g.cells():
-        if (x in (0, 23) or y in (0, 23)) and (x, y) not in g.reserved:
+        if (x in (0, 23) or y in (0, 19)) and (x, y) not in g.reserved:
             g.O[y][x] = g.rng.choice('TPTB')
     scatter_theme(g, 607, avoid=lambda x, y: g.O[y][x] == 's')
+    g.start = (12, 12)
     return g
 
-# ---- 神秘の塔
-def make_tw_1():
-    g = field('tw_1', 701, 1.0, 1.0, fine=0.6)
-    plaza(g, 16, 13, rx=6, ry=4, paving=True)
-    for x in range(2, 30, 4):
-        g.O[2][x] = 'I'
+# ---------------------------------------------------------------- はじまりの地
+def make_rocks():
+    def _pre(g):
+        pocket(g, 'CRACK', 15, 12, 17, 14, 'W', ('money', 30))
+    def _after(g):
+        scatter(g, [('R', 6), ('B', 2), ('P', 1)], 0.10, 7)
+    return area('rocks', 5, 1.0, 3.5, mesa_n=2, fine=1.6, pre=_pre, after=_after, enemies=4, loot_n=3)
+
+def make_hills():
+    def _pre(g):
+        river(g, [(13, 0), (11, 9), (14, 17), (12, 25)], '~', 0.7, gaps=(10, 34), bridge='=')
+    def _after(g):
+        loot(g, 97, 1, [('sword_bronze', 1)])
+    return area('hills', 9, 0.6, 2.6, mesa_n=2, fine=1.4, pre=_pre, after=_after, enemies=5, loot_n=3)
+
+def make_forest():
+    g = new_area('forest', 13)
+    nb = value_noise(131, 9)
+    noise_heights(g, lambda x, y: 2.0 + 2.0 * nb(x, y) + (17 - y) / 17.0 * 1.0, fine=1.3)
+    # 西の台地（崖で囲まれた高い所、5〜6段）。北東の階段からだけ登れる
     for x, y in g.cells():
-        if y >= 22 and (x < 11 or x > 20):
-            g.O[y][x] = 'W'   # 塔の土台
-    dress(g, 701); return g
+        if x < 7 and 2 <= y < 13:
+            g.H[y][x] = 6
+    for y in range(2, 13):
+        g.H[y][7] = min(g.H[y][7], 3)
+    relax(g, lambda x, y: x >= 7)
+    stair(g, [(11, 1), (10, 1), (9, 1), (8, 1), (7, 1), (6, 1), (5, 2)])
+    g.H[1][5] = 6
+    pickup(g, 3, 6, 'ball_heavy', 1)   # 台地の上の宝箱（重い鉄球。武器屋でも売っている）
+    protect(g, [(x, y) for x in range(7) for y in range(2, 13)])
+    scatter(g, [('P', 4), ('T', 3), ('B', 1)], 0.14, 17)
+    flatten_exits(g)
+    spawn(g, 15, 4, ['MELEE', 'SHOOTER', 'WEAK', 'MELEE'])
+    loot(g, 14, 3)
+    return g
+
+# ---------------------------------------------------------------- 山岳
+def make_mt_1():
+    def _pre(g):
+        pocket(g, 'CRACK', 3, 3, 5, 5, 'S', ('iron_ore', 4))
+    return area('mt_1', 201, 1.5, 3.5, mesa_n=3, pre=_pre, enemies=4)
+
+def make_mt_2():
+    return rest('mt_2', 211, 2.5, 2.0, 8, 9, 6, 7, shop='山岳')
+
+def make_mt_3():
+    def _pre(g):
+        barrier(g, 4, 'TARGET', 13, '~')
+    return area('mt_3', 221, 2.5, 3.5, mesa_n=2, pre=_pre, enemies=4)
+
+def make_mt_4():
+    def _pre(g):
+        pocket(g, 'VINES', 26, 3, 28, 5, 'W', ('arrow_iron', 10))
+    return area('mt_4', 231, 3.0, 3.0, mesa_n=4, tilt=(0.0, -1.0), pre=_pre, enemies=5, loot_n=4)
+
+def make_mt_5():
+    g = field('mt_5', 241, 2.0, 1.0, fine=0.8)
+    g.open_flat = True
+    for x, y in g.cells():
+        if 5 <= x <= 18 and 2 <= y <= 8:
+            g.H[y][x] = 7   # 巨人の岩棚（まわりより4段以上高い）
+        elif g.H[y][x] > 3:
+            g.H[y][x] = 3
+    stair(g, [(3, 15), (3, 14), (3, 13), (3, 12), (3, 11), (3, 10), (3, 9), (3, 8), (4, 8), (5, 8)])
+    protect(g, [(x, y) for x in range(5, 19) for y in range(2, 9)])
+    boss(g, 12, 5, '岩転がしの巨人')
+    for x, y in g.cells():
+        if (x, y) not in g.reserved and g.O[y][x] == '.' and random.Random(x * 99 + y).random() < 0.05 and y > 10:
+            g.O[y][x] = 'R'
+    flatten_exits(g); loot(g, 242, 2); return g
+
+def make_mt_x():
+    g = field('mt_x', 251, 2.0, 1.0, fine=0.6)
+    g.open_flat = True
+    for x, y in g.cells():
+        if math.hypot((x - 9) / 8.5, (y - 7) / 6.5) > 1.0:
+            g.O[y][x] = 'R'
+    boss(g, 6, 7, '岩窟のぬし')
+    flatten_exits(g); loot(g, 252, 2, [('iron_ore', 4), ('money', 50)]); return g
+
+# ---------------------------------------------------------------- 草原
+def make_gr_1():
+    def _pre(g):
+        pocket(g, 'CRACK', 3, 10, 5, 12, 'N', ('money', 40))
+        river(g, [(15, 0), (14, 8), (16, 15)], '~', 0.7, gaps=(12,), bridge='=')
+    return area('gr_1', 301, 0.8, 2.4, mesa_n=2, fine=1.3, pre=_pre, enemies=4)
+
+def make_gr_2():
+    return rest('gr_2', 311, 1.0, 1.2, 8, 11, 6, 9, shop='草原')
+
+def make_gr_3():
+    def _pre(g):
+        pocket(g, 'THORNS', 2, 2, 4, 4, 'S', ('potion_m', 2))
+    def _after(g):
+        grass_patches(g, 329, threshold=0.55, ch='F')
+    return area('gr_3', 321, 1.2, 2.6, mesa_n=2, pre=_pre, after=_after, enemies=4)
+
+def make_gr_4():
+    def _pre(g):
+        pocket(g, 'TARGET', 5, 27, 7, 29, 'N', ('bow_poison', 1))
+    def _after(g):
+        grass_patches(g, 338, threshold=0.5)
+    return area('gr_4', 331, 1.0, 2.2, mesa_n=3, pre=_pre, after=_after, enemies=5, loot_n=4)
+
+def make_gr_5():
+    g = field('gr_5', 341, 0.8, 1.2, fine=0.8, scale=12)
+    g.open_flat = True
+    boss(g, 14, 10, '草むらの大蛇')
+    for x, y in g.cells():
+        if (x, y) in g.reserved or g.O[y][x] != '.':
+            continue
+        d = math.hypot((x - 13) / 10.0, (y - 10) / 8.0)
+        r = random.Random(x * 131 + y * 7).random()
+        if d < 1.0 and r < 0.7:
+            g.O[y][x] = 'g'
+        elif d >= 1.0 and r < 0.25:
+            g.O[y][x] = random.Random(x + y * 57).choice('TBTF')
+    flatten_exits(g); loot(g, 342, 2); return g
+
+# ---------------------------------------------------------------- 廃城
+def make_cs_1():
+    def _pre(g):
+        pocket(g, 'VINES', 16, 6, 18, 8, 'W', ('armor_mage', 1))
+    return area('cs_1', 401, 1.0, 2.2, mesa_n=2, fine=1.2, pre=_pre, enemies=4)
+
+def make_cs_2():
+    return rest('cs_2', 411, 1.5, 1.5, 9, 9, 11, 7, shop='廃城', paving=True)
+
+def make_cs_3():
+    def _pre(g):
+        pocket(g, 'CRACK', 3, 10, 5, 12, 'E', ('silver', 4))
+    return area('cs_3', 421, 1.5, 2.6, mesa_n=2, pre=_pre, enemies=4)
+
+def make_cs_4():
+    def _pre(g):
+        pocket(g, 'THORNS', 27, 3, 29, 5, 'W', ('potion_l', 1))
+    return area('cs_4', 431, 1.5, 2.6, mesa_n=3, pre=_pre, enemies=5, loot_n=4)
+
+def make_cs_5():
+    g = field('cs_5', 441, 1.0, 0.5, fine=0.4)
+    g.open_flat = True
+    flatten(g, 2, 1, 21, 18, 1)
+    for x in range(2, 22):
+        for y in range(1, 19):
+            edge = x in (2, 21) or y in (1, 18)
+            if edge and not (y == 18 and 10 <= x <= 15):
+                g.O[y][x] = 'W'
+            elif x in (3, 4, 19, 20) or y == 2:
+                g.H[y][x] = 3   # 崩れた壁の上（高い通り道）
+                g.O[y][x] = '.'
+            else:
+                g.O[y][x] = 's'
+    for y in range(5, 16, 4):
+        for x in (8, 15):
+            g.O[y][x] = 'I'
+    stair(g, [(7, 16), (6, 16), (5, 16), (4, 16)])
+    stair(g, [(16, 16), (17, 16), (18, 16), (19, 16)])
+    for y in range(17, 18):
+        for x in range(3, 21):
+            if g.H[y][x] > 1:
+                g.H[y][x] = 1
+                g.O[y][x] = 's'
+    boss(g, 12, 6, '廃城の主')
+    flatten_exits(g); loot(g, 442, 2); return g
+
+# ---------------------------------------------------------------- 溶岩
+def make_lv_1():
+    def _pre(g):
+        pocket(g, 'CRACK', 13, 3, 15, 5, 'W', ('fire_stone', 3))
+        river(g, [(0, 10), (6, 9), (12, 11), (17, 9)], 'L', 0.6, gaps=(5, 22))
+    return area('lv_1', 501, 1.5, 2.6, mesa_n=1, pre=_pre, enemies=4)
+
+def make_lv_2():
+    return rest('lv_2', 511, 2.0, 1.2, 9, 9, 11, 7, shop='溶岩', rx=2, ry=2)
+
+def make_lv_3():
+    def _pre(g):
+        pocket(g, 'THORNS', 11, 2, 13, 4, 'S', ('staff_fire_3', 1))
+        river(g, [(4, 10), (8, 12), (12, 11), (15, 13)], 'L', 0.6, gaps=(6, 18))
+    return area('lv_3', 521, 1.5, 2.6, mesa_n=1, pre=_pre, enemies=4)
+
+def make_lv_4():
+    def _pre(g):
+        barrier(g, 4, 'VINES', 10, 'L')
+    def _after(g):
+        river(g, [(10, 6), (16, 8), (22, 6), (30, 8)], 'L', 0.6, gaps=(4, 14, 26))
+    return area('lv_4', 531, 2.0, 3.0, mesa_n=3, pre=_pre, after=_after, enemies=5, loot_n=4)
+
+def make_lv_5():
+    g = field('lv_5', 541, 4.0, 0.6, fine=0.4)
+    g.open_flat = True
+    for x, y in g.cells():
+        d = math.hypot((x - 12) / 10.0, (y - 10) / 8.0)
+        if d < 1.0:
+            g.H[y][x] = 1
+            if 0.5 < d < 0.7:
+                g.O[y][x] = 'L'   # 低い所を囲む溶岩の輪（ボスで満ち引きする所）
+    for k, (ix, iy) in enumerate([(6, 6), (18, 6), (6, 14), (18, 14)]):
+        for x, y in g.cells():
+            if math.hypot(x - ix, y - iy) < 1.8:
+                g.H[y][x] = 3 + k % 2
+                g.O[y][x] = '.'
+    for (x0, y0, x1, y1) in [(11, 0, 13, 6), (11, 14, 13, 19), (0, 9, 6, 11), (18, 9, 23, 11)]:
+        for x in range(x0, x1 + 1):
+            for y in range(y0, y1 + 1):
+                if g.O[y][x] == 'L':
+                    g.O[y][x] = '.'
+    relax(g)
+    boss(g, 12, 10, '満ち引きする溶岩')
+    flatten_exits(g); loot(g, 542, 2); return g
+
+def make_lv_x():
+    g = field('lv_x', 551, 2.0, 0.8, fine=0.6)
+    g.open_flat = True
+    for x, y in g.cells():
+        if math.hypot((x - 9) / 8.5, (y - 7) / 6.5) > 1.0:
+            g.O[y][x] = 'R'
+        elif math.hypot(x - 10, y - 3) < 1.6 or math.hypot(x - 11, y - 11) < 1.4:
+            g.O[y][x] = 'L'
+    boss(g, 5, 7, '溶岩洞のぬし')
+    flatten_exits(g); loot(g, 552, 2, [('fire_stone', 4), ('potion_m', 2)]); return g
+
+# ---------------------------------------------------------------- 神秘の塔
+def make_tw_1():
+    g = field('tw_1', 701, 1.0, 0.8, fine=0.5)
+    plaza(g, 10, 11, rx=4, ry=3, paving=True)
+    for x in range(2, 19, 4):
+        if g.O[2][x] == '.':
+            g.O[2][x] = 'I'
+    dress(g, 701)
+    spawn(g, 704, 2)
+    loot(g, 702, 2)
+    return g
 
 def make_tw_2():
     g = field('tw_2', 711, 1.0, 0.0, fine=0.0)
     g.open_flat = True
     for x, y in g.cells():
         g.H[y][x] = 1
-        g.O[y][x] = 'W' if x in (0, 31) or y in (0, 31) else 's'
-    for x in range(5, 28, 5):
-        for y in (6, 24):
+        g.O[y][x] = 'W' if x in (0, 19) or y in (0, 17) else 's'
+    for x in range(4, 17, 4):
+        for y in (4, 13):
             g.O[y][x] = 'I'
-    statue(g, 11, 14, '双子（左）')
-    statue(g, 20, 14, '双子（右）')
+    boss(g, 7, 8, '双子（左）')
+    boss(g, 12, 8, '双子（右）')
     flatten_exits(g); return g
 
 def make_tw_3():
     g = field('tw_3', 721, 0.0, 0.0, fine=0.0)
     g.open_flat = True
-    cx, cy = 15.5, 15.5
+    cx, cy = 9.5, 8.5
     for x, y in g.cells():
         r = max(abs(x - cx), abs(y - cy))
         g.H[y][x] = -1
-        if r < 4:
+        if r < 2.6:
             g.H[y][x] = 0
             g.O[y][x] = 'W'   # 塔の芯
-        elif r < 9:
-            a = math.atan2(-(y - cy), x - cx)   # 東が0、北が正（反時計回り）
+        elif r < 7.6:
+            a = math.atan2(x - cx, -(y - cy))   # 北が0、時計回り
             if a < 0:
                 a += 2 * math.pi
-            frac = a / (1.5 * math.pi)            # 東→北→西→南で 0→1
+            frac = a / (1.8 * math.pi)
             if frac <= 1.0:
                 g.H[y][x] = min(8, int(frac * 9))
                 g.O[y][x] = 's'
-    for x in range(24, 32):
-        for y in range(16, 19):
+    for x in range(8, 11):
+        for y in range(0, 2):
             g.H[y][x] = 0
             g.O[y][x] = 's'
-    for y in range(24, 32):
-        for x in range(14, 17):
-            g.H[y][x] = 8
+        for y in range(16, 18):
+            g.H[y][x] = 4
             g.O[y][x] = 's'
-    statue(g, 7, 15, 'らせん塔の番人')
-    g.O[16][7] = 's'
+    boss(g, 3, 4, 'らせん塔の番人')
     return g
 
 def make_tw_4():
     g = field('tw_4', 731, 0.0, 0.0, fine=0.0)
     g.open_flat = True
-    cx, cy = 15.5, 13.5
+    cx, cy = 9.5, 8.5
     for x, y in g.cells():
         d = math.hypot(x - cx, y - cy)
-        if d < 10.5:
+        if d < 7.6:
             g.H[y][x] = 8
             g.O[y][x] = 's'
             a = math.atan2(y - cy, x - cx)
-            if 8.0 < d < 9.2 and int(round(a / (math.pi / 4))) * (math.pi / 4) - a < 0.12 and abs(int(round(a / (math.pi / 4))) * (math.pi / 4) - a) < 0.12:
+            q = round(a / (math.pi / 4)) * (math.pi / 4)
+            if 6.0 < d < 7.0 and abs(q - a) < 0.15:
                 g.O[y][x] = 'I'
         else:
             g.H[y][x] = -1
-    for y in range(0, 4):
-        for x in range(14, 17):
+    for y in range(0, 3):
+        for x in range(8, 11):
             g.H[y][x] = 8
             g.O[y][x] = 's'
-    statue(g, 15, 13, 'ブライト')
+    boss(g, 9, 9, 'ブライト')
     return g
 
-# ---------------------------------------------------------------- 書き出し
 EDGE = {'NORTH': 'ExitDef.Edge.NORTH', 'EAST': 'ExitDef.Edge.EAST', 'SOUTH': 'ExitDef.Edge.SOUTH', 'WEST': 'ExitDef.Edge.WEST'}
 DIRS = {'RIGHT': 'Vector2.RIGHT', 'DOWN': 'Vector2.DOWN', 'LEFT': 'Vector2.LEFT', 'UP': 'Vector2.UP'}
 
@@ -1238,7 +1157,7 @@ def write_gd(g):
          'const THEME := "%s"' % a['theme'],
          'const ORIGIN := Vector2i(%d, %d)' % a['origin'],
          '## 広場（たき火・町・ボスの間）。広い平地があってよい',
-         'const OPEN_FLAT := %s' % ('true' if g.open_flat or g.name == 'camp' else 'false')]
+         'const OPEN_FLAT := %s' % ('true' if g.open_flat else 'false')]
     if g.start:
         L.append('const START := Vector2i(%d, %d)' % g.start)
     L.append('const HEIGHTS := [')
@@ -1252,20 +1171,27 @@ def write_gd(g):
     for e in g.exits:
         L.append('\t[%s, %d, %d, "%s", "%s", %s],' % (EDGE[e[1]], e[2], e[3], e[4], e[5], 'true' if e[6] else 'false'))
     L.append(']')
+    L.append('## [マス, 向き, 種類, レベル（倒したボスの数は足す前）]')
     L.append('const ENEMIES := [')
-    for x, y, d, k in g.enemies:
-        L.append('\t[Vector2i(%d, %d), %s, EnemyKind.Kind.%s],' % (x, y, DIRS[d], k))
+    for x, y, d, k, lv in g.enemies:
+        L.append('\t[Vector2i(%d, %d), %s, EnemyKind.Kind.%s, %d],' % (x, y, DIRS[d], k, lv))
     L.append(']')
+    L.append('## [マス, 品物の id（ItemCatalog、お金は money）, 数]')
     L.append('const PICKUPS := [')
     for x, y, k, n in g.pickups:
-        L.append('\t[Vector2i(%d, %d), RunState.PickupKind.%s, %d],' % (x, y, k, n))
+        L.append('\t[Vector2i(%d, %d), "%s", %d],' % (x, y, k, n))
+    L.append(']')
+    L.append('## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く')
+    L.append('const MERCHANTS := [')
+    for x, y, shop in g.merchants:
+        L.append('\t[Vector2i(%d, %d), "%s"],' % (x, y, shop))
     L.append(']')
     L.append('## 武器で開く仕掛け [id, 種類, ふさぐマス（的なら橋になる水のマス）, 武器を当てるマス]')
     L.append('const GIMMICKS := [')
     for gid, kind, cells, trig in g.gimmicks:
         L.append('\t["%s", "%s", [%s], [%s]],' % (gid, kind, ', '.join(vec(c) for c in cells), ', '.join(vec(c) for c in trig)))
     L.append(']')
-    L.append('## ボスの居場所 [像のマス, 名前, 像の色]（ボスはまだいないので像を置く）')
+    L.append('## ボスの居場所 [マス, 名前, 色]')
     L.append('const BOSSES := [')
     for x, y, name, tint in g.bosses:
         L.append('\t[Vector2i(%d, %d), "%s", Color("%s")],' % (x, y, name, tint))
@@ -1287,12 +1213,12 @@ def hub_of(g):
 def finish(g):
     hub = hub_of(g)
     must = [c for e in g.exits for c in exit_cells(g.name, *e[1:4]) if c not in g.locked]
-    must += [(x, y) for x, y, _, _ in g.enemies] + [(x, y) for x, y, _, _ in g.pickups if (x, y) not in g.locked]
+    must += [(x, y) for x, y, *_ in g.enemies] + [(x, y) for x, y, _, _ in g.pickups if (x, y) not in g.locked]
     must += g.must_extra
     connect(g, hub, must)
     fill_pockets(g, hub)
     connect(g, hub, must)
-    flat = flats_ok(g, exempt=lambda x, y: g.open_flat or g.name == 'camp' or any(a <= x <= c and b <= y <= d for a, b, c, d in g.pads))
+    flat = flats_ok(g, exempt=lambda x, y: g.open_flat or any(a <= x <= c and b <= y <= d for a, b, c, d in g.pads))
     if flat:
         print('  広い平地がある:', g.name, flat)
     check_unlocked(g, hub)
@@ -1316,14 +1242,14 @@ def check_unlocked(g, hub):
 # ---------------------------------------------------------------- 隠しもの
 # 最初のカメラの向き（北が画面の上）では、すぐ手前（南）の崖か木の陰になって見えない宝箱。
 # カメラを回すと見える。たどり着けるマスのうち、出口から離れていて、北側は開けている所を選ぶ。
-HIDDEN = {'camp': ('HEAL', 2), 'rocks': ('MONEY', 30), 'hills': ('MATERIAL', 3), 'forest': ('HEAL', 2)}
-HIDDEN_BY_THEME = {'mountain': ('MATERIAL', 3), 'grass': ('HEAL', 2), 'castle': ('MONEY', 40), 'lava': ('MATERIAL', 3),
-                   'tower': ('HEAL', 3), 'town': ('MONEY', 30)}
+HIDDEN = {'town': ('potion', 2), 'rocks': ('money', 30), 'hills': ('hide', 3), 'forest': ('potion', 2)}
+HIDDEN_BY_THEME = {'mountain': ('iron_ore', 3), 'grass': ('potion', 2), 'castle': ('money', 40), 'lava': ('fire_stone', 3),
+                   'tower': ('star_shard', 1), 'town': ('money', 30)}
 
 def hidden_spots(g, hub):
     reach = bfs(g, hub)
     exits = [c for e in g.exits for c in exit_cells(g.name, *e[1:4])]
-    taken = {(x, y) for x, y, _, _ in g.pickups} | {(x, y) for x, y, _, _ in g.enemies}
+    taken = {(x, y) for x, y, _, _ in g.pickups} | {(x, y) for x, y, *_ in g.enemies}
     out = []
     for (x, y) in reach:
         if (x, y) in g.reserved or (x, y) in taken or g.O[y][x] not in '.s' or not g.inside(x, y + 1) or not g.inside(x, y - 1):
@@ -1374,10 +1300,12 @@ def preview(g, path):
         for yy in range(S):
             for xx in range(S):
                 im.putpixel((x * S + xx, y * S + yy), c)
-    for x, y, _, k in g.enemies:
+    ecol = {'WEAK': (220, 40, 40), 'MELEE': (150, 60, 200), 'SHOOTER': (230, 170, 40), 'SHIELD': (90, 90, 220),
+            'SHADOW': (30, 30, 30), 'FLYER': (200, 100, 200), 'CHARGER': (160, 90, 40), 'BOMBER': (255, 120, 0), 'GHOST': (220, 220, 255)}
+    for x, y, _, k, _ in g.enemies:
         for yy in range(1, S - 1):
             for xx in range(1, S - 1):
-                im.putpixel((x * S + xx, y * S + yy), (220, 40, 40) if k == 'WEAK' else (150, 60, 200) if k == 'MELEE' else (230, 170, 40))
+                im.putpixel((x * S + xx, y * S + yy), ecol.get(k, (255, 0, 0)))
     for x, y, k, _ in g.pickups:
         for yy in range(2, S - 2):
             for xx in range(2, S - 2):
@@ -1385,7 +1313,7 @@ def preview(g, path):
     im.save(path)
 
 MAKERS = {
-    'camp': make_camp, 'rocks': make_rocks, 'hills': make_hills, 'forest': make_forest, 'town': make_town,
+    'town': make_town, 'rocks': make_rocks, 'hills': make_hills, 'forest': make_forest,
     'mt_1': make_mt_1, 'mt_2': make_mt_2, 'mt_3': make_mt_3, 'mt_4': make_mt_4, 'mt_5': make_mt_5, 'mt_x': make_mt_x,
     'gr_1': make_gr_1, 'gr_2': make_gr_2, 'gr_3': make_gr_3, 'gr_4': make_gr_4, 'gr_5': make_gr_5,
     'cs_1': make_cs_1, 'cs_2': make_cs_2, 'cs_3': make_cs_3, 'cs_4': make_cs_4, 'cs_5': make_cs_5,
@@ -1404,22 +1332,6 @@ def main():
         hubs[k] = finish(g)
     for k, g in gs.items():
         place_hidden(g, hubs[k])
-    camp, hills, forest = gs['camp'], gs['hills'], gs['forest']
-    # 経路の長さ（マス）：たき火 → 丘陵 → 奥の森の強い鉄球
-    def mid_exit(area, edge, a, b, inward=1):
-        c = exit_cells(area, edge, a, b)[(b - a) // 2]
-        dx, dy = INWARD[edge]
-        return (c[0] + dx * inward, c[1] + dy * inward)
-    ball = next((x, y) for x, y, k, _ in forest.pickups if k == 'STRONG_BALL')
-    d1 = dist(camp, camp.start, mid_exit('camp', 'EAST', 8, 10, 0))
-    d2 = dist(hills, mid_exit('hills', 'WEST', 8, 10), mid_exit('hills', 'NORTH', 26, 28, 0))
-    d3 = dist(forest, mid_exit('forest', 'SOUTH', 42, 44), ball)
-    go = (d1 or 0) + (d2 or 0) + (d3 or 0)
-    r1 = dist(forest, ball, mid_exit('forest', 'SOUTH', 2, 4, 0))
-    r2 = dist(camp, mid_exit('camp', 'NORTH', 10, 12), camp.start)
-    back = (r1 or 0) + (r2 or 0)
-    print('行き: たき火→丘陵 %s + 丘陵 %s + 森→強い鉄球 %s = %d マス（%.0f秒、目安90秒以上）' % (d1, d2, d3, go, go / SPEED_CELLS))
-    print('帰り: 強い鉄球→門 %s + 野営地 %s = %d マス（%.0f秒、目安30秒以内）' % (r1, r2, back, back / SPEED_CELLS))
     for g in gs.values():
         write_gd(g)
         if '--preview' in sys.argv:

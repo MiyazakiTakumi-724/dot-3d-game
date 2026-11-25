@@ -74,3 +74,8 @@ func test_poison_arrow_needs_skill():
 	assert_true(Arrow.usable(Arrow.Kind.NORMAL, 0))
 	assert_false(Arrow.usable(Arrow.Kind.POISON, 0))
 	assert_true(Arrow.usable(Arrow.Kind.POISON, 1))
+
+## 長弓など：届く距離の倍率（特色 range）
+func test_range_mult():
+	assert_almost_eq(Bow.max_range(1.0, 0, 1.5), Bow.BASE_RANGE * 1.5, 0.01)
+	assert_almost_eq(Bow.max_range(1.0, 0), Bow.BASE_RANGE, 0.01)

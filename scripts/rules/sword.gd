@@ -34,16 +34,16 @@ func try_spin() -> bool:
 	return true
 
 ## 回転斬り：向きに関係なく、周りの REACH の中に当たる（高さの決まりは普通の一振りと同じ）。
-static func hits_around(origin: Vector2, h: int, target: Vector2, target_h: int) -> bool:
+static func hits_around(origin: Vector2, h: int, target: Vector2, target_h: int, reach_mult := 1.0) -> bool:
 	var dh := target_h - h
 	if dh < -1 or not Damage.can_hit(h, target_h):
 		return false
-	return origin.distance_to(target) <= REACH
+	return origin.distance_to(target) <= REACH * reach_mult
 
 ## origin（高さ h）から facing の向きに振って、target（高さ target_h）に当たるか。
 ## 下から上へは届かない（Damage.can_hit）。
-## thrust は技能「突き」を覚えているか。
-static func hits(origin: Vector2, h: int, facing: Vector2, target: Vector2, target_h: int, thrust := false) -> bool:
+## thrust は技能「突き」を覚えているか。reach_mult は剣の特色 reach（届く長さの倍率）。
+static func hits(origin: Vector2, h: int, facing: Vector2, target: Vector2, target_h: int, thrust := false, reach_mult := 1.0) -> bool:
 	var dh := target_h - h
 	if dh < -1 or not Damage.can_hit(h, target_h):
 		return false
@@ -52,8 +52,8 @@ static func hits(origin: Vector2, h: int, facing: Vector2, target: Vector2, targ
 	if dist < CLOSE:
 		return true
 	var angle := absf(facing.angle_to(d))
-	if thrust and dist <= THRUST_REACH and angle <= THRUST_HALF_ARC:
+	if thrust and dist <= THRUST_REACH * reach_mult and angle <= THRUST_HALF_ARC:
 		return true
-	if dist > REACH:
+	if dist > REACH * reach_mult:
 		return false
 	return angle <= HALF_ARC

@@ -3,15 +3,14 @@ extends RefCounted
 ## 冒険の状態。死んでもステージを読み込み直さないので、死んだときに何が残り何が戻るかをここで決める。
 ## 死んでも変わらないもの：拾い済みのもの、開けた扉、レベル・経験値・振り分け（stats）、お金の半分。
 
-## 武器（SWORD など）の amount はランク
-enum PickupKind { MONEY, MATERIAL, HEAL, STRONG_BALL, SWORD, BOW, ARROWS, POISON_ARROWS, STAFF_FIRE, ARMOR }
-
-const ENEMY_MONEY := 10
-
 var inventory := Inventory.new()
 var stats := PlayerStats.new()
 ## 倒したボスの数。1体ごとに世界中の敵のレベルが1上がる（design.md 8章）
 var bosses_defeated := 0
+## 倒したボスの名前（倒したボスは戻らない）
+var _bosses := {}
+## 封印を開けるのに要る、4つの地方のボス
+const REGION_BOSSES := ["岩転がしの巨人", "草むらの大蛇", "満ち引きする溶岩", "廃城の主"]
 var grave: Gravestone = null
 var checkpoint_area: String
 var checkpoint_cell: Vector2i
@@ -25,26 +24,24 @@ var _visited := {}
 ## 神秘の塔の封印の門。地方のボスを SEAL_BOSSES 体倒すと開けられる（2026-11-25 の設計）
 const SEAL_DOOR := "tower_seal"
 const SEAL_BOSSES := 4
+## ブライトを倒した（ゲームの終わり）
+var cleared := false
 
 func _init(cp_area: String, checkpoint: Vector2i) -> void:
 	checkpoint_area = cp_area
 	checkpoint_cell = checkpoint
 
-## 死んだときの持ち物の移し替え。お金は半分（切り捨て）、ほかの持ち物はすべて墓石へ。
+## 死んだときの持ち物の移し替え。お金は半分（切り捨て）、ほかの持ち物（素材・道具・矢・ランク2以上の装備）はすべて墓石へ。
 ## 古い墓石は中身ごと消え、新しい墓石だけが残る。
 func on_death(area_id: String, death_cell: Vector2i) -> Gravestone:
 	var g := Gravestone.new()
 	g.area_id = area_id
 	g.cell = death_cell
 	g.money = inventory.money / 2
-	g.materials = inventory.materials
-	g.heals = inventory.heals
+	g.counts = inventory.counts
+	inventory.counts = {}
 	g.equipment = inventory.equipment.take_for_grave()
-	g.arrows = inventory.arrows
-	inventory.arrows = {}
 	inventory.money -= g.money
-	inventory.materials = 0
-	inventory.heals = 0
 	grave = g
 	return g
 
@@ -52,53 +49,43 @@ func break_grave() -> void:
 	if grave == null:
 		return
 	inventory.money += grave.money
-	inventory.materials += grave.materials
-	inventory.heals += grave.heals
+	for id in grave.counts:
+		inventory.add(id, grave.counts[id])
 	inventory.equipment.restore(grave.equipment)
-	for k in grave.arrows:
-		inventory.add_arrows(k, grave.arrows[k])
 	grave = null
 
-## 敵を倒したときのお金と経験値。上がったレベルの数を返す。
+## 敵を倒したときの経験値。上がったレベルの数を返す（落とし物は Loot で決める）。
 func on_enemy_killed(kind: EnemyKind.Kind, level: int) -> int:
-	inventory.money += ENEMY_MONEY
 	return stats.add_exp(EnemyKind.exp_reward(kind, level))
+
+## ボスを倒した。経験値をもらい、世界の敵のレベルが上がる。上がったレベルの数を返す。
+func on_boss_killed(boss_name: String, exp_reward: int) -> int:
+	if _bosses.has(boss_name):
+		return 0
+	_bosses[boss_name] = true
+	bosses_defeated += 1
+	if boss_name == "ブライト":
+		cleared = true
+	return stats.add_exp(exp_reward)
+
+func is_boss_defeated(boss_name: String) -> bool:
+	return _bosses.has(boss_name)
 
 ## base_level（その敵のレベル）の敵が、今出てくるときのレベル。
 func enemy_level(base_level: int) -> int:
 	return base_level + bosses_defeated
 
-## 拾えるものを拾う。一度拾ったものは死んでも復活しないので、2回目は false。
-func collect(id: String, kind: PickupKind, amount: int) -> bool:
+## 拾えるもの（品物の id と数）を拾う。一度拾ったものは死んでも復活しないので、2回目は false。
+func collect(id: String, item: String, amount: int) -> bool:
 	if _picked.has(id):
 		return false
 	_picked[id] = true
-	take_drop(kind, amount)
+	take_drop(item, amount)
 	return true
 
 ## 拾ったものを持ち物に入れる（敵の落とし物は拾い済みとして覚えないので、こちらを直接使う）。
-func take_drop(kind: PickupKind, amount: int) -> void:
-	match kind:
-		PickupKind.MONEY:
-			inventory.money += amount
-		PickupKind.MATERIAL:
-			inventory.materials += amount
-		PickupKind.HEAL:
-			inventory.heals += amount
-		PickupKind.STRONG_BALL:
-			inventory.equipment.gain("ball_2")
-		PickupKind.SWORD:
-			inventory.equipment.gain("sword_%d" % amount)
-		PickupKind.BOW:
-			inventory.equipment.gain("bow_%d" % amount)
-		PickupKind.ARROWS:
-			inventory.add_arrows(Arrow.Kind.NORMAL, amount)
-		PickupKind.POISON_ARROWS:
-			inventory.add_arrows(Arrow.Kind.POISON, amount)
-		PickupKind.STAFF_FIRE:
-			inventory.equipment.gain("staff_fire_%d" % amount)  # amount はランク（ItemCatalog にある炎の杖）
-		PickupKind.ARMOR:
-			inventory.equipment.gain("armor_%d" % amount)
+func take_drop(item: String, amount: int) -> void:
+	inventory.add(item, amount)
 
 func is_picked(id: String) -> bool:
 	return _picked.has(id)
@@ -111,11 +98,15 @@ func is_door_open(id: String) -> bool:
 
 ## その門を今開けられるか。封印の門だけは、ボスを倒した数で決まる。
 func can_open_door(id: String) -> bool:
-	return id != SEAL_DOOR or bosses_defeated >= SEAL_BOSSES
+	return id != SEAL_DOOR or seal_bosses_left() == 0
 
-## 封印を解くのに、あと何体のボスを倒せばよいか。
+## 封印を解くのに、あと何体の地方のボスを倒せばよいか。
 func seal_bosses_left() -> int:
-	return maxi(0, SEAL_BOSSES - bosses_defeated)
+	var n := 0
+	for b in REGION_BOSSES:
+		if not _bosses.has(b):
+			n += 1
+	return n
 
 func open_gimmick(id: String) -> void:
 	_open_gimmicks[id] = true

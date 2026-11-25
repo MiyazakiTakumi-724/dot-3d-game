@@ -30,12 +30,22 @@ var _poison_clock := 0.0
 var _burning := false
 var _chasing := false
 var _chase_target := Vector2.ZERO
+## 速さの倍率（敵の種類・突進）
+var speed_mult := 1.0
+## 寄ってくる距離（px）。0なら寄らない
+var chase_range := CHASE_RANGE
+## 飛ぶ敵（コウモリ）：水・奈落・段差・壁の上も進む（マップの外へは出ない）
+var flying := false
+var _slow_left := 0.0
+## 遅くなっている間の速さの倍率
+const SLOW_MULT := 0.5
 
 func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2, hp_max: int = MAX_HP, climb_levels: int = 0) -> void:
 	map = height_map
 	hp = hp_max
 	max_hp = hp_max
 	climb = climb_levels
+	chase_range = CHASE_RANGE if climb > 0 else 0.0  # 種類ごとの値は Enemy が入れる
 	pos = HeightMap.cell_center(start_cell)
 	dir = start_dir.normalized()
 	height = map.get_height(start_cell)
@@ -46,16 +56,18 @@ func cell() -> Vector2i:
 ## 近くにいる target（高さ target_h）へ向きを変える。step() の前に毎フレーム呼ぶ。
 func chase(target: Vector2, target_h: int) -> void:
 	_chasing = false
-	if climb <= 0 or not alive:
+	if chase_range <= 0.0 or not alive:
 		return
 	var d := target - pos
-	if d.length() > CHASE_RANGE or d == Vector2.ZERO or absi(target_h - height) > climb:
+	if d.length() > chase_range or d == Vector2.ZERO or (not flying and absi(target_h - height) > climb):
 		return
 	dir = d.normalized()
 	_chasing = true
 	_chase_target = target
 
 func can_enter(c: Vector2i) -> bool:
+	if flying:
+		return map.in_bounds(c) and not forbidden.has(c)
 	if map.is_wall(c) or map.is_pit(c) or map.is_water(c) or forbidden.has(c):
 		return false
 	return absi(map.get_height(c) - height) <= climb
@@ -63,6 +75,7 @@ func can_enter(c: Vector2i) -> bool:
 func step(delta: float) -> void:
 	if not alive:
 		return
+	_slow_left = maxf(0.0, _slow_left - delta)
 	var chasing := _chasing
 	_chasing = false
 	if chasing and pos.distance_to(_chase_target) < CHASE_STOP:
@@ -87,9 +100,18 @@ func _try_axis(v: Vector2, delta: float) -> bool:
 	var ahead := HeightMap.world_to_cell(pos + v.sign() * (HeightMap.CELL_PX * 0.5 + 0.1))
 	if ahead != cell() and not can_enter(ahead):
 		return false
-	pos += v * SPEED * delta
-	height = map.get_height(cell())
+	pos += v * SPEED * speed_mult * (SLOW_MULT if _slow_left > 0.0 else 1.0) * delta
+	if not flying or not (map.is_wall(cell()) or map.is_pit(cell())):
+		height = maxi(0, map.get_height(cell()))
 	return true
+
+## 遅くする（氷のつぶて・霜の武器）。もう遅ければ長い方にする。
+func slow(seconds: float) -> void:
+	if alive:
+		_slow_left = maxf(_slow_left, seconds)
+
+func is_slowed() -> bool:
+	return alive and _slow_left > 0.0
 
 ## pos に立っている、高さ h のものに触れているか。
 func touches(p: Vector2, h: int) -> bool:

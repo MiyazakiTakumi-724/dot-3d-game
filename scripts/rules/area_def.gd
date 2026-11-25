@@ -16,14 +16,16 @@ var objects: Array = []
 ## 地図がないとき（テストなど）の大きさ
 var map_size: Vector2i = Vector2i.ZERO
 var exits: Array[ExitDef] = []
-## [cell: Vector2i, dir: Vector2, kind: EnemyKind.Kind]
+## [cell: Vector2i, dir: Vector2, kind: EnemyKind.Kind, level: int]（レベルは倒したボスの数を足す前）
 var enemies: Array = []
-## [cell: Vector2i, kind: RunState.PickupKind, amount: int]
+## [cell: Vector2i, item: String（ItemCatalog の id、お金は "money"）, amount: int]
 var pickups: Array = []
 ## 武器で開く仕掛け
 var gimmicks: Array[Gimmick] = []
-## ボスの居場所 [像のマス: Vector2i, 名前: String, 像の色: Color]
+## ボスの居場所 [マス: Vector2i, 名前: String, 色: Color]
 var bosses: Array = []
+## 商人 [マス: Vector2i, お店の id: String（Shop.NAMES）]
+var merchants: Array = []
 
 func size() -> Vector2i:
 	if heights.is_empty():

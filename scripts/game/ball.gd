@@ -17,7 +17,7 @@ var rules_ball := IronBall.new()
 var player: Player
 var map: HeightMap
 var rules: MovementRules
-var _shown_strong := false
+var _shown_item := "ball_1"
 ## 放したときの手元の点と高さ（px）
 var _start := Vector2.ZERO
 var _start_z := 0.0
@@ -33,7 +33,7 @@ func setup(p: Player, height_map: HeightMap, movement_rules: MovementRules, cam:
 	always_redraw = true  # 落ちていく間、影の位置が毎フレーム変わる
 	voxel_scale = HeroModel.VOXEL_SCALE
 	outline_color = Player.OUTLINE_COLOR
-	set_model(HeroModel.ball_model(false))
+	set_model(HeroModel.ball_model("ball_1"))
 	rules_ball.dropped.connect(_on_dropped)
 	rules_ball.picked_up.connect(_on_picked_up)
 	rules_ball.landed.connect(_on_landed)
@@ -61,9 +61,10 @@ func _on_landed(pos: Vector2, _damage: int) -> void:
 		parent.add_child(dust)
 
 func _process(delta: float) -> void:
-	if rules_ball.strong != _shown_strong:
-		_shown_strong = rules_ball.strong
-		set_model(HeroModel.ball_model(_shown_strong))
+	var look := rules_ball.item if not rules_ball.strong or rules_ball.item != "ball_1" else "ball_heavy"
+	if look != _shown_item:
+		_shown_item = look
+		set_model(HeroModel.ball_model(look))
 	rules_ball.update(delta, player.mover, map, rules)
 
 	# 落ちていく間と地面にある間は、落ちる場所が分かるように影を出す

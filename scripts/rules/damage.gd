@@ -31,9 +31,9 @@ static func bow(attack: int, rate: float, mult: float, points: int, lower_levels
 static func magic(attack: int, power: float, points: int) -> int:
 	return _floor(attack * power * (1.0 + points * 0.1))
 
-## 敵の攻撃が主人公に与えるダメージ。簡単モードでは半分。
-static func enemy_hit(enemy_attack: int, easy := false) -> int:
-	return _floor(enemy_attack * (0.5 if easy else 1.0))
+## 敵の攻撃が主人公に与えるダメージ。簡単モードでは半分。守り（defense）の数だけ減る（最低1）。
+static func enemy_hit(enemy_attack: int, easy := false, defense := 0) -> int:
+	return maxi(1, _floor(enemy_attack * (0.5 if easy else 1.0)) - defense)
 
 ## 敵の体力・攻撃力：レベルが1上がるごとに、レベル1の値の20%ずつ増える。
 static func enemy_scaled(base: int, level: int) -> int:

@@ -1,28 +1,162 @@
 class_name ItemCatalog
 extends RefCounted
-## 装備の品物の一覧（2026-11-24 決定）。装備は種類（Equipment.Slot）とランクだけでなく、品物ごとに id を持つ。
-## 同じ種類・同じランクでも、効果の違う特別な品物を足せるようにするため（例：ランク2の剣が何本もある）。
-## ランクは1〜10。杖は品物ごとに使える魔法（spells、覚える順）を持ち、その数はランクで決まる範囲に入れる（spell_range）。
-## 今ある品物は試すためのもの。ボスの落とし物やお店ができたら増やす。
+## 品物の一覧（2026-11-25 の設計 `docs/superpowers/specs/2026-11-25-full-game-design.md` 2章）。
+## 品物は4つに分ける：装備（GEAR）・素材（MATERIALS）・道具（TOOLS）・矢（ARROWS）。どれも id で持つ。
+## 装備は枠（Equipment.Slot）とランク（1〜5）と特色（traits）を持つ。ランク1は枠ごとに1つで特色なし。
+## src は手に入れ方：shop（お店）・craft（鍛冶屋で作る）・drop（敵の落とし物）・boss（ボスの落とし物）・chest（宝箱）。
+## 宝箱だけの装備はない。ランク5は作るだけ。数値は【提案】。
+##
+## 特色（traits）のキー：
+##   atk つよさ＋n / rate 剣を振る速さ× / reach 剣の届く長さ×・鉄球の届く距離× / radius 鉄球の当たる範囲×
+##   charge 弓の溜めの速さ× / range 弓の届く距離× / multi 一度に撃つ矢の数 / poison 当てると毒 / burn 当てるとやけど
+##   slow 当てると遅くする / drain 当てると いのち＋n / def 守り（受けるダメージ−n）/ hp 最大いのち＋n / mana 最大マナ＋n
+##   speed 足の速さ＋割合 / regen 5秒ごとに いのち＋n / cost 魔法のマナ× / loot 素材が落ちる割合×
 
 const ITEMS := {
-	"ball_1": {"slot": Equipment.Slot.BALL, "rank": 1, "name": "鉄球"},
-	"ball_2": {"slot": Equipment.Slot.BALL, "rank": 2, "name": "鉄球", "trait": "当たる範囲が広い"},
-	"sword_1": {"slot": Equipment.Slot.SWORD, "rank": 1, "name": "剣"},
-	"bow_1": {"slot": Equipment.Slot.BOW, "rank": 1, "name": "弓"},
-	"staff_none_1": {"slot": Equipment.Slot.STAFF, "rank": 1, "name": "無の杖", "spells": [Magic.Spell.NULL_BOLT]},
-	"staff_fire_1": {"slot": Equipment.Slot.STAFF, "rank": 1, "name": "炎の小杖", "spells": [Magic.Spell.FIREBALL]},
-	"staff_fire_3": {"slot": Equipment.Slot.STAFF, "rank": 3, "name": "炎の杖", "spells": [Magic.Spell.FIREBALL, Magic.Spell.FIRE_PILLAR]},
-	"staff_fire_9": {"slot": Equipment.Slot.STAFF, "rank": 9, "name": "炎の大杖", "spells": [Magic.Spell.FIREBALL, Magic.Spell.FIRE_PILLAR, Magic.Spell.FIRE_RAIN]},
-	"armor_1": {"slot": Equipment.Slot.ARMOR, "rank": 1, "name": "防具"},
+	# ---- 鉄球
+	"ball_1": {"slot": Equipment.Slot.BALL, "rank": 1, "name": "鉄球", "src": ["start"]},
+	"ball_heavy": {"slot": Equipment.Slot.BALL, "rank": 2, "name": "重い鉄球", "traits": {"atk": 2}, "src": ["shop", "craft", "chest"]},
+	"ball_wide": {"slot": Equipment.Slot.BALL, "rank": 2, "name": "広がる鉄球", "traits": {"radius": 1.4}, "src": ["craft", "drop"]},
+	"ball_spike": {"slot": Equipment.Slot.BALL, "rank": 3, "name": "とげ鉄球", "traits": {"poison": 1}, "src": ["craft", "drop"]},
+	"ball_chain": {"slot": Equipment.Slot.BALL, "rank": 3, "name": "鎖の鉄球", "traits": {"reach": 1.5}, "src": ["shop", "craft"]},
+	"ball_ember": {"slot": Equipment.Slot.BALL, "rank": 3, "name": "焼け玉", "traits": {"burn": 1}, "src": ["craft"]},
+	"ball_rock": {"slot": Equipment.Slot.BALL, "rank": 4, "name": "岩窟の鉄球", "traits": {"radius": 1.5, "atk": 3}, "src": ["boss", "craft"]},
+	"ball_lava": {"slot": Equipment.Slot.BALL, "rank": 4, "name": "溶岩の鉄球", "traits": {"burn": 1, "radius": 1.3}, "src": ["boss"]},
+	"ball_quake": {"slot": Equipment.Slot.BALL, "rank": 4, "name": "地鳴りの鉄球", "traits": {"slow": 1, "radius": 1.3}, "src": ["craft"]},
+	"ball_star": {"slot": Equipment.Slot.BALL, "rank": 5, "name": "星の鉄球", "traits": {"atk": 5, "radius": 1.6, "reach": 1.4}, "src": ["craft"]},
+	"ball_meteor": {"slot": Equipment.Slot.BALL, "rank": 5, "name": "流星の鉄球", "traits": {"burn": 1, "slow": 1, "radius": 1.5}, "src": ["craft"]},
+	# ---- 剣
+	"sword_1": {"slot": Equipment.Slot.SWORD, "rank": 1, "name": "剣", "src": ["shop", "craft", "drop"]},
+	"sword_light": {"slot": Equipment.Slot.SWORD, "rank": 2, "name": "軽い剣", "traits": {"rate": 1.3}, "src": ["shop", "craft", "drop"]},
+	"sword_bronze": {"slot": Equipment.Slot.SWORD, "rank": 2, "name": "青銅の剣", "traits": {"atk": 2}, "src": ["shop", "craft", "chest"]},
+	"sword_poison": {"slot": Equipment.Slot.SWORD, "rank": 3, "name": "毒の剣", "traits": {"poison": 1}, "src": ["craft", "drop"]},
+	"sword_long": {"slot": Equipment.Slot.SWORD, "rank": 3, "name": "長剣", "traits": {"reach": 1.4}, "src": ["shop", "craft"]},
+	"sword_drain": {"slot": Equipment.Slot.SWORD, "rank": 3, "name": "吸いとる剣", "traits": {"drain": 1}, "src": ["craft"]},
+	"sword_giant": {"slot": Equipment.Slot.SWORD, "rank": 4, "name": "巨人の大剣", "traits": {"atk": 3, "reach": 1.3}, "src": ["boss"]},
+	"sword_flame": {"slot": Equipment.Slot.SWORD, "rank": 4, "name": "炎の剣", "traits": {"burn": 1, "atk": 1}, "src": ["craft"]},
+	"sword_frost": {"slot": Equipment.Slot.SWORD, "rank": 4, "name": "霜の剣", "traits": {"slow": 1, "rate": 1.2}, "src": ["craft", "drop"]},
+	"sword_star": {"slot": Equipment.Slot.SWORD, "rank": 5, "name": "星の剣", "traits": {"atk": 5, "rate": 1.2, "reach": 1.3}, "src": ["craft"]},
+	"sword_king": {"slot": Equipment.Slot.SWORD, "rank": 5, "name": "王の剣", "traits": {"drain": 1, "burn": 1, "atk": 3}, "src": ["craft"]},
+	# ---- 弓
+	"bow_1": {"slot": Equipment.Slot.BOW, "rank": 1, "name": "弓", "src": ["shop", "craft", "drop"]},
+	"bow_short": {"slot": Equipment.Slot.BOW, "rank": 2, "name": "短弓", "traits": {"charge": 1.5}, "src": ["shop", "craft"]},
+	"bow_long": {"slot": Equipment.Slot.BOW, "rank": 2, "name": "長弓", "traits": {"range": 1.3}, "src": ["shop", "craft", "drop"]},
+	"bow_hunter": {"slot": Equipment.Slot.BOW, "rank": 3, "name": "狩人の弓", "traits": {"loot": 1.5, "atk": 1}, "src": ["craft", "drop"]},
+	"bow_poison": {"slot": Equipment.Slot.BOW, "rank": 3, "name": "毒の弓", "traits": {"poison": 1}, "src": ["craft", "chest"]},
+	"bow_heavy": {"slot": Equipment.Slot.BOW, "rank": 3, "name": "剛弓", "traits": {"atk": 3, "charge": 0.8}, "src": ["shop", "craft"]},
+	"bow_serpent": {"slot": Equipment.Slot.BOW, "rank": 4, "name": "大蛇の弓", "traits": {"poison": 1, "range": 1.3}, "src": ["boss"]},
+	"bow_twin": {"slot": Equipment.Slot.BOW, "rank": 4, "name": "二連の弓", "traits": {"multi": 2}, "src": ["boss", "craft"]},
+	"bow_wind": {"slot": Equipment.Slot.BOW, "rank": 4, "name": "風の弓", "traits": {"charge": 2.0, "range": 1.2}, "src": ["craft", "drop"]},
+	"bow_star": {"slot": Equipment.Slot.BOW, "rank": 5, "name": "星の弓", "traits": {"atk": 5, "range": 1.5, "charge": 1.5}, "src": ["craft"]},
+	"bow_sun": {"slot": Equipment.Slot.BOW, "rank": 5, "name": "日輪の弓", "traits": {"burn": 1, "multi": 2, "atk": 2}, "src": ["craft"]},
+	# ---- 杖（spells は覚える順。数はランクで決まる範囲：spell_range）
+	"staff_none_1": {"slot": Equipment.Slot.STAFF, "rank": 1, "name": "無の杖", "spells": [Magic.Spell.NULL_BOLT], "src": ["shop", "craft", "drop"]},
+	"staff_fire_2": {"slot": Equipment.Slot.STAFF, "rank": 2, "name": "炎の小杖", "spells": [Magic.Spell.FIREBALL], "src": ["shop", "craft"]},
+	"staff_ice_2": {"slot": Equipment.Slot.STAFF, "rank": 2, "name": "氷の小杖", "spells": [Magic.Spell.ICE_SHARD], "src": ["shop", "craft", "drop"]},
+	"staff_fire_3": {"slot": Equipment.Slot.STAFF, "rank": 3, "name": "炎の杖", "spells": [Magic.Spell.FIREBALL, Magic.Spell.FIRE_PILLAR], "src": ["craft", "chest"]},
+	"staff_ice_3": {"slot": Equipment.Slot.STAFF, "rank": 3, "name": "氷の杖", "spells": [Magic.Spell.ICE_SHARD], "traits": {"cost": 0.7}, "src": ["craft", "drop"]},
+	"staff_heal_3": {"slot": Equipment.Slot.STAFF, "rank": 3, "name": "癒しの杖", "spells": [Magic.Spell.NULL_BOLT, Magic.Spell.HEAL], "src": ["shop", "craft"]},
+	"staff_lava": {"slot": Equipment.Slot.STAFF, "rank": 4, "name": "溶岩の杖", "spells": [Magic.Spell.FIREBALL, Magic.Spell.FIRE_PILLAR], "traits": {"cost": 0.8, "atk": 2}, "src": ["boss"]},
+	"staff_thunder": {"slot": Equipment.Slot.STAFF, "rank": 4, "name": "雷の杖", "spells": [Magic.Spell.NULL_BOLT, Magic.Spell.THUNDER], "src": ["craft", "drop"]},
+	"staff_frost": {"slot": Equipment.Slot.STAFF, "rank": 4, "name": "霜の大杖", "spells": [Magic.Spell.ICE_SHARD, Magic.Spell.HEAL], "traits": {"mana": 15}, "src": ["craft"]},
+	"staff_star": {"slot": Equipment.Slot.STAFF, "rank": 5, "name": "星の杖", "spells": [Magic.Spell.FIREBALL, Magic.Spell.FIRE_PILLAR, Magic.Spell.FIRE_RAIN], "traits": {"atk": 3}, "src": ["craft"]},
+	"staff_storm": {"slot": Equipment.Slot.STAFF, "rank": 5, "name": "嵐の杖", "spells": [Magic.Spell.ICE_SHARD, Magic.Spell.THUNDER, Magic.Spell.HEAL], "traits": {"cost": 0.8}, "src": ["craft"]},
+	# ---- 防具（ランク1つにつき最大いのち＋4。そのうえに特色）
+	"armor_1": {"slot": Equipment.Slot.ARMOR, "rank": 1, "name": "布の服", "src": ["shop", "craft"]},
+	"armor_leather": {"slot": Equipment.Slot.ARMOR, "rank": 2, "name": "革の服", "traits": {"def": 1}, "src": ["shop", "craft", "drop"]},
+	"armor_travel": {"slot": Equipment.Slot.ARMOR, "rank": 2, "name": "旅人の服", "traits": {"speed": 0.1}, "src": ["shop", "craft"]},
+	"armor_chain": {"slot": Equipment.Slot.ARMOR, "rank": 3, "name": "鎖かたびら", "traits": {"def": 2}, "src": ["shop", "craft"]},
+	"armor_scout": {"slot": Equipment.Slot.ARMOR, "rank": 3, "name": "斥候の服", "traits": {"speed": 0.15}, "src": ["craft", "drop"]},
+	"armor_mage": {"slot": Equipment.Slot.ARMOR, "rank": 3, "name": "魔導の衣", "traits": {"mana": 15}, "src": ["craft", "chest"]},
+	"armor_knight": {"slot": Equipment.Slot.ARMOR, "rank": 4, "name": "騎士の鎧", "traits": {"def": 3}, "src": ["boss", "craft"]},
+	"armor_wind": {"slot": Equipment.Slot.ARMOR, "rank": 4, "name": "疾風の服", "traits": {"speed": 0.25}, "src": ["boss"]},
+	"armor_life": {"slot": Equipment.Slot.ARMOR, "rank": 4, "name": "命の衣", "traits": {"regen": 1}, "src": ["craft", "drop"]},
+	"armor_star": {"slot": Equipment.Slot.ARMOR, "rank": 5, "name": "星の鎧", "traits": {"def": 4, "speed": 0.1}, "src": ["craft"]},
+	"armor_dragon": {"slot": Equipment.Slot.ARMOR, "rank": 5, "name": "竜鱗の鎧", "traits": {"def": 3, "regen": 1, "hp": 10}, "src": ["craft"]},
 }
+
+## 素材（名前と、主に出る所）
+const MATERIALS := {
+	"hide": {"name": "獣の皮", "where": "どこでも"},
+	"bone": {"name": "骨", "where": "どこでも"},
+	"scrap": {"name": "鉄くず", "where": "どこでも"},
+	"wood": {"name": "丈夫な枝", "where": "どこでも"},
+	"herb": {"name": "薬草", "where": "どこでも・草原"},
+	"iron_ore": {"name": "鉄鉱石", "where": "山岳"},
+	"snow": {"name": "雪の結晶", "where": "山岳"},
+	"scale": {"name": "蛇のうろこ", "where": "草原"},
+	"old_steel": {"name": "古い鋼", "where": "廃城"},
+	"silver": {"name": "銀のかけら", "where": "廃城"},
+	"obsidian": {"name": "黒曜石", "where": "溶岩"},
+	"fire_stone": {"name": "火の石", "where": "溶岩"},
+	"star_shard": {"name": "星のかけら", "where": "神秘の塔"},
+	# ボスの素材
+	"giant_core": {"name": "巨人の核", "where": "岩転がしの巨人"},
+	"serpent_fang": {"name": "大蛇の牙", "where": "草むらの大蛇"},
+	"lava_heart": {"name": "溶岩の心臓", "where": "満ち引きする溶岩"},
+	"crest": {"name": "城主の紋章", "where": "廃城の主"},
+	"cave_gem": {"name": "岩窟の宝石", "where": "岩窟のぬし"},
+	"flame_tail": {"name": "火とかげの尾", "where": "溶岩洞のぬし"},
+	"twin_mirror": {"name": "双子の鏡", "where": "双子"},
+	"gear": {"name": "番人の歯車", "where": "らせん塔の番人"},
+	"bright_eye": {"name": "ブライトの瞳", "where": "ブライト"},
+}
+
+## 道具（5番で手に持って使う）。効果：heal いのち（-1 で全部）/ mana マナ / buff 一時の強化 [種類, 量, 秒] / warp 最後のたき火へ / bomb 投げる
+const TOOLS := {
+	"potion": {"name": "回復薬", "heal": 6, "info": "いのち＋6"},
+	"potion_m": {"name": "回復薬・中", "heal": 15, "info": "いのち＋15"},
+	"potion_l": {"name": "回復薬・大", "heal": -1, "info": "いのちが全部戻る"},
+	"ether": {"name": "マナの薬", "mana": 30, "info": "マナ＋30"},
+	"power": {"name": "力の薬", "buff": ["atk", 3, 30.0], "info": "30秒 つよさ＋3"},
+	"guard": {"name": "守りの薬", "buff": ["def", 2, 30.0], "info": "30秒 守り＋2"},
+	"swift": {"name": "速さの薬", "buff": ["speed", 0.3, 30.0], "info": "30秒 足＋30%"},
+	"feather": {"name": "帰りの羽", "warp": true, "info": "最後に休んだ たき火へ戻る"},
+	"bomb": {"name": "爆弾", "bomb": 15, "info": "カーソルの所へ投げる。まわりに15ダメージ"},
+}
+
+## 矢（Arrow.Kind と同じ順）
+const ARROWS := {
+	"arrow": {"name": "矢"},
+	"arrow_poison": {"name": "毒矢"},
+	"arrow_fire": {"name": "火矢"},
+	"arrow_iron": {"name": "鉄の矢"},
+}
+
+## お金の id（拾いもの・落とし物で使う）
+const MONEY := "money"
 
 ## 一覧（ITEMS）の中の順番。同じランクの品物を並べるときに使う。
 static func order(id: String) -> int:
-	return ITEMS.keys().find(id)
+	var i := ITEMS.keys().find(id)
+	if i >= 0:
+		return i
+	for table in [MATERIALS, TOOLS, ARROWS]:
+		i = table.keys().find(id)
+		if i >= 0:
+			return i
+	return 9999
 
+## 装備の品物か。
 static func exists(id: String) -> bool:
 	return ITEMS.has(id)
+
+static func is_material(id: String) -> bool:
+	return MATERIALS.has(id)
+
+static func is_tool(id: String) -> bool:
+	return TOOLS.has(id)
+
+static func is_arrow(id: String) -> bool:
+	return ARROWS.has(id)
+
+## 数で持つ品物（素材・道具・矢）か。
+static func is_counted(id: String) -> bool:
+	return is_material(id) or is_tool(id) or is_arrow(id)
+
+## どれかの品物か（お金も含む）。
+static func known(id: String) -> bool:
+	return id == MONEY or exists(id) or is_counted(id)
 
 static func slot(id: String) -> Equipment.Slot:
 	return ITEMS[id]["slot"]
@@ -31,11 +165,57 @@ static func rank(id: String) -> int:
 	return ITEMS[id]["rank"] if ITEMS.has(id) else 0
 
 static func name_of(id: String) -> String:
-	return ITEMS[id]["name"] if ITEMS.has(id) else ""
+	if id == MONEY:
+		return "お金"
+	for table in [ITEMS, MATERIALS, TOOLS, ARROWS]:
+		if table.has(id):
+			return table[id]["name"]
+	return ""
 
-## 特別な効果の説明（なければ空）。
+static func sources(id: String) -> Array:
+	return ITEMS[id].get("src", []) if ITEMS.has(id) else []
+
+static func traits(id: String) -> Dictionary:
+	return ITEMS[id].get("traits", {}) if ITEMS.has(id) else {}
+
+## 特色の値（なければ dflt）。
+static func trait_value(id: String, key: String, dflt = 0):
+	return traits(id).get(key, dflt)
+
+## 特色の説明（なければ空）。
 static func trait_of(id: String) -> String:
-	return ITEMS[id].get("trait", "") if ITEMS.has(id) else ""
+	if is_tool(id):
+		return TOOLS[id]["info"]
+	var parts: Array[String] = []
+	var t := traits(id)
+	for k in t:
+		parts.append(_describe(k, t[k]))
+	return "・".join(parts)
+
+static func _describe(k: String, v) -> String:
+	match k:
+		"atk": return "つよさ＋%d" % v
+		"rate": return "振る速さ×%s" % _num(v)
+		"reach": return "届く×%s" % _num(v)
+		"radius": return "当たる範囲×%s" % _num(v)
+		"charge": return "溜め×%s" % _num(v)
+		"range": return "飛ぶ距離×%s" % _num(v)
+		"multi": return "%d本撃つ" % v
+		"poison": return "毒"
+		"burn": return "やけど"
+		"slow": return "遅くする"
+		"drain": return "当てると いのち＋%d" % v
+		"def": return "守り%d" % v
+		"hp": return "いのち＋%d" % v
+		"mana": return "マナ＋%d" % v
+		"speed": return "足＋%d%%" % roundi(v * 100.0)
+		"regen": return "5秒ごとに いのち＋%d" % v
+		"cost": return "マナ×%s" % _num(v)
+		"loot": return "素材が落ちやすい"
+	return k
+
+static func _num(v: float) -> String:
+	return String.num(v, 2).trim_suffix("0").trim_suffix(".") if v != int(v) else str(int(v))
 
 ## 杖の魔法（覚える順）。杖でなければ空。
 static func spells(id: String) -> Array:
@@ -45,21 +225,27 @@ static func spells(id: String) -> Array:
 static func usable_spells(id: String, spell_slots: int) -> Array:
 	return spells(id).slice(0, spell_slots)
 
-## 杖のランクごとの魔法の数（最小, 最大）。1は1つ、2〜3は1〜2、4〜6は2、7〜8は2〜3、9〜10は3。
+## 杖のランクごとの魔法の数（最小, 最大）。1〜2は1つ、3は1〜2、4は2つ、5は2〜3（2026-11-25、ランク5までにした）。
 static func spell_range(r: int) -> Vector2i:
-	if r <= 1:
+	if r <= 2:
 		return Vector2i(1, 1)
-	if r <= 3:
+	if r == 3:
 		return Vector2i(1, 2)
-	if r <= 6:
+	if r == 4:
 		return Vector2i(2, 2)
-	if r <= 8:
-		return Vector2i(2, 3)
-	return Vector2i(3, 3)
+	return Vector2i(2, 3)
 
 ## 画面に出す名前。ランク2以上は★とランクを付ける。
 static func label(id: String) -> String:
 	if not ITEMS.has(id):
-		return ""
+		return name_of(id)
 	var r := rank(id)
 	return name_of(id) if r <= 1 else "%s★%d" % [name_of(id), r]
+
+## 枠とランクの品物（一覧の順）。
+static func of(s: Equipment.Slot, r: int) -> Array:
+	var out: Array = []
+	for id in ITEMS:
+		if ITEMS[id]["slot"] == s and ITEMS[id]["rank"] == r:
+			out.append(id)
+	return out

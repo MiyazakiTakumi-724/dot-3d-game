@@ -1,15 +1,14 @@
 class_name Continent
 extends RefCounted
-## 大陸のすべてのエリアをまとめる（はじまりの地・町・山岳・草原・廃城・溶岩・神秘の塔）。
-## 地図は tools/area_maps/gen.py が作る。並べ方は docs/superpowers/specs/2026-11-25-world-map-design.md。
+## 大陸のすべてのエリア（30）をまとめる（はじまりの地（町）・山岳・草原・廃城・溶岩・神秘の塔）。
+## 地図は tools/area_maps/gen.py が作る。並べ方は docs/superpowers/specs/2026-11-25-full-game-design.md。
 
-const CAMP := preload("res://scripts/areas/camp.gd")
+const TOWN := preload("res://scripts/areas/town.gd")
 const AREA_SCRIPTS := [
-	CAMP,
+	TOWN,
 	preload("res://scripts/areas/rocks.gd"),
 	preload("res://scripts/areas/hills.gd"),
 	preload("res://scripts/areas/forest.gd"),
-	preload("res://scripts/areas/town.gd"),
 	preload("res://scripts/areas/mt_1.gd"),
 	preload("res://scripts/areas/mt_2.gd"),
 	preload("res://scripts/areas/mt_3.gd"),
@@ -37,8 +36,8 @@ const AREA_SCRIPTS := [
 	preload("res://scripts/areas/tw_3.gd"),
 	preload("res://scripts/areas/tw_4.gd"),
 ]
-const START_AREA := "camp"
-const START_CELL: Vector2i = CAMP.START
+const START_AREA := "town"
+const START_CELL: Vector2i = TOWN.START
 
 static func build() -> WorldMap:
 	var w := WorldMap.new()
@@ -74,6 +73,7 @@ static func area_from(s) -> AreaDef:
 		gs.append(Gimmick.from_data(d))
 	a.gimmicks = gs
 	a.bosses = s.BOSSES
+	a.merchants = s.MERCHANTS
 	return a
 
 ## エリアの地図を高さマップにする。info は Terrain.parse_layers の結果（deco["theme"] に地方が入る）。

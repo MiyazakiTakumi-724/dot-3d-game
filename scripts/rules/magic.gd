@@ -4,13 +4,17 @@ extends RefCounted
 ## ステータスの「魔法」で同時に使える数（spell_slots、1〜3）が決まり、杖の魔法のうち前から順にその数だけ使える。
 ## 数値（マナ・威力・広さ）は【提案】の仮の値。
 
-enum Spell { NULL_BOLT, FIREBALL, FIRE_PILLAR, FIRE_RAIN }
+## 2026-11-25：氷のつぶて（当てた敵を遅くする）・雷（狙った点に落ちる）・癒し（自分の いのちが戻る）を足した
+enum Spell { NULL_BOLT, FIREBALL, FIRE_PILLAR, FIRE_RAIN, ICE_SHARD, THUNDER, HEAL }
 
 const NAMES := {
 	Spell.NULL_BOLT: "無の弾",
 	Spell.FIREBALL: "火の玉",
 	Spell.FIRE_PILLAR: "火柱",
 	Spell.FIRE_RAIN: "炎の雨",
+	Spell.ICE_SHARD: "氷のつぶて",
+	Spell.THUNDER: "雷",
+	Spell.HEAL: "癒し",
 }
 ## 使うのに要るマナ（燃費は悪くして、何発も撃てないようにする。2026-11-24 23:07 の指示）
 const COST := {
@@ -18,6 +22,9 @@ const COST := {
 	Spell.FIREBALL: 15,
 	Spell.FIRE_PILLAR: 25,
 	Spell.FIRE_RAIN: 35,
+	Spell.ICE_SHARD: 12,
+	Spell.THUNDER: 30,
+	Spell.HEAL: 25,
 }
 ## 魔法ごとの待ち時間（秒）。使ってからこの間は、同じ魔法を使えない（連発させない）
 const COOLDOWN := {
@@ -25,6 +32,9 @@ const COOLDOWN := {
 	Spell.FIREBALL: 3.0,
 	Spell.FIRE_PILLAR: 5.0,
 	Spell.FIRE_RAIN: 10.0,
+	Spell.ICE_SHARD: 2.0,
+	Spell.THUNDER: 6.0,
+	Spell.HEAL: 8.0,
 }
 ## 威力の倍率（Damage.magic）
 const POWER := {
@@ -32,7 +42,19 @@ const POWER := {
 	Spell.FIREBALL: 0.8,
 	Spell.FIRE_PILLAR: 1.2,
 	Spell.FIRE_RAIN: 0.7,
+	Spell.ICE_SHARD: 0.7,
+	Spell.THUNDER: 1.6,
+	Spell.HEAL: 0.0,
 }
+## 弾として飛ぶ魔法（狙った高さへまっすぐ）
+const BOLTS := [Spell.NULL_BOLT, Spell.FIREBALL, Spell.ICE_SHARD]
+## 氷のつぶてで遅くなる時間（秒）。遅くなった敵は半分の速さで歩く
+const SLOW_SECONDS := 3.0
+## 雷：狙った点（REACH まで）に落ちる。自分より高い所の敵には当たらない
+const THUNDER_REACH := 80.0
+const THUNDER_RADIUS := 10.0
+## 癒しで戻る いのち
+const HEAL_AMOUNT := 6
 const INTERVAL := 0.35  ## どの魔法でも、次を使えるまで（秒）
 ## 火の玉：当たった所で弾け、まわりも焼く。落ちた所が少しの間燃える
 const FIREBALL_RADIUS := 14.0
@@ -64,12 +86,17 @@ func remaining(spell: Spell) -> float:
 	return _spell_cd.get(spell, 0.0)
 
 ## 使えればマナを払って true。
-func try_cast(spell: Spell, mana: Mana) -> bool:
-	if cooldown > 0.0 or remaining(spell) > 0.0 or not mana.try_spend(COST[spell]):
+## cost_mult は装備の特色（マナ×0.7 など）。
+func try_cast(spell: Spell, mana: Mana, cost_mult := 1.0) -> bool:
+	if cooldown > 0.0 or remaining(spell) > 0.0 or not mana.try_spend(cost_of(spell, cost_mult)):
 		return false
 	cooldown = INTERVAL
 	_spell_cd[spell] = COOLDOWN[spell]
 	return true
+
+## 特色で変わったあとの、使うのに要るマナ（切り上げ）。
+static func cost_of(spell: Spell, cost_mult := 1.0) -> int:
+	return ceili(COST[spell] * cost_mult - 0.0001)
 
 ## 選んでいる魔法（list は ItemCatalog.usable_spells の結果）。list が空なら -1。
 func current(list: Array) -> int:

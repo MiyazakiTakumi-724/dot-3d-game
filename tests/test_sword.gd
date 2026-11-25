@@ -54,3 +54,9 @@ func test_thrust_reaches_farther_in_front():
 	# 上へは届かない
 	assert_false(Sword.hits(Vector2.ZERO, 2, Vector2.RIGHT, Vector2(30, 0), 3, true))
 	assert_eq(PlayerStats.SKILLS[PlayerStats.Stat.SWORD][1], "突き")
+
+## 長剣など：届く長さの倍率（特色 reach）
+func test_reach_mult():
+	var o := Vector2(0, 0)
+	assert_false(Sword.hits(o, 0, Vector2.RIGHT, Vector2(28, 0), 0))
+	assert_true(Sword.hits(o, 0, Vector2.RIGHT, Vector2(28, 0), 0, false, 1.4))

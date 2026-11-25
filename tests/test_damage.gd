@@ -52,3 +52,9 @@ func test_cannot_attack_upward():
 	assert_true(Damage.can_hit(2, 2))
 	assert_true(Damage.can_hit(2, 0))
 	assert_false(Damage.can_hit(2, 3))
+
+## 守り（防具の def と守りの薬）：受けるダメージがその数だけ減る。最低1
+func test_defense_reduces_enemy_hit():
+	assert_eq(Damage.enemy_hit(6, false, 2), 4)
+	assert_eq(Damage.enemy_hit(3, false, 5), 1)
+	assert_eq(Damage.enemy_hit(6, true, 1), 2)

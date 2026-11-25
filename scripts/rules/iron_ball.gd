@@ -20,6 +20,10 @@ const PICK_RADIUS := 12.0  ## 体の中心がこの距離まで近づくと拾�
 var state: State = State.HELD
 ## 強い鉄球か。ダメージが「落ちた段数＋2」になる。切り替えは手に持っているときだけ。
 var strong := false
+## 手に持っている鉄球の品物（ItemCatalog の id）。見た目に使う。切り替えは手に持っているときだけ
+var item := "ball_1"
+## 届く距離（px）。鉄球の特色「届く×」で伸びる
+var reach := REACH_PX
 var pos: Vector2 = Vector2.ZERO
 var height: int = 0
 var fall_levels: int = 0
@@ -44,6 +48,14 @@ func set_strong(v: bool) -> bool:
 	strong = v
 	return true
 
+## 手に持つ鉄球の品物を替える（落としている間は替えない）。届く距離は特色の reach で伸びる。
+func set_item(id: String) -> bool:
+	if state != State.HELD:
+		return false
+	item = id
+	reach = REACH_PX * float(ItemCatalog.trait_value(id, "reach", 1.0))
+	return true
+
 ## 死んだときなどに、どこにあっても手元へ戻す。
 func return_to_hand() -> void:
 	state = State.HELD
@@ -53,11 +65,11 @@ func cell() -> Vector2i:
 	return HeightMap.world_to_cell(pos)
 
 ## from から target へ、届く所まで縮めた点。
-static func reach_point(from: Vector2, target: Vector2) -> Vector2:
+static func reach_point(from: Vector2, target: Vector2, reach_px := REACH_PX) -> Vector2:
 	var d := target - from
-	if d.length() <= REACH_PX:
+	if d.length() <= reach_px:
 		return target
-	return from + d.normalized() * REACH_PX
+	return from + d.normalized() * reach_px
 
 ## 高さ from_height に立って、その点に鉄球を落とせるか。マップの外・奈落・水・壁と、
 ## 自分より高い地面には落とせない。墓石は壁と同じく通れないが、鉄球を落として壊せる。
@@ -70,9 +82,9 @@ static func can_drop_at(point: Vector2, map: HeightMap, from_height: int) -> boo
 	# 墓石と、ひびの入った岩（仕掛け）の上には落とせる
 	return map.is_grave(target) or map.get_blocker(target) == HeightMap.Blocker.CRACK or not map.is_wall(target)
 
-## ランクごとの当たる半径。ランク2の特性は「当たる範囲が広い」（design.md 7章）。
-static func hit_radius(rank: int) -> float:
-	return HIT_RADIUS * 1.5 if rank >= 2 else HIT_RADIUS
+## 当たる半径。鉄球の特色「当たる範囲×」（radius）を掛ける（2026-11-25）。
+static func hit_radius(mult := 1.0) -> float:
+	return HIT_RADIUS * mult
 
 ## 落ちた点（高さ land_h）が、other_pos に立つ高さ other_h のものに当たるか。
 static func hits(land_pos: Vector2, land_h: int, other_pos: Vector2, other_h: int, radius := HIT_RADIUS) -> bool:
@@ -88,7 +100,7 @@ static func touches_cell(land_pos: Vector2, c: Vector2i) -> bool:
 func drop_at(player: PlayerMover, map: HeightMap, target: Vector2) -> bool:
 	if state != State.HELD:
 		return false
-	var p := reach_point(player.pos, target)
+	var p := reach_point(player.pos, target, reach)
 	if not can_drop_at(p, map, player.height):
 		return false
 	pos = p

@@ -46,13 +46,14 @@ func test_staff_stands_up_with_colored_orb():
 	assert_eq(HeroModel.raw("", "").get_voxel(tip).a, 0.0)
 	assert_eq(HeroModel.raw("staff_none_1", "").get_voxel(tip), HeroModel.NONE_ORB)
 	assert_eq(HeroModel.raw("staff_fire_3", "").get_voxel(tip), HeroModel.FIRE_ORB)
-	assert_eq(HeroModel.orb_color("staff_fire_9"), HeroModel.FIRE_ORB)
+	assert_eq(HeroModel.orb_color("staff_fire_2"), HeroModel.FIRE_ORB)
+	assert_ne(HeroModel.orb_color("staff_ice_2"), HeroModel.NONE_ORB)
 
 ## 鉄球は両手で体の前に抱える。強い鉄球（ランク2）は赤黒い
 func test_ball_held_in_front_with_both_hands():
 	var c := Vector3i(HeroModel.BALL_CENTER)
 	assert_eq(HeroModel.raw("ball_1", "").get_voxel(c), HeroModel.BALL)
-	assert_eq(HeroModel.raw("ball_2", "").get_voxel(c), HeroModel.STRONG_BALL)
+	assert_eq(HeroModel.raw("ball_heavy", "").get_voxel(c), HeroModel.STRONG_BALL)
 	assert_eq(HeroModel.raw("", "").get_voxel(c).a, 0.0)
 	assert_gt(_front_most(HeroModel.build("ball_1", "")), _front_most(HeroModel.build("", "")))
 
@@ -106,12 +107,12 @@ func test_release_pose_has_open_hands_and_no_ball():
 
 ## 地面の鉄球は、手に持つ鉄球と同じ細かさ・同じ色
 func test_ground_ball_matches_held_ball():
-	var m := HeroModel.ball_model(false)
+	var m := HeroModel.ball_model("ball_1")
 	assert_eq(m.size, Vector3i.ONE * HeroModel.BALL_BOX)
 	assert_eq(HeroModel.BALL_BOX % 2, 0)  # 偶数（真ん中に置いたとき半ピクセルずれない）
 	assert_gt(HeroModel.BALL_BOX, HeroModel.BALL_RADIUS * 2.0)
-	assert_same(HeroModel.ball_model(false), m)  # 使い回す
-	assert_ne(HeroModel.ball_model(true), m)
+	assert_same(HeroModel.ball_model("ball_1"), m)  # 使い回す
+	assert_ne(HeroModel.ball_model("ball_heavy"), m)
 
 ## 防具を着ると、胸に鎧の色が出る
 func test_armor_shows_on_body():

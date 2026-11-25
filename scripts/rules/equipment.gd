@@ -1,9 +1,9 @@
 class_name Equipment
 extends RefCounted
 ## 武器と防具の持ち物と装備。品物（ItemCatalog の id）で持ち、種類（Slot）ごとに1つ装備する。
-## ランク1が最低ランク、10が最高。死ぬとランク1以外は墓石に入る（design.md 10章）。
+## ランク1が最低ランク、5が最高（2026-11-25 に10から5へ）。死ぬとランク1以外は墓石に入る（design.md 10章）。
 ## 装備する品物は死んでも好みとして残るので、墓石から取り返すと設定し直さなくても元に戻る。
-## 鉄球（ランク1）と無の杖は最初から持っている。
+## 最初から持っているのは鉄球（ランク1）だけ（2026-11-25）。品物の特色（ItemCatalog の traits）は trait_of・armor_bonus で読む。
 
 enum Slot { BALL, SWORD, BOW, STAFF, ARMOR }
 
@@ -18,7 +18,7 @@ const WEAPONS := [Slot.BALL, Slot.SWORD, Slot.BOW, Slot.STAFF]
 ## 防具は頭・体・足に分けず、1つの枠だけ（2026-11-24 まさのりさんの指示）
 const ARMOR := [Slot.ARMOR]
 const MIN_RANK := 1
-const MAX_RANK := 10
+const MAX_RANK := 5
 ## ランクが1上がるごとに足されるつよさ【提案】（ランク2の鉄球＝前の「強い鉄球」で＋2）
 const ATTACK_PER_RANK := 2
 ## 防具のランク1つにつき足される最大いのち【提案】（守りの値は未定。design.md 16章）
@@ -29,7 +29,6 @@ var _equipped := {}  # Slot → id（好み）
 
 func _init() -> void:
 	gain("ball_1")
-	gain("staff_none_1")  # 最初の杖は無の杖
 
 ## 武器のランクで足されるつよさ。持っていない（0）とランク1は0。
 static func rank_attack(rank: int) -> int:
@@ -80,11 +79,22 @@ func current(slot: Slot) -> String:
 func effective(slot: Slot) -> int:
 	return ItemCatalog.rank(current(slot))
 
-## 装備している防具で足される最大いのち。
+## 装備している防具で足される最大いのち（ランクの分と、特色の hp）。
 func armor_hp() -> int:
 	var total := 0
 	for slot in ARMOR:
-		total += effective(slot) * HP_PER_ARMOR_RANK
+		total += effective(slot) * HP_PER_ARMOR_RANK + int(ItemCatalog.trait_value(current(slot), "hp", 0))
+	return total
+
+## その枠で実際に使う品物の特色の値（なければ dflt）。
+func trait_of(slot: Slot, key: String, dflt = 0):
+	return ItemCatalog.trait_value(current(slot), key, dflt)
+
+## 防具の特色の値（守り・足・マナ・いのちの回復）。
+func armor_bonus(key: String) -> float:
+	var total := 0.0
+	for slot in ARMOR:
+		total += float(ItemCatalog.trait_value(current(slot), key, 0))
 	return total
 
 ## 死んだとき：ランク1以外を取り出して返す（墓石に入れる分。id の配列）。

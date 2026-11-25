@@ -6,9 +6,7 @@ extends RefCounted
 var area_id: String = ""
 var cell: Vector2i
 var money: int = 0
-var materials: int = 0
-var heals: int = 0
+## 墓石に入った素材・道具・矢（id → 数）
+var counts := {}
 ## 墓石に入った武器と防具（Equipment.take_for_grave の結果。品物の id の配列）
 var equipment: Array = []
-## 墓石に入った矢（Arrow.Kind → 数）
-var arrows := {}
