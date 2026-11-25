@@ -246,3 +246,170 @@ func test_giant_boulders_break_cleanly():
 	_half(b)
 	_run(12.0)
 	assert_eq(f._effects.filter(func(x): return not is_instance_valid(x[0])).size(), 0)
+
+# ---------------------------------------------------------------- 2026-11-25 夜（2回目の直し）に足した技
+
+func _bullets() -> int:
+	return f._bullets.size()
+
+## seconds の間 _run して、どこかで cond が true になったか。
+func _run_until(cond: Callable, seconds: float, step := 0.05) -> bool:
+	for i in int(seconds / step):
+		_run(step, step)
+		if cond.call():
+			return true
+	return false
+
+## 一時的な奈落：ひびが出てから開き、少しすると閉じて元の地面に戻る。出口のそばには開かない
+func test_boss_pits_open_then_close():
+	_enter("岩転がしの巨人")
+	var c: Vector2i = f.player.mover.cell()
+	var far := Vector2i(-1, -1)
+	for d in [Vector2i(3, 0), Vector2i(-3, 0), Vector2i(0, 3), Vector2i(0, -3)]:
+		var t: Vector2i = c + d
+		if f.map.in_bounds(t) and not f.map.is_wall(t) and not f.map.is_pit(t) and not f.map.is_water(t):
+			far = t
+			break
+	assert_ne(far, Vector2i(-1, -1))
+	assert_eq(f.boss_pits([far], 0.5, 1.0), 1)
+	assert_false(f.map.is_pit(far), "はじめはひびだけ")
+	f._step_pits(0.6)
+	assert_true(f.map.is_pit(far))
+	assert_eq(f.open_pits(), 1)
+	f._step_pits(1.1)
+	assert_false(f.map.is_pit(far), "閉じる")
+	assert_eq(f.open_pits(), 0)
+	var entry: Vector2i = f.area.entry_safe_cells().keys()[0]
+	assert_eq(f.boss_pits([entry], 0.5, 1.0), 0, "出口のそばには開かない")
+
+## 立っているマスが奈落になると、落ちて死ぬ
+func test_falling_into_boss_pit_kills():
+	_enter("岩転がしの巨人")
+	assert_eq(f.boss_pits([f.player.mover.cell()], 0.1, 3.0), 1)
+	f._step_pits(0.2)
+	assert_true(f.player.mover.fell)
+	f._process(0.05)
+	assert_eq(f.area_state.result, AreaState.Result.DYING)
+
+## 巨人：地面を叩いて、主人公の足元に奈落を開ける（岩場のボスが奈落を作る）
+func test_giant_cracks_ground_under_player():
+	var b := _enter("岩転がしの巨人")
+	b._clock1 = Boss.GIANT_QUAKE
+	_run(0.1)
+	assert_gt(f._pits_tmp.size(), 0)
+	assert_eq(f.open_pits(), 0, "先にひび")
+	var cells: Array = f._pits_tmp[0][0]
+	assert_true(cells.has(f.player.mover.cell()), "足元を含む")
+	_half(b)
+	_run(0.1)
+	b._clock1 = Boss.GIANT_QUAKE_2
+	var before: int = f._pits_tmp.size()
+	_run(0.1)
+	assert_gt(f._pits_tmp.size(), before)
+	assert_gt(f._pits_tmp[f._pits_tmp.size() - 1][0].size(), 4, "2段目は列も")
+
+## 大蛇：少し離れていると、ためて突進して噛みつく
+func test_snake_lunges():
+	var b := _enter("草むらの大蛇")
+	b._clock1 = 4.0
+	b._cool = 0.0
+	assert_true(_run_until(func():
+		f.camera.angle = b._view_angle  # 体が見える向きから
+		return b._dash_time > 0.0, 3.0))
+
+## 溶岩：引いているとき、溶岩の玉も落とす。2段目は炎の車輪が転がる
+func test_lava_drops_bombs_and_rolls_fire_wheels():
+	var b := _enter("満ち引きする溶岩")
+	assert_true(_run_until(func(): return f.strikes_count() > 0, 4.0))
+	_half(b)
+	_run(0.1)
+	b._clock3 = 6.0
+	_run(0.1)
+	assert_gt(f.rollers_count(), 0)
+
+## 廃城の主：離れると3方向に衝撃波。2段目は主人公へ向かう印の列
+func test_knight_waves_and_cracks():
+	var b := _enter("廃城の主")
+	b._clock1 = 5.0
+	b._cool = 0.0
+	assert_true(_run_until(func(): return _bullets() >= 3, 3.0))
+	_half(b)
+	_run(0.1)
+	b._clock3 = 6.0
+	assert_true(_run_until(func(): return f.strikes_count() >= 5, 2.0), "突進のあとでも割る")
+
+## 岩窟のぬし：地響きで、まわりに奈落を開ける。2段目は大岩を転がしてくる
+func test_golem_quakes_pits_and_rolls_boulders():
+	var b := _enter("岩窟のぬし")
+	b._clock1 = Boss.GOLEM_QUAKE
+	_run(0.1)
+	assert_gt(f._pits_tmp.size(), 0)
+	_half(b)
+	_run(0.1)
+	b._clock3 = 7.0
+	_run(0.1)
+	assert_gt(f.rollers_count(), 0)
+
+## 溶岩洞のぬし：離れると火を5方向に吐く。2段目は火の雨
+func test_salamander_breathes_fire_and_rains():
+	var b := _enter("溶岩洞のぬし")
+	b._clock1 = 4.0
+	b._cool = 0.0
+	assert_true(_run_until(func(): return _bullets() >= 5, 3.0))
+	_half(b)
+	_run(0.1)
+	b._clock3 = 5.0
+	_run(0.1)
+	assert_gte(f.strikes_count(), 3)
+
+## 双子：前に立つ方が、ためて突進する
+func test_twin_in_front_charges():
+	var b := _enter("双子")
+	var front: Boss = b if not b.hider else b.partner
+	front._clock1 = 5.0
+	front._cool = 0.0
+	assert_true(_run_until(func(): return front._dash_time > 0.0, 3.0))
+
+## 番人：床に十字の印が出て、火柱が立つ
+func test_guardian_cross_pillars():
+	var b := _enter("らせん塔の番人")
+	b._clock1 = 6.0
+	_run(0.1)
+	assert_gte(f.strikes_count(), 6, "壁の上には立たないので、12のうち少なくとも6")
+
+## ブライト：ときどき別の所へ移る。2段目は回る光の柱の列
+func test_bright_teleports_and_sweeps():
+	var b := _enter("ブライト")
+	var at: Vector2 = b.walker.pos
+	b._clock1 = 10.0
+	_run(0.1)
+	assert_ne(b.walker.pos, at)
+	_half(b)
+	_run(0.1)
+	b._clock3 = 7.0
+	_run(0.1)
+	assert_gte(f.strikes_count(), 10)
+
+## 女王蜂：ときどき針を8方向に撃つ
+func test_queen_needle_ring():
+	var b := _enter("女王蜂")
+	b._clock1 = 7.0
+	_run(0.1)
+	assert_gte(_bullets(), 8)
+
+## 宝箱の王：ときどき本物だけが口を開けて金貨を吐く。2段目は擬態箱を呼ぶ
+func test_chest_king_spits_coins_and_calls_mimic():
+	var b := _enter("宝箱の王")
+	b._clock1 = 5.0
+	_run(0.1)
+	assert_gte(_bullets(), 3)
+	assert_gt(b.open_time, 0.0)
+	_half(b)
+	_run(0.1)
+	b._clock3 = 12.0
+	_run(0.1)
+	var mimics := 0
+	for e in f.enemies:
+		if is_instance_valid(e) and e.kind == EnemyKind.Kind.MIMIC and e.minion:
+			mimics += 1
+	assert_eq(mimics, 1)

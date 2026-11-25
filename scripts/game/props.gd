@@ -372,6 +372,45 @@ static func rain_ring(r: float) -> VoxelModel:
 		_cache[key] = m
 	return _cache[key]
 
+## ボスが開ける奈落の、先に出るひび（地面の上に、明るい割れ目の線）。2026-11-25 夜の2回目の直し。
+static func crack_mark() -> VoxelModel:
+	if not _cache.has("crack_mark"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(32, 32, 1)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 41
+		for k in 4:  # 真ん中から外へ、ぎざぎざの割れ目を4本
+			var p := Vector2(15.5, 15.5)
+			var dir := Vector2.from_angle(k * TAU / 4.0 + rng.randf_range(-0.4, 0.4))
+			for step in 16:
+				var c := Vector2i(p.round())
+				if c.x < 0 or c.y < 0 or c.x >= 32 or c.y >= 32:
+					break
+				m.set_voxel(Vector3i(c.x, c.y, 0), Color(1.0, 0.85, 0.55, 0.9))
+				if c.x + 1 < 32:
+					m.set_voxel(Vector3i(c.x + 1, c.y, 0), Color(0.25, 0.15, 0.1, 0.8))
+				dir = dir.rotated(rng.randf_range(-0.5, 0.5))
+				p += dir
+		_cache["crack_mark"] = m
+	return _cache["crack_mark"]
+
+## ボスが開けた奈落（マスいっぱいの、深い黒い穴。ふちは割れた土）。
+static func hole() -> VoxelModel:
+	if not _cache.has("hole"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(32, 32, 1)
+		for y in 32:
+			for x in 32:
+				var edge := mini(mini(x, y), mini(31 - x, 31 - y))
+				var c := Color(0.02, 0.01, 0.03)
+				if edge < 2:
+					c = Color(0.35, 0.24, 0.16) if (x * 7 + y * 3) % 5 != 0 else Color(0.2, 0.13, 0.09)
+				elif edge < 5:
+					c = Color(0.08, 0.05, 0.06)
+				m.set_voxel(Vector3i(x, y, 0), c)
+		_cache["hole"] = m
+	return _cache["hole"]
+
 ## 鉄球の落ちる所に出す、すけた丸い影。
 static func aim_shadow() -> VoxelModel:
 	if not _cache.has("aim_shadow"):

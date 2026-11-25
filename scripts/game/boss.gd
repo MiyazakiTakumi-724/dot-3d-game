@@ -16,6 +16,19 @@ extends StackSprite
 ## 女王蜂：浮いている（剣・鉄球は届かない）。針を3本撃ち、蜂を呼ぶ。2段目：急降下して、しばらく地面に降りる（その間は剣も届く）。
 ## 宝箱の王：にせものの宝箱（BossDecoy）にまぎれ、本物だけが噛みつく。ときどき入れ替わる（2段目は速い）。
 ##   本物は背中に金のしっぽがある（カメラを回すと見分けられる）。
+##
+## 2026-11-25 夜（2回目の直し）に、どのボスにも技を足した（docs/superpowers/specs/2026-11-25-tuning-2.md 5章）：
+## 巨人：地面を叩いて、主人公の足元に奈落を開ける（ひびが出てから開く。落ちると死ぬ）。2段目は巨人から主人公へ向かう列。
+## 大蛇：少し離れると、ためて突進して噛みつく。2段目：地面から出たとき、まわりの土が盛り上がる（輪の印）。
+## 溶岩：引いたとき、溶岩の玉も落とす（印が先）。2段目：炎の車輪が部屋を端から端へ転がる。
+## 廃城の主：離れると、剣を振って3方向に衝撃波。2段目：地面を割る（主人公へ向かう印の列）。
+## 岩窟のぬし：ときどき地響きで、まわりに奈落を開ける。2段目：大岩を転がしてくる。
+## 溶岩洞のぬし：離れると、ためて火を5方向に吐く。2段目：火の雨。
+## 双子：前に立つ方が、ためて突進する。2段目：後ろの方も3方向に撃つ。
+## 番人：床に十字の印が出て、火柱が立つ（2段目は斜めの十字と交互）。
+## ブライト：ときどき別の所へ消えて現れる（背中を取り直す）。2段目：回る光の柱の列。
+## 女王蜂：ときどき針を8方向に撃つ。2段目：急降下して降りたときにも8方向。
+## 宝箱の王：ときどき本物だけが口を開けて金貨を吐く（見分ける合図にもなる）。2段目：擬態箱を1つ呼ぶ。
 
 const WAKE_RANGE := 120.0
 const SNAKE_VIEW := 0.7  ## 大蛇が見えるカメラの角度の幅（ラジアン、片側）
@@ -39,6 +52,12 @@ const STUN_SECONDS := 2.5
 ## 女王蜂が浮いている高さ（px）と、急降下のあと地面にいる秒
 const QUEEN_LIFT := 14.0
 const QUEEN_LANDED := 1.8
+## 巨人・岩窟のぬしが奈落を開ける間（秒）。ひびが出てから開くまで、開いている秒
+const GIANT_QUAKE := 7.0
+const GIANT_QUAKE_2 := 5.5
+const GOLEM_QUAKE := 8.0
+const PIT_WARN := 1.3
+const PIT_OPEN := 5.0
 
 var boss_name := ""
 var group := ""
@@ -80,7 +99,9 @@ var _spin := 1.0  ## 番人の回る向き
 var _view_angle := 0.0  ## 大蛇が見えるカメラの角度
 var _glow := false  ## ブライトが光をためている
 var _moves := 0  ## 攻撃の回数（3回に1回の技など）
+var _clock1 := 0.0  ## 1段目から使う、足した技の時計（2026-11-25 夜の2回目の直し）
 var _clock2 := 0.0  ## 2段目の技の時計
+var _clock3 := 0.0  ## 2段目に足した技の時計
 var _summon := 0.0  ## 手下を呼ぶ時計
 var _dash_dir := Vector2.ZERO
 var _dash_time := 0.0  ## 突進・転がり・跳びかかりの残り秒
@@ -263,7 +284,10 @@ func _process(delta: float) -> void:
 	if active and walker.alive and p.hp > 0 and stunned <= 0.0:
 		_t += delta
 		_cool -= delta * (1.6 if enraged else 1.0)
+		_clock1 += delta
 		_clock2 += delta
+		if phase == 2:
+			_clock3 += delta
 		_summon += delta
 		match group:
 			"岩転がしの巨人": _giant(delta, p)
@@ -415,6 +439,26 @@ func _giant(delta: float, p: Player) -> void:
 			start = Vector2(map.size.x * HeightMap.CELL_PX - 4.0, row.y) if horizontal else Vector2(row.x, map.size.y * HeightMap.CELL_PX - 4.0)
 		var dir := Vector2(1, 0) if horizontal else Vector2(0, 1)
 		field.boss_roll(start, -dir if far else dir, attack)
+	# 地割れ：地面を叩いて、主人公の足元に奈落を開ける（ひびが出てから開く）。2段目は巨人から主人公へ向かう列も
+	if _clock1 >= (GIANT_QUAKE if phase == 1 else GIANT_QUAKE_2) and _wind < 0.0:
+		_clock1 = 0.0
+		field.camera.shake(3.5)
+		field.effect_at(Props.rain_ring(30.0), walker.pos, walker.height, 0.3)
+		field.boss_pits(_quake_cells(p), PIT_WARN, PIT_OPEN)
+
+## 巨人の地割れで開くマス。1段目は主人公の足元を含む2×2、2段目はそれに巨人から主人公へ向かう列を足す。
+func _quake_cells(p: Player) -> Array:
+	var pc := p.mover.cell()
+	var off := Vector2i(-1 if randf() < 0.5 else 0, -1 if randf() < 0.5 else 0)
+	var cells: Array = []
+	for dx in 2:
+		for dy in 2:
+			cells.append(pc + off + Vector2i(dx, dy))
+	if phase == 2:
+		var d := (p.mover.pos - walker.pos).normalized()
+		for k in range(2, 9):
+			cells.append(HeightMap.world_to_cell(walker.pos + d * k * HeightMap.CELL_PX))
+	return cells
 
 func _snake(delta: float, p: Player) -> void:
 	if int(_t / 6.0) != int((_t - delta) / 6.0):
@@ -442,6 +486,16 @@ func _snake(delta: float, p: Player) -> void:
 			if _near(p, 14.0):
 				field.hurt_player(attack)
 			_cool = 1.0
+			# 2段目：出たところのまわりの土が盛り上がる（輪の印。少しあとに当たる）
+			for i in 6:
+				field.boss_strike(walker.pos + Vector2.from_angle(i * TAU / 6.0) * 26.0, 0.7, 9.0, attack, Props.rain_ring(10.0))
+		return
+	if _dash_time > 0.0:
+		_dash(delta, 4.0)  # 突進して噛みつく
+		if _near(p, 14.0):
+			field.hurt_player(attack)
+			_dash_time = 0.0
+			walker.speed_mult = _base_speed
 		return
 	if phase == 2 and _clock2 >= 7.0 and _wind < 0.0:
 		_clock2 = 0.0
@@ -459,6 +513,11 @@ func _snake(delta: float, p: Player) -> void:
 				field.hurt_player(attack)
 		elif _near(p, 24.0):
 			field.hurt_player(attack)
+	# 少し離れていると、ためて突進して噛みつく（見えているときだけ）
+	if _windup(delta, 0.6, "lunge", _visible_body and _clock1 >= 4.0 and _dist(p) > 34.0 and _dist(p) < 80.0) == "lunge":
+		_clock1 = 0.0
+		_dash_dir = (p.mover.pos - walker.pos).normalized()
+		_dash_time = 0.45
 	# 2段目：離れていると毒の息（遅い弾を5方向）
 	if phase == 2 and _cool <= 0.0 and _wind < 0.0 and _dist(p) > 40.0 and _visible_body:
 		_cool = 3.5
@@ -477,13 +536,25 @@ func _lava(delta: float, p: Player) -> void:
 				field.effect_at(Props.flame(randi() % 3), HeightMap.cell_center(c), walker.map.get_height(c), 0.6)
 	elif _cool <= 0.0:
 		_cool = 1.6
+		_moves += 1
 		_fan(p, 80.0)  # 火を3方向に吐く
+		if _moves % 2 == 0:
+			# 溶岩の玉も落とす（主人公の所と、そのそば。印が先に出る）
+			field.boss_strike(p.mover.pos, 1.1, 10.0, attack, Props.flame(0))
+			field.boss_strike(p.mover.pos + Vector2.from_angle(randf() * TAU) * 20.0, 1.1, 10.0, attack, Props.flame(1))
 	# 2段目：地面から火柱（先に印が出る）
 	if phase == 2 and _clock2 >= 3.0:
 		_clock2 = 0.0
 		for i in 3:
 			var at := p.mover.pos + (Vector2.ZERO if i == 0 else Vector2.from_angle(randf() * TAU) * randf_range(12.0, 26.0))
 			field.boss_strike(at, 0.9, 10.0, attack, Props.pillar())
+	# 2段目：炎の車輪が、主人公のいる列を端から端へ転がる
+	if phase == 2 and _clock3 >= 6.0:
+		_clock3 = 0.0
+		_moves += 1
+		var horizontal := _moves % 2 == 0
+		var start := Vector2(4.0, p.mover.pos.y) if horizontal else Vector2(p.mover.pos.x, 4.0)
+		field.boss_roll(start, Vector2(1, 0) if horizontal else Vector2(0, 1), attack, Props.flame(2))
 
 func _knight(delta: float, p: Player) -> void:
 	walker.chase_range = 60.0 if p.crouching else 240.0  # 足音で追ってくる
@@ -500,6 +571,16 @@ func _knight(delta: float, p: Player) -> void:
 		# 横に広く斬る。しゃがむか、騎士より高い所にいればよけられる
 		if _dist(p) < 36.0 and not p.crouching and Damage.can_hit(walker.height, p.mover.height):
 			field.hurt_player(attack)
+	# 離れていると、剣を振って3方向に衝撃波
+	if _windup(delta, 0.7, "wave", _clock1 >= 5.0 and _dist(p) > 44.0 and _dist(p) < 120.0 and Damage.can_hit(walker.height, p.mover.height)) == "wave":
+		_clock1 = 0.0
+		_fan(p, 65.0, 3, 0.3)
+	# 2段目：地面を割る（主人公へ向かう印の列が、手前から順に弾ける）
+	if phase == 2 and _clock3 >= 6.0 and _wind < 0.0:
+		_clock3 = 0.0
+		var d := (p.mover.pos - walker.pos).normalized()
+		for k in range(1, 7):
+			field.boss_strike(walker.pos + d * k * 14.0, 0.5 + k * 0.12, 9.0, attack, Props.rain_ring(10.0))
 	# 2段目：離れているとまっすぐ突進する。亡霊を呼ぶ
 	if phase == 2:
 		if _windup(delta, 0.6, "dash", _dist(p) > 40.0 and _dist(p) < 140.0 and p.mover.height == walker.height) == "dash":
@@ -536,6 +617,22 @@ func _golem(delta: float, p: Player) -> void:
 			var s: StackSprite = field.effect_at(Props.aim_shadow(), at, walker.map.get_height(c), 1.0)
 			s.set_meta("steady", true)
 			_rocks.append([at, 1.0])
+	# 地響き：ときどき地面を揺らして、まわり（2〜3マス先）に奈落を開ける
+	if _clock1 >= GOLEM_QUAKE and _wind < 0.0 and _dist(p) < 100.0:
+		_clock1 = 0.0
+		field.camera.shake(3.0)
+		var cells: Array = []
+		var c0 := walker.cell()
+		for i in 6:
+			var a := randf() * TAU
+			cells.append(c0 + Vector2i((Vector2.from_angle(a) * randf_range(2.0, 3.5)).round()))
+		cells.append(p.mover.cell())
+		field.boss_pits(cells, PIT_WARN, PIT_OPEN - 1.0)
+	# 2段目：大岩を、主人公の方へまっすぐ転がしてくる
+	if phase == 2 and _clock3 >= 7.0 and _wind < 0.0:
+		_clock3 = 0.0
+		var d := p.mover.pos - walker.pos
+		field.boss_roll(walker.pos, Vector2(signf(d.x), 0) if absf(d.x) > absf(d.y) else Vector2(0, signf(d.y)), attack)
 	# 2段目：丸まって、主人公の方へ転がる（縦か横にまっすぐ）
 	if phase == 2 and _windup(delta, 0.8, "roll", _dist(p) > 30.0 and _clock2 >= 4.0) == "roll":
 		_clock2 = 0.0
@@ -579,6 +676,16 @@ func _salamander(delta: float, p: Player) -> void:
 	if _trail_clock >= 0.25:
 		_trail_clock = 0.0
 		field.boss_fire(walker.pos, walker.height, 3.0, maxi(1, attack / 2))  # 通った跡が燃える
+	# 離れていると、ためて火を5方向に吐く
+	if _windup(delta, 0.5, "breath", _clock1 >= 4.0 and _dist(p) > 30.0 and _dist(p) < 100.0) == "breath":
+		_clock1 = 0.0
+		_fan(p, 70.0, 5, 0.22)
+	# 2段目：火の雨（主人公のまわりに印が出て、少しあとに落ちる）
+	if phase == 2 and _clock3 >= 5.0:
+		_clock3 = 0.0
+		for i in 3:
+			var at := p.mover.pos + (Vector2.ZERO if i == 0 else Vector2.from_angle(randf() * TAU) * randf_range(14.0, 28.0))
+			field.boss_strike(at, 1.0, 10.0, attack, Props.flame(i % 3))
 	# 2段目：ためて跳びかかる
 	if phase == 2 and _windup(delta, 0.5, "leap", _clock2 >= 4.0 and _dist(p) < 100.0) == "leap":
 		_clock2 = 0.0
@@ -598,6 +705,13 @@ func _twin(delta: float, p: Player) -> void:
 		hider = true
 		partner.hider = false
 		partner._clock2 = 0.0
+	if _dash_time > 0.0:
+		_dash(delta, 4.0)  # 前に立つ方の突進
+		if _near(p, 14.0):
+			field.hurt_player(attack)
+			_dash_time = 0.0
+			walker.speed_mult = _base_speed
+		return
 	if hider and partner != null and is_instance_valid(partner) and partner.walker.alive:
 		# カメラから見て、相手の真後ろ（画面の奥）に回りこむ
 		var back: Vector2 = field.camera.screen_dir_to_world(Vector2.UP) * 18.0
@@ -611,10 +725,15 @@ func _twin(delta: float, p: Player) -> void:
 	if _windup(delta, 0.5, "hit", _near(p, 20.0)) == "hit":
 		if _dist(p) < 22.0:
 			field.hurt_player(attack)
+	# 前に立つ方は、少し離れると、ためて突進する
+	if not hider and _windup(delta, 0.6, "charge", _clock1 >= 5.0 and _dist(p) > 30.0 and _dist(p) < 100.0) == "charge":
+		_clock1 = 0.0
+		_dash_dir = (p.mover.pos - walker.pos).normalized()
+		_dash_time = 0.45
 	if (hider or enraged) and _cool <= 0.0 and _wind < 0.0:
 		_cool = 2.5
-		if enraged:
-			_fan(p, 75.0)
+		if enraged or phase == 2:
+			_fan(p, 75.0)  # 2段目は後ろの方も3方向
 		else:
 			_throw(p, 70.0)
 
@@ -630,6 +749,15 @@ func _guardian(delta: float, p: Player) -> void:
 	if _windup(delta, 0.7, "swipe", to_p.length() < 24.0) == "swipe":
 		if _near(p, 26.0):
 			field.hurt_player(attack)
+	# 床に十字の印が出て、少しあとに火柱が立つ（2段目はまっすぐの十字と斜めの十字が交互）
+	if _clock1 >= 6.0:
+		_clock1 = 0.0
+		_moves += 1
+		var tilt := PI / 4.0 if phase == 2 and _moves % 2 == 0 else 0.0
+		for k in 4:
+			var d := Vector2.from_angle(k * PI / 2.0 + tilt)
+			for r in [2, 3, 4]:
+				field.boss_strike(walker.pos + d * r * HeightMap.CELL_PX, 1.1, 8.0, attack, Props.pillar())
 	# 2段目：ためて、まわりを薙ぐ（離れればよけられる）
 	if phase == 2 and _windup(delta, 0.9, "spin", _clock2 >= 6.0 and to_p.length() < 60.0) == "spin":
 		_clock2 = 0.0
@@ -652,6 +780,10 @@ func _bright(delta: float, p: Player) -> void:
 	if not charging and _cool <= 0.0:
 		_cool = 1.6
 		_throw(p, 80.0)
+	# ときどき消えて、別の所に現れる（背中を取り直さなければならない）
+	if _clock1 >= 10.0 and not charging:
+		_clock1 = 0.0
+		_teleport()
 	# 2段目：光の雨（落ちる所に印）と、影を呼ぶ
 	if phase == 2:
 		if _clock2 >= 5.0:
@@ -662,6 +794,30 @@ func _bright(delta: float, p: Player) -> void:
 		if _summon >= 12.0:
 			_summon = 0.0
 			_call_minions(EnemyKind.Kind.SHADOW, 2)
+		# 回る光の柱の列（4方向へ、手前から順に）
+		if _clock3 >= 7.0:
+			_clock3 = 0.0
+			_moves += 1
+			var base := _moves * 0.5
+			for k in 4:
+				var d := Vector2.from_angle(base + k * PI / 2.0)
+				for r in range(1, 5):
+					field.boss_strike(walker.pos + d * r * 14.0, 0.6 + r * 0.15, 8.0, attack, Props.pillar())
+
+## ブライトが別の所へ移る（もとの所のまわりの、同じ高さで歩けるマス）。煙が出る。
+func _teleport() -> void:
+	var map := walker.map
+	var c0 := HeightMap.world_to_cell(_home)
+	for i in 20:
+		var c := c0 + Vector2i(randi_range(-4, 4), randi_range(-3, 3))
+		if c == walker.cell() or not map.in_bounds(c) or map.is_wall(c) or map.is_pit(c) or map.is_water(c) or walker.forbidden.has(c):
+			continue
+		if map.get_height(c) != walker.height:
+			continue
+		field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.35)
+		walker.pos = HeightMap.cell_center(c)
+		field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.35)
+		return
 
 func _queen(delta: float, p: Player) -> void:
 	if landed > 0.0:
@@ -675,6 +831,7 @@ func _queen(delta: float, p: Player) -> void:
 			_wind_kind = ""
 			landed = QUEEN_LANDED
 			field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.3)
+			_fan(p, 60.0, 8, TAU / 8.0)  # 降りたときにも針を8方向
 		return
 	# 主人公のまわりを回る
 	var d := p.mover.pos - walker.pos
@@ -689,6 +846,10 @@ func _queen(delta: float, p: Player) -> void:
 	if _summon >= 9.0:
 		_summon = 0.0
 		_call_minions(EnemyKind.Kind.WASP, 2)
+	# ときどき針を8方向に撃つ
+	if _clock1 >= 7.0 and _wind < 0.0:
+		_clock1 = 0.0
+		_fan(p, 60.0, 8, TAU / 8.0)
 	# 2段目：ためて急降下
 	if phase == 2 and _windup(delta, 0.5, "dive", _clock2 >= 5.0 and d.length() < 110.0) == "dive":
 		_clock2 = 0.0
@@ -702,6 +863,15 @@ func _chest_king(delta: float, p: Player) -> void:
 		_shuffle = CHEST_SHUFFLE if phase == 1 else CHEST_SHUFFLE_2
 		_shuffle_places()
 		return
+	# ときどき本物だけが口を開けて、金貨を3方向に吐く（見分ける合図にもなる）
+	if _clock1 >= 5.0 and _wind < 0.0:
+		_clock1 = 0.0
+		open_time = maxf(open_time, 0.7)
+		_fan(p, 55.0, 3, 0.35)
+	# 2段目：擬態箱を1つ呼ぶ（いる間は呼ばない）
+	if phase == 2 and _clock3 >= 12.0 and minion_count() == 0:
+		_clock3 = 0.0
+		_call_minions(EnemyKind.Kind.MIMIC, 1)
 	# 本物だけが噛みつく
 	if _windup(delta, 0.5, "bite", _dist(p) < CHEST_BITE - 2.0 and absi(p.mover.height - walker.height) <= 1) == "bite":
 		open_time = 0.8

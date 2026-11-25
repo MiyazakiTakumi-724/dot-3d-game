@@ -189,6 +189,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_hot.clear()
 	_rollers.clear()
 	_strikes.clear()
+	_pits_tmp.clear()  # 地図は読み込み直すので、開いた奈落も元に戻る
 	for b in bosses:
 		if is_instance_valid(b):
 			b.set_process(false)
@@ -386,7 +387,7 @@ func _step_strikes(delta: float) -> void:
 var _rollers: Array = []  # [位置, 向き, 待ち秒, ダメージ, 絵, 高さ]
 const ROLL_SPEED := 90.0
 const ROLL_WAIT := 0.7
-func boss_roll(from: Vector2, dir: Vector2, dmg: int) -> void:
+func boss_roll(from: Vector2, dir: Vector2, dmg: int, model: VoxelModel = null) -> void:
 	var c := HeightMap.world_to_cell(from)
 	while map.in_bounds(c) and (map.is_wall(c) or map.is_pit(c)):
 		c += Vector2i(dir.round())  # 端が壁なら、転がりだせる所まで進める
@@ -395,8 +396,9 @@ func boss_roll(from: Vector2, dir: Vector2, dmg: int) -> void:
 	if not map.in_bounds(c):
 		return
 	var h := map.get_height(c)
-	var s := _effect_sprite(BossModels.model("", "boulder"), from, h, 0.0, 30.0)
-	s.voxel_scale = BossModels.VOXEL_SCALE
+	var s := _effect_sprite(model if model != null else BossModels.model("", "boulder"), from, h, 0.0, 30.0)
+	if model == null:
+		s.voxel_scale = BossModels.VOXEL_SCALE
 	s.set_meta("steady", true)
 	_rollers.append([from, dir, ROLL_WAIT, dmg, s, h])
 
@@ -432,6 +434,78 @@ func _step_rollers(delta: float) -> void:
 			if is_instance_valid(s):
 				s.queue_free()
 			_rollers.remove_at(i)
+
+## 少しの間だけ開く奈落（岩転がしの巨人・岩窟のぬし。2026-11-25 夜の2回目の直し）。
+## はじめの warn 秒はひびの印だけで、そのあと open_for 秒だけ奈落になる（落ちると死ぬ）。閉じると元の地面に戻る。
+## 出口のそば・墓石・落ちている鉄球と落とし物・敵とボスのいるマスには開かない。
+var _pits_tmp: Array = []  # [マスの配列, ひびの残り秒, 開いている残り秒, 絵の配列]
+func boss_pits(cells: Array, warn: float, open_for: float) -> int:
+	var safe := area.entry_safe_cells()
+	var busy := {}
+	for e in enemies:
+		if is_instance_valid(e):
+			busy[e.walker.cell()] = true
+	for b in bosses:
+		if is_instance_valid(b):
+			busy[b.walker.cell()] = true
+	if ball.rules_ball.state != IronBall.State.HELD:
+		busy[ball.rules_ball.cell()] = true
+	for d in _drops:
+		busy[d[0]] = true
+	for p in _pits_tmp:
+		for c in p[0]:
+			busy[c] = true
+	var ok: Array = []
+	var sprites: Array = []
+	for c in cells:
+		if ok.has(c) or not map.in_bounds(c) or map.is_wall(c) or map.is_pit(c) or map.is_water(c) or map.is_void(c) \
+				or map.get_blocker(c) != HeightMap.Blocker.NONE or safe.has(c) or busy.has(c):
+			continue
+		ok.append(c)
+		var s := _effect_sprite(Props.crack_mark(), HeightMap.cell_center(c), map.get_height(c), 0.3, warn + open_for)
+		sprites.append(s)
+	if not ok.is_empty():
+		_pits_tmp.append([ok, warn, open_for, sprites])
+	return ok.size()
+
+## 今開いている奈落のマスの数（テスト用）
+func open_pits() -> int:
+	var n := 0
+	for p in _pits_tmp:
+		if p[1] <= 0.0:
+			n += p[0].size()
+	return n
+
+func _step_pits(delta: float) -> void:
+	for i in range(_pits_tmp.size() - 1, -1, -1):
+		var p = _pits_tmp[i]
+		if p[1] > 0.0:
+			p[1] -= delta
+			for s in p[3]:
+				if is_instance_valid(s):
+					s.modulate.a = 0.55 + 0.45 * sin(_arrow_blink * 14.0)  # ひびが点滅する（よける合図）
+			if p[1] > 0.0:
+				continue
+			camera.shake(2.5)
+			for j in p[0].size():
+				var c: Vector2i = p[0][j]
+				map.set_pit(c, true)
+				if is_instance_valid(p[3][j]):
+					p[3][j].set_model(Props.hole())
+					p[3][j].modulate.a = 1.0
+					p[3][j].set_meta("steady", true)
+			# 立っているマスが開いたら、そのまま落ちる
+			if area_state.result == AreaState.Result.PLAYING and p[0].has(player.mover.cell()):
+				player.mover.fell = true
+			continue
+		p[2] -= delta
+		if p[2] <= 0.0:
+			for c in p[0]:
+				map.set_pit(c, false)
+			for s in p[3]:
+				if is_instance_valid(s):
+					s.queue_free()
+			_pits_tmp.remove_at(i)
 
 ## 燃えている床の数（テスト用）
 func hot_count() -> int:
@@ -746,6 +820,7 @@ func _process(delta: float) -> void:
 		_step_lobs(delta)
 		_step_strikes(delta)
 		_step_rollers(delta)
+		_step_pits(delta)
 		_step_shots(delta)
 		_step_bolts(delta)
 		_step_fires(delta)
