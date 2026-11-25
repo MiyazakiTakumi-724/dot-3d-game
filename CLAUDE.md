@@ -5,9 +5,10 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 ## まず読むもの
 
 1. `docs/design.md`：ゲーム全体の仕様。ここを正とする。【提案】が付いた項目はClaudeの提案で、ユーザーの明確な承認はまだない。
-2. `docs/superpowers/specs/2026-11-24-world-areas-design.md`：試作3「大陸のエリアをつなぐ」の設計（ユーザー承認済み、実装済み）。試作2の設計と食い違う所はこちらが優先。計画は `docs/superpowers/plans/2026-11-24-world-areas.md`。
-3. `docs/superpowers/specs/2026-11-23-death-loop-design.md`：試作2「死と取り返しの流れ」の設計（ユーザー承認済み）。持ち物・墓石・奈落のルールは試作3でもこのまま。
-4. 古い計画（完了済み）：`docs/superpowers/plans/` の 2026-11-23・2026-11-24 の試作1・試作2のもの。
+2. `docs/superpowers/specs/2026-11-25-world-map-design.md`：大陸の全体（31エリア）の設計（ユーザー承認済み、実装済み）。
+3. `docs/superpowers/specs/2026-11-24-world-areas-design.md`：試作3「大陸のエリアをつなぐ」の設計（ユーザー承認済み、実装済み）。試作2の設計と食い違う所はこちらが優先。計画は `docs/superpowers/plans/2026-11-24-world-areas.md`。
+4. `docs/superpowers/specs/2026-11-23-death-loop-design.md`：試作2「死と取り返しの流れ」の設計（ユーザー承認済み）。持ち物・墓石・奈落のルールは試作3でもこのまま。
+5. 古い計画（完了済み）：`docs/superpowers/plans/` の 2026-11-23・2026-11-24 の試作1・試作2のもの。
 
 ## 現状
 
@@ -19,7 +20,14 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 
 地図は手で書かずに、`tools/area_maps/gen.py` で作る（大陸の上の置き方と出口・高さ・崖・木の列・敵・拾いもの・隠しもの。使い方はそこの README）。`scripts/areas/*.gd` は生成物なので、直すときは gen.py を直して作り直す。出口の両側は高さを高い方にそろえ、生け垣の列は経路づくりで削らない。`tests/test_areas_layout.gd` が、出口のつながり・経路の長さ（強い鉄球まで90秒以上、門からの帰り30秒以内）・くぼみ・平地の広さなどを確かめる。
 
-テストはGUTで384件、すべて通る（25秒くらい）。
+2026-11-25 に大陸の全体を作った：はじまりの地（今の4エリア）に町（野営地の南）を足し、山岳・草原・廃城・溶岩の各5エリア＋隠しボス2エリアと、神秘の塔の4エリア、全部で31エリア。
+地方ごとに地面の見た目が違う（`AreaDef.theme`：grass・mountain（高い所は雪）・lava（黒い土と溶岩）・castle（崩れた石の壁と石畳）・tower（石）・town（家・井戸・石畳））。
+武器で開く仕掛け（`Gimmick`：鉄球で割る岩・弓の的で下りる橋・炎で燃える茨・剣で斬るつた）は寄り道だけにあり、開けたものは `RunState` が覚える。
+たき火に近づくと、死んだときに戻る所になる（`RunState.set_checkpoint`・`respawn_cell`）。神秘の塔の封印の門（`RunState.SEAL_DOOR`）はボスを4体倒すと開く。
+ボスはまだいないので、居場所に像（`AreaDef.bosses`）を置き、近づくと名前が出る。商人は「準備中」と言うだけ。M キーで全体マップ（`scripts/game/world_map_view.gd`、行ったエリアだけ）。
+新しいエリアには、通常の敵はまだいない。
+
+テストはGUTで415件、すべて通る（数分かかる）。
 
 ゲームシステム（design.md 7・11・17章）を試作3の上に入れた（2026-11-24）：レベル・経験値・振り分けポイントと技能、17章のダメージ式（体力は数値、敵にもレベル）、
 インベントリ画面（装備・ステータス・設定）、剣・弓と矢・杖と魔法（マナ）、防具、簡単モード。武器と矢・防具は、試すために野営地の宝箱に置いてある（本来はボスの落とし物とお店）。
@@ -116,7 +124,9 @@ scripts/game/    ノード（ルールのクラスを持って描画するだけ
                      拾いもの・出口の矢印・魔法の弾・敵の弾・炎・火柱・炎の雨・狙いの印。field.gd の _marker で置く小物は暗いふちを付ける（炎や弾は光っているので影もふちもなし）
   ball.gd            鉄球の見た目。放すと手元から落とした点へ山なりに落ち、着くと土ぼこり（impact_dust.gd）と画面のゆれ
 fonts/           PixelMplus（M+ FONT LICENSE。商用利用・再配布が自由）とライセンスの文。*.import はぼかさない設定なので git に入れている
-scripts/areas/   4エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）
+scripts/areas/   31エリアのデータ（tools/area_maps/gen.py の生成物）と continent.gd（大陸をまとめる、START_AREA・START_CELL）
+  gimmick.gd（scripts/rules/）  武器で開く仕掛け（CRACK・TARGET・THORNS・VINES）。close / open で地図を変え、by_ball・by_arrow・by_fire・by_sword で開くか決める
+  world_map_view.gd（scripts/game/）  M キーの全体マップ
 scripts/game/field.gd エリアを入れ替えるメインシーンの中身（enter_area・切り替え・死と再開・門・UI）
 scenes/field.tscn     メインシーン（試作3）
 scenes/stage_01.tscn  試作1
@@ -137,7 +147,7 @@ addons/gut/      GUT 9.5.0（同梱。Godot 4.5向けだが、gut_loader.gd の1
 ## 既知の小さな問題（未対応）
 
 - 台地に置いた鉄球が、階段を降りている途中で足元へ戻ってくることがある。届くかどうかを今の高さだけで判定しているため。
-- 全体マップの画面はまだない（エリアの位置のデータだけある）。
+- 新しいエリア（はじまりの地の外）の地形は、まだ遊んで直していない。お店の買い物・ボスは、まだない。
 - 壁や崖に、キャラが2〜3pxめり込む。当たり判定がキャラの中心の1点だけのため。
 
 ## 進め方

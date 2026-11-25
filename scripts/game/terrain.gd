@@ -212,6 +212,8 @@ static func _cell_keys(map: HeightMap, cell: Vector2i, deco: Dictionary) -> Arra
 		out.append("bridge/%d/%d/%d" % [h, h - bottom, int(across_ns)])
 	else:
 		var surf := surface(theme, h, kind)
+		if kind in ["", "npc"] and surf != "stone" and _paved_around(deco, cell):
+			surf = "stone"  # 石畳の広場の中のたき火・商人の下も石畳
 		out.append("ground/%d/%d/%d/%d/%d/%s" % [h, h - bottom, v, int(kind == "flower"), bottom, surf])
 	if kind in ["rock", "tree", "pine", "bush", "tallgrass", "stonewall", "column", "well"]:
 		out.append("%s/%d" % [kind, v])
@@ -230,6 +232,13 @@ static func surface(theme: String, h: int, kind: String = "") -> String:
 		"lava":
 			return "ash"
 	return "grass"
+
+static func _paved_around(deco: Dictionary, cell: Vector2i) -> bool:
+	var n := 0
+	for d in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+		if deco.get(cell + d, "") == "paving":
+			n += 1
+	return n >= 3
 
 ## 家のマスの形。"東西のふち/北のふちまでのマス/南のふちまでのマス"（屋根は東西に棟が通る切妻）。
 static func _house_shape(deco: Dictionary, cell: Vector2i) -> String:
@@ -521,6 +530,8 @@ static func _cliff_color(grass: Color, vf: int, from_top: int, along: int, face:
 			c = STONE_COLOR
 		elif _hash3(along, vf / 9, face, 29) == 0:
 			c = Color("6e4a2c")  # 根や割れ目
+	elif surf == "stone":
+		c = _rock_side("stone", vf + 4096, from_top, along, face).darkened(clampf(-vf / 96.0, 0.0, 0.35))
 	else:
 		var deep := clampi(-vf / 24, 0, DEEP_COLORS.size() - 1)
 		c = DEEP_COLORS[deep]

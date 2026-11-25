@@ -44,6 +44,17 @@ var _grave_node: StackSprite
 ## たき火（炎の形を時間で替えて、ゆらめかせる）
 var _bonfire_node: StackSprite
 var _bonfire_frame := 0
+## このエリアのたき火のマス（なければ (-1, -1)）。近づくと、死んだときに戻る所がここになる
+var _campfire_cell := Vector2i(-1, -1)
+## 地形の絵を置く所（橋が下りたときなどに作り直す）
+var _terrain_root: Node2D
+var _deco := {}
+## 仕掛けの小物（id → StackSprite の列）。的は開けた後も残す
+var _gimmick_nodes := {}
+var _target_nodes := {}
+## 商人とボスの像 [マス, 言葉]（近づくと真ん中に出す）
+var _talkers: Array = []
+var map_view: WorldMapView
 var _fade: ColorRect
 ## 切り替えの段階：0 なし、1 暗くしている、2 明るくしている
 var _switch_phase := 0
@@ -126,6 +137,12 @@ func _ready() -> void:
 	menu.stats_changed.connect(apply_stats)
 	menu.skill_learned.connect(_on_skill_learned)
 	add_child(menu)
+	var map_layer := CanvasLayer.new()
+	map_layer.layer = 5
+	add_child(map_layer)
+	map_view = WorldMapView.new()
+	map_view.setup(world, run)
+	map_layer.add_child(map_view)
 	StackCamera.apply_pixel_scale(self)
 	warm_hero_looks()
 	_maybe_screenshot()
@@ -147,6 +164,9 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	bow.cancel()
 	_pickup_nodes.clear()
 	_gate_nodes.clear()
+	_gimmick_nodes.clear()
+	_target_nodes.clear()
+	_talkers.clear()
 	_arrows.clear()
 	_grave_node = null
 	if _popups != null:
@@ -157,13 +177,24 @@ func enter_area(id: String, cell: Vector2i) -> void:
 		c.queue_free()
 
 	area = world.area(id)
+	run.visit(id)
 	var loaded := Continent.load_map(area)
 	map = loaded[0]
 	var info: Dictionary = loaded[1]
-	Terrain.build(map, camera, _area_root, info["deco"])
+	_deco = info["deco"]
+	for g in area.gimmicks:
+		if run.is_gimmick_open(g.id):
+			_apply_open(g)
+	_terrain_root = Node2D.new()
+	_area_root.add_child(_terrain_root)
+	Terrain.build(map, camera, _terrain_root, _deco)
 	_bonfire_node = null
+	_campfire_cell = Vector2i(-1, -1)
 	if info.has("checkpoint"):
+		_campfire_cell = info["checkpoint"]
 		_bonfire_node = _marker(info["checkpoint"], Props.bonfire(), 1)
+	_place_gimmicks()
+	_place_talkers(info)
 	for i in area.pickups.size():
 		var p = area.pickups[i]
 		if not run.is_picked(area.pickup_id(i)):
@@ -385,6 +416,10 @@ func _play_step() -> void:
 			_pickup_nodes[i].queue_free()
 			_pickup_nodes.erase(i)
 			_on_picked(p[1], p[2])
+	if _campfire_cell.x >= 0 and absi(c.x - _campfire_cell.x) <= 1 and absi(c.y - _campfire_cell.y) <= 1 \
+			and not run.is_near_checkpoint(area.id, c):
+		run.set_checkpoint(area.id, _campfire_cell)
+		notice("たき火で休んだ\n死んだら、ここから やり直す", 2.5)
 	if run.is_near_checkpoint(area.id, c) and player.hp < player.max_hp:
 		player.set_hp(player.max_hp)
 	for e in enemies:
@@ -429,6 +464,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				open_inventory()
 			KEY_SPACE:
 				spin_slash()
+			KEY_M:
+				toggle_map()
 			_:
 				return
 		get_viewport().set_input_as_handled()
@@ -462,6 +499,9 @@ func swing_sword() -> bool:
 	var strong_fall := st.skills_in(PlayerStats.Stat.SWORD) >= 1
 	var thrust := st.skills_in(PlayerStats.Stat.SWORD) >= 2  # 技能「突き」
 	player.swing(fall > 0, thrust)
+	for g in _closed_gimmicks():
+		if g.by_sword(mv.pos, mv.height, mv.facing, map, thrust):
+			open_gimmick(g)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, thrust):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
@@ -586,6 +626,9 @@ func _step_shots(delta: float) -> void:
 func _arrow_landed(a: Arrow, dmg: int) -> void:
 	if area_state.result != AreaState.Result.PLAYING:
 		return
+	for g in _closed_gimmicks():
+		if g.by_arrow(a.to):
+			open_gimmick(g)
 	var c := HeightMap.world_to_cell(a.to)
 	if not map.in_bounds(c) or map.is_water(c) or map.is_pit(c):
 		return
@@ -780,6 +823,7 @@ func _step_bolts(delta: float) -> void:
 
 ## 火の玉が弾ける。まわりの、高さの近い敵にダメージとやけど。地面の近くなら、そこが少しの間燃える（自分より高い地面は燃えない）。
 func _explode(pos: Vector2, z: float, from_h: int) -> void:
+	_burn_gimmicks(pos, Magic.FIREBALL_RADIUS)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(pos) < Magic.FIREBALL_RADIUS \
 				and absf(e.walker.height * StackSprite.LEVEL_PX + 4.0 - z) <= 12.0:
@@ -810,6 +854,7 @@ func fires_burning() -> int:
 ## 火柱：狙った点に立ち、そこの敵に当たる。自分より高い所の敵には当たらない。
 func _fire_pillar(point: Vector2) -> void:
 	var mv := player.mover
+	_burn_gimmicks(point, Magic.PILLAR_RADIUS)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(point) < Magic.PILLAR_RADIUS:
 			if _hit_enemy(e, Magic.Spell.FIRE_PILLAR, mv.height):
@@ -828,6 +873,7 @@ func _fire_rain(point: Vector2) -> void:
 	var c := HeightMap.world_to_cell(point)
 	var ground := map.get_height(c) if map.in_bounds(c) else mv.height
 	var r := Magic.rain_radius(mv.height, ground)
+	_burn_gimmicks(point, r)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and e.walker.height <= mv.height and e.walker.pos.distance_to(point) < r:
 			_hit_enemy(e, Magic.Spell.FIRE_RAIN, mv.height)
@@ -982,7 +1028,7 @@ func kill_player(fell: bool) -> void:
 
 ## 野営地のたき火から再開する。敵は復活しない（倒した敵は時間で戻る）。
 func respawn() -> void:
-	enter_area(run.checkpoint_area, Continent.START_CELL)
+	enter_area(run.checkpoint_area, run.respawn_cell())
 	_sync_ball_rank()  # ランク2以上の鉄球は墓石に入っているので、ランク1に戻る
 	player.set_hp(player.max_hp)
 	player.clear_invulnerable()
@@ -1000,6 +1046,9 @@ func try_open_door() -> bool:
 		return false
 	var ex := _gate_here()
 	if ex == null:
+		return false
+	if not run.can_open_door(ex.door_id):
+		notice("封印されていて開かない\nあと%d体のボスを倒すと開く" % run.seal_bosses_left(), 2.5)
 		return false
 	run.open_door(ex.door_id)
 	player.anim.play_push()
@@ -1023,9 +1072,10 @@ func _gate_here() -> ExitDef:
 
 func _close_gate(ex: ExitDef) -> void:
 	var nodes := []
+	var model := Props.seal() if ex.door_id == RunState.SEAL_DOOR else Props.gate()
 	for c in ex.cells(area.size()):
 		map.set_blocker(c, HeightMap.Blocker.DOOR)
-		nodes.append(_marker(c, Props.gate(), 1))
+		nodes.append(_marker(c, model, 1))
 	_gate_nodes[ex.door_id] = nodes
 
 func _add_arrows(ex: ExitDef) -> void:
@@ -1085,6 +1135,9 @@ func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
 	if run.grave != null and run.grave.area_id == area.id and IronBall.touches_cell(land_pos, run.grave.cell):
 		_remove_grave_marker()  # 墓石のマスを空けてから中身を戻す（break_grave で grave が null になるため）
 		run.break_grave()
+	for g in _closed_gimmicks():
+		if g.by_ball(land_pos, ball.rules_ball.fall_levels):
+			open_gimmick(g)
 	var damage := Damage.iron_ball(current_attack(), ball.rules_ball.fall_levels, run.stats.level)
 	for e in enemies:
 		if is_instance_valid(e) and e.walker.alive and IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height, IronBall.hit_radius(ball_rank)):
@@ -1114,6 +1167,119 @@ func _marker(cell: Vector2i, model: VoxelModel, bias: int, outline := true) -> S
 	_area_root.add_child(s)
 	return s
 
+# ---------------------------------------------------------------- 仕掛け・商人・ボスの像・全体マップ（2026-11-25）
+
+## 開いた仕掛けの形を地図に書く（的の橋は、橋の絵にする）。
+func _apply_open(g: Gimmick) -> void:
+	g.open(map)
+	if g.kind == Gimmick.Kind.TARGET:
+		for c in g.cells:
+			_deco[c] = "bridge"
+
+func _closed_gimmicks() -> Array[Gimmick]:
+	var out: Array[Gimmick] = []
+	if area_state.result != AreaState.Result.PLAYING:
+		return out
+	for g in area.gimmicks:
+		if not run.is_gimmick_open(g.id):
+			out.append(g)
+	return out
+
+func _place_gimmicks() -> void:
+	for g in area.gimmicks:
+		if g.kind == Gimmick.Kind.TARGET:
+			var ts := []
+			for c in g.trigger:
+				ts.append(_marker(c, Props.target(run.is_gimmick_open(g.id)), 1))
+			_target_nodes[g.id] = ts
+		elif not run.is_gimmick_open(g.id):
+			var model: VoxelModel = {Gimmick.Kind.CRACK: Props.crack_rock(), Gimmick.Kind.THORNS: Props.thorns(),
+				Gimmick.Kind.VINES: Props.vines()}[g.kind]
+			var ns := []
+			for c in g.cells:
+				ns.append(_marker(c, model, 1))
+			_gimmick_nodes[g.id] = ns
+
+## 仕掛けを開ける（岩が砕ける・橋が下りる・茨が燃える・つたが切れる）。死んでも開いたまま。
+func open_gimmick(g: Gimmick) -> void:
+	if run.is_gimmick_open(g.id):
+		return
+	run.open_gimmick(g.id)
+	_apply_open(g)
+	for s in _gimmick_nodes.get(g.id, []):
+		if is_instance_valid(s):
+			s.queue_free()
+	_gimmick_nodes.erase(g.id)
+	match g.kind:
+		Gimmick.Kind.CRACK:
+			notice("岩が砕けた！", 1.5)
+			camera.shake(3.0)
+			for c in g.cells:
+				var dust := ImpactDust.new()
+				dust.setup(camera, HeightMap.cell_center(c), map.get_height(c), 4)
+				_area_root.add_child(dust)
+		Gimmick.Kind.THORNS:
+			notice("茨が燃えつきた！", 1.5)
+			for c in g.cells:
+				_effect_sprite(Props.flame(rng.randi() % 3), HeightMap.cell_center(c), map.get_height(c), 0.0, 0.8)
+		Gimmick.Kind.VINES:
+			notice("つたを斬った！", 1.5)
+		Gimmick.Kind.TARGET:
+			notice("的に当たった！\n橋が下りた", 2.0)
+			for s in _target_nodes.get(g.id, []):
+				s.set_model(Props.target(true))
+			_rebuild_terrain()
+
+## 地形の絵を作り直す（橋が下りたとき）。
+func _rebuild_terrain() -> void:
+	if _terrain_root != null:
+		_area_root.remove_child(_terrain_root)
+		_terrain_root.queue_free()
+	_terrain_root = Node2D.new()
+	_area_root.add_child(_terrain_root)
+	_area_root.move_child(_terrain_root, 0)
+	Terrain.build(map, camera, _terrain_root, _deco)
+
+## 炎の魔法が point のまわり radius に当たった。茨が燃える。
+func _burn_gimmicks(point: Vector2, radius: float) -> void:
+	for g in _closed_gimmicks():
+		if g.by_fire(point, radius):
+			open_gimmick(g)
+
+func gimmick_markers(id: String) -> int:
+	return _gimmick_nodes.get(id, []).size()
+
+## 商人とボスの像を置く。町の商人は道具屋と武器屋、ほかは旅の商人。
+func _place_talkers(info: Dictionary) -> void:
+	var merchants: Array = info.get("merchants", [])
+	for i in merchants.size():
+		var c: Vector2i = merchants[i]
+		var v := 2
+		var who := "旅の商人"
+		if area.id == "town":
+			v = i % 2
+			who = ["道具屋", "武器屋"][i % 2]
+		_marker(c, Props.merchant(v), 1)
+		_talkers.append([c, "%s「いらっしゃい！\nお店はまだ準備中なんだ」" % who])
+	for b in area.bosses:
+		_marker(b[0], Props.statue(b[2]), 1)
+		_talkers.append([b[0], "ボス「%s」の居場所\n（ボスはまだいない）" % b[1]])
+
+## 近くにいる商人・像の言葉。なければ空。
+func _talk_here() -> String:
+	var c := player.mover.cell()
+	for t in _talkers:
+		var tc: Vector2i = t[0]
+		if absi(c.x - tc.x) <= 1 and absi(c.y - tc.y) <= 1:
+			return t[1]
+	return ""
+
+## M キーで全体マップを開く・閉じる（開いている間も世界は動く）。
+func toggle_map() -> void:
+	map_view.current_id = area.id
+	map_view.visible = not map_view.visible
+	map_view.queue_redraw()
+
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -1128,7 +1294,7 @@ func _build_ui() -> void:
 	_guide = UiText.label()
 	_guide.position = Vector2(4, 166)
 	_guide.modulate.a = 0.8
-	_guide.text = "クリック:使う　1〜5:持ちかえ　Tab:持ち物　右ドラッグ:カメラ"
+	_guide.text = "クリック:使う　1〜5:持ちかえ　Tab:持ち物　M:地図　右ドラッグ:カメラ"
 	layer.add_child(_guide)
 	_popups = Control.new()
 	_popups.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1183,14 +1349,21 @@ func hotbar_text() -> String:
 
 ## 画面の真ん中に出す言葉。なければ空。
 func ui_message() -> String:
+	if map_view != null and map_view.visible:
+		return ""
 	if area_state.result == AreaState.Result.DYING:
 		return "やられた…\nたき火から やり直す"
 	if _gate_here() != null:
+		if _gate_here().door_id == RunState.SEAL_DOOR and not run.can_open_door(RunState.SEAL_DOOR):
+			return "神秘の塔の封印の門\nあと%d体のボスを倒すと開く" % run.seal_bosses_left()
 		return "F：門を開ける"
 	if _notice_time > 0.0:
 		return _notice_text
 	if _title_time > 0.0:
-		return area.title
+		return area.title if area.region == "はじまりの地" else "%s\n%s" % [area.region, area.title]
+	var talk := _talk_here()
+	if talk != "":
+		return talk
 	if _grave_hint_time > 0.0:
 		return "死んだ場所に墓石がある\n鉄球を落として壊すと、持ち物が戻る"
 	if _start_hint_time > 0.0:
@@ -1241,6 +1414,10 @@ func _maybe_screenshot() -> void:
 			apply_stats()
 		elif a.begins_with("--hold="):
 			hotbar.select_slot(int(a.trim_prefix("--hold=")), run.inventory.equipment)
+		elif a == "--map":
+			for id in world.ids():
+				run.visit(id)
+			toggle_map()
 		elif a.begins_with("--exp="):
 			run.stats.add_exp(int(a.trim_prefix("--exp=")))
 			apply_stats()

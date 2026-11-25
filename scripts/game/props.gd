@@ -491,3 +491,21 @@ static func target(hit := false) -> VoxelModel:
 			VoxelDraw.rod(m, Vector3(11, 13, 32), Vector3(11, 22, 34), SHAFT, 1)
 		_cache[key] = VoxelShade.apply(m)
 	return _cache[key]
+
+## 神秘の塔の封印の門：白い石の板に、青く光る紋。地方のボスを4体倒すと開けられる。
+static func seal() -> VoxelModel:
+	if not _cache.has("seal"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(28, 28, 50)
+		VoxelDraw.fill(m, Vector3i(0, 9, 0), Vector3i(27, 18, 44), Color("d8d4e8"))
+		for z in range(45, 50):
+			VoxelDraw.fill(m, Vector3i(z - 45, 9, z), Vector3i(27 - (z - 45), 18, z), Color("c9c3d9"))
+		var c := Vector2(13.5, 24)
+		for z in range(8, 42):
+			for x in 28:
+				var d := Vector2(x, z).distance_to(c)
+				if absf(d - 9.0) < 0.8 or absf(d - 4.0) < 0.7 or (absf(x - 13.5) < 0.8 and absf(z - 24) < 12):
+					m.set_voxel(Vector3i(x, 18, z), Color("7ad8ff"))
+					m.set_voxel(Vector3i(x, 9, z), Color("7ad8ff"))
+		_cache["seal"] = VoxelShade.apply(m)
+	return _cache["seal"]

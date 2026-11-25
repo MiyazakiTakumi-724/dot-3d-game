@@ -865,3 +865,122 @@ func test_actions_set_hero_poses():
 	assert_same(f.player._layers, HeroModel.build("", f.player.armor_look, "down").textures())
 	f.respawn()
 	assert_eq(f.player.anim.pose(), "")
+
+# ---- 大陸の全体（2026-11-25）：たき火・仕掛け・封印の門・商人・全体マップ
+
+func _gimmick(area_id: String, kind: Gimmick.Kind) -> Gimmick:
+	for g in f.world.area(area_id).gimmicks:
+		if g.kind == kind:
+			return g
+	return null
+
+func _gimmick_area(kind: Gimmick.Kind) -> String:
+	for id in f.world.ids():
+		if _gimmick(id, kind) != null:
+			return id
+	return ""
+
+func test_resting_at_another_bonfire_sets_respawn_there():
+	f.enter_area("mt_2", Vector2i(14, 22))
+	var info: Dictionary = Continent.load_map(f.area)[1]
+	var fire: Vector2i = info["checkpoint"]
+	f.player.mover.place(fire + Vector2i(0, 1))
+	f._process(0.016)
+	assert_eq(f.run.checkpoint_area, "mt_2")
+	f.kill_player(false)
+	_finish_death()
+	assert_eq(f.area.id, "mt_2")
+	assert_eq(f.player.mover.cell(), fire + Vector2i(0, 1))
+
+func test_entering_an_area_marks_it_visited():
+	assert_true(f.run.has_visited("camp"))
+	_walk_out(_exit("camp", "town"))
+	assert_eq(f.area.id, "town")
+	assert_true(f.run.has_visited("town"))
+
+func test_ball_from_above_breaks_a_crack():
+	var id := _gimmick_area(Gimmick.Kind.CRACK)
+	var g := _gimmick(id, Gimmick.Kind.CRACK)
+	f.enter_area(id, g.cells[0])
+	assert_true(f.map.is_wall(g.cells[0]))
+	assert_eq(f.gimmick_markers(g.id), 1)
+	f.ball.rules_ball.fall_levels = 1
+	f._on_ball_landed(HeightMap.cell_center(g.cells[0]), 0)
+	assert_true(f.run.is_gimmick_open(g.id))
+	assert_false(f.map.is_wall(g.cells[0]))
+	assert_eq(f.gimmick_markers(g.id), 0)
+	# 出て入り直しても、開いたまま
+	f.enter_area("camp", Continent.START_CELL)
+	f.enter_area(id, g.cells[0])
+	assert_false(f.map.is_wall(g.cells[0]))
+
+func test_arrow_on_target_lowers_bridge():
+	var id := _gimmick_area(Gimmick.Kind.TARGET)
+	var g := _gimmick(id, Gimmick.Kind.TARGET)
+	f.enter_area(id, Continent.START_CELL)
+	assert_true(f.map.is_water(g.cells[0]))
+	var a := Arrow.new()
+	a.launch(HeightMap.cell_center(g.trigger[0]), 8.0, HeightMap.cell_center(g.trigger[0]), 8.0)
+	a.from_h = 8
+	f._arrow_landed(a, 1)
+	assert_true(f.run.is_gimmick_open(g.id))
+	for c in g.cells:
+		assert_false(f.map.is_water(c))
+
+func test_fire_burns_thorns():
+	var id := _gimmick_area(Gimmick.Kind.THORNS)
+	var g := _gimmick(id, Gimmick.Kind.THORNS)
+	f.enter_area(id, Continent.START_CELL)
+	f._burn_gimmicks(HeightMap.cell_center(g.cells[0]), 4.0)
+	assert_true(f.run.is_gimmick_open(g.id))
+	assert_false(f.map.is_wall(g.cells[0]))
+
+func test_sword_cuts_vines():
+	var id := _gimmick_area(Gimmick.Kind.VINES)
+	var g := _gimmick(id, Gimmick.Kind.VINES)
+	f.enter_area(id, Continent.START_CELL)
+	f.run.inventory.equipment.gain("sword_1")
+	var c := g.cells[0]
+	var stand := c
+	for d in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		var n: Vector2i = c + d
+		if not f.map.is_wall(n) and not f.map.is_water(n) and f.map.get_height(n) == f.map.get_height(c):
+			stand = n
+			break
+	f.player.mover.place(stand)
+	f.player.mover.facing = Vector2(c - stand)
+	assert_true(f.swing_sword())
+	assert_true(f.run.is_gimmick_open(g.id))
+
+func test_tower_seal_needs_four_bosses():
+	f.enter_area("town", Vector2i(12, 13))
+	var ex := _exit("town", "tw_1", true)
+	assert_eq(ex.door_id, RunState.SEAL_DOOR)
+	f.player.mover.place(_mid(ex, 1))
+	assert_string_contains(f.ui_message(), "封印")
+	assert_false(f.try_open_door())
+	f.run.bosses_defeated = 4
+	assert_true(f.try_open_door())
+	assert_true(f.run.is_door_open(RunState.SEAL_DOOR))
+
+func test_merchant_and_statue_talk():
+	f.enter_area("town", Vector2i(12, 13))
+	var info: Dictionary = Continent.load_map(f.area)[1]
+	var m: Vector2i = info["merchants"][0]
+	f.player.mover.place(m + Vector2i(0, 1))
+	f._title_time = 0.0
+	f._start_hint_time = 0.0
+	assert_string_contains(f.ui_message(), "準備中")
+	f.enter_area("mt_5", Continent.START_CELL)
+	var b: Vector2i = f.area.bosses[0][0]
+	f.player.mover.place(b + Vector2i(0, 1))
+	f._title_time = 0.0
+	assert_string_contains(f.ui_message(), "岩転がしの巨人")
+
+func test_map_toggles_with_m():
+	assert_false(f.map_view.visible)
+	f.toggle_map()
+	assert_true(f.map_view.visible)
+	assert_eq(f.map_view.current_id, "camp")
+	f.toggle_map()
+	assert_false(f.map_view.visible)
