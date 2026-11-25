@@ -24,6 +24,11 @@ func set_voxel(p: Vector3i, c: Color) -> void:
 		_voxels[p] = c
 		_textures = []  # 使い回している側の配列は空にしない（新しい配列にする）
 
+## そのボクセルを消す。
+func remove_voxel(p: Vector3i) -> void:
+	if _voxels.erase(p):
+		_textures = []
+
 ## 置いてあるボクセル（位置 → 色）。読むだけに使う。
 func voxels() -> Dictionary:
 	return _voxels

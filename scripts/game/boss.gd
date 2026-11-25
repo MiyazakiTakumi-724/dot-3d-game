@@ -164,11 +164,17 @@ func _on_died() -> void:
 		_burrow_mark.queue_free()
 	queue_free()
 
+## 画面をゆらし、地響きの音を鳴らす（2026-11-26）。
+func _boom(amount: float) -> void:
+	field.camera.shake(amount)
+	Sfx.play("stomp" if amount >= 2.5 else "land", walker.pos)
+
 ## 近づいたら動き出す。宝箱の王は、にせものを並べる。
 func wake() -> void:
 	if active:
 		return
 	active = true
+	Sfx.play("roar", walker.pos)
 	if group == "宝箱の王":
 		_refill_decoys()
 
@@ -258,7 +264,9 @@ func _check_phase() -> void:
 	if BossKind.phase(h.x, h.y) == 2:
 		phase = 2
 		_clock2 = 0.0
-		field.camera.shake(3.0)
+		_boom(3.0)
+		Sfx.play("phase")
+		Sfx.play("roar", walker.pos)
 		if group != "双子" or not hider:
 			field.notice("%sが怒った！" % group, 2.0)
 		match group:
@@ -346,6 +354,7 @@ func _windup(delta: float, seconds: float, kind: String, start: bool) -> String:
 		if start and _cool <= 0.0:
 			_wind = seconds
 			_wind_kind = kind
+			Sfx.play("growl", walker.pos, -5.0, 0.15)  # ためる合図
 		return ""
 	if _wind_kind != kind:
 		return ""
@@ -398,6 +407,8 @@ func minion_count() -> int:
 
 ## まっすぐ走る（突進・転がり・急降下）。壁にぶつかると止まり、true を返す。
 func _dash(delta: float, mult: float) -> bool:
+	if walker.speed_mult != mult:
+		Sfx.play("dash", walker.pos)  # 走りだした
 	_dash_time -= delta
 	walker.dir = _dash_dir
 	walker.speed_mult = mult
@@ -416,7 +427,7 @@ func _giant(delta: float, p: Player) -> void:
 	var same := p.mover.height == walker.height
 	if _windup(delta, 0.8, "stomp", same and _dist(p) < 36.0) == "stomp":
 		field.effect_at(Props.rain_ring(30.0), walker.pos, walker.height, 0.3)
-		field.camera.shake(3.0)
+		_boom(3.0)
 		if _dist(p) < 30.0 and p.mover.height == walker.height:
 			field.hurt_player(attack)
 	if not same and _cool <= 0.0 and _wind < 0.0 and Damage.can_hit(walker.height, p.mover.height):
@@ -442,7 +453,7 @@ func _giant(delta: float, p: Player) -> void:
 	# 地割れ：地面を叩いて、主人公の足元に奈落を開ける（ひびが出てから開く）。2段目は巨人から主人公へ向かう列も
 	if _clock1 >= (GIANT_QUAKE if phase == 1 else GIANT_QUAKE_2) and _wind < 0.0:
 		_clock1 = 0.0
-		field.camera.shake(3.5)
+		_boom(3.5)
 		field.effect_at(Props.rain_ring(30.0), walker.pos, walker.height, 0.3)
 		field.boss_pits(_quake_cells(p), PIT_WARN, PIT_OPEN)
 
@@ -482,7 +493,7 @@ func _snake(delta: float, p: Player) -> void:
 				walker.pos = _burrow_spot
 				walker.height = map.get_height(c)
 			field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.3)
-			field.camera.shake(2.5)
+			_boom(2.5)
 			if _near(p, 14.0):
 				field.hurt_player(attack)
 			_cool = 1.0
@@ -597,14 +608,14 @@ func _golem(delta: float, p: Player) -> void:
 			field.hurt_player(attack)
 		if bumped:
 			stunned = STUN_SECONDS  # 壁にぶつかって目を回す（その間は2倍）
-			field.camera.shake(3.0)
+			_boom(3.0)
 			field.effect_at(Props.rain_ring(16.0), walker.pos, walker.height, 0.3)
 		if _dash_time <= 0.0:
 			_wind_kind = ""
 		return
 	_chase(delta, p)
 	if _windup(delta, 0.8, "slam", _dist(p) < 26.0) == "slam":
-		field.camera.shake(3.0)
+		_boom(3.0)
 		field.effect_at(Props.rain_ring(24.0), walker.pos, walker.height, 0.3)
 		if _near(p, 26.0):
 			field.hurt_player(attack)
@@ -620,7 +631,7 @@ func _golem(delta: float, p: Player) -> void:
 	# 地響き：ときどき地面を揺らして、まわり（2〜3マス先）に奈落を開ける
 	if _clock1 >= GOLEM_QUAKE and _wind < 0.0 and _dist(p) < 100.0:
 		_clock1 = 0.0
-		field.camera.shake(3.0)
+		_boom(3.0)
 		var cells: Array = []
 		var c0 := walker.cell()
 		for i in 6:
@@ -664,7 +675,7 @@ func _salamander(delta: float, p: Player) -> void:
 			walker.height = walker.map.get_height(c)
 		if _dash_time <= 0.0:
 			_wind_kind = ""
-			field.camera.shake(2.5)
+			_boom(2.5)
 			for i in 8:  # 着いた所のまわりに炎の輪
 				var a := i * TAU / 8.0
 				field.boss_fire(walker.pos + Vector2.from_angle(a) * 18.0, walker.height, 2.5, maxi(1, attack / 2))
@@ -815,6 +826,7 @@ func _teleport() -> void:
 		if map.get_height(c) != walker.height:
 			continue
 		field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.35)
+		Sfx.play("teleport", walker.pos)
 		walker.pos = HeightMap.cell_center(c)
 		field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.35)
 		return

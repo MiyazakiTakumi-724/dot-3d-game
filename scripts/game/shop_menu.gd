@@ -5,8 +5,10 @@ extends CanvasLayer
 
 signal bought(id: String)
 
-const PANEL_POS := Vector2(40, 10)
-const PANEL_SIZE := Vector2(240, 160)
+## 2026-11-26（3回目の直し）：長い説明が見切れていたので、広くして折り返す。値段・材料は2行目。
+const PANEL_POS := Vector2(14, 8)
+const PANEL_SIZE := Vector2(292, 164)
+const ROW_W := PANEL_SIZE.x - 20.0  ## 行の幅（右はスクロールバーの分あける）
 
 var run: RunState
 var shop_id := ""
@@ -16,6 +18,7 @@ var _money: Label
 var _box: VBoxContainer
 var _info: Label
 var _info_time := 0.0
+var _scroll: ScrollContainer
 ## カーソルを合わせた品物の説明
 var tip: ItemTip
 
@@ -24,24 +27,27 @@ func setup(r: RunState) -> void:
 	layer = 11
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_panel = ColorRect.new()
-	_panel.color = Color(0.07, 0.06, 0.05, 0.96)
+	_panel.color = Color(0.07, 0.06, 0.05, 1.0)
 	_panel.position = PANEL_POS
 	_panel.size = PANEL_SIZE
 	add_child(_panel)
 	_title = _label(_panel, "", Vector2(6, 4))
-	_money = _label(_panel, "", Vector2(150, 4))
-	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(4, 20)
-	scroll.size = Vector2(PANEL_SIZE.x - 8, PANEL_SIZE.y - 38)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_panel.add_child(scroll)
+	_money = _label(_panel, "", Vector2(PANEL_SIZE.x - 80, 4))
+	_money.size = Vector2(74, 12)
+	_money.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_scroll = ScrollContainer.new()
+	_scroll.position = Vector2(4, 20)
+	_scroll.size = Vector2(PANEL_SIZE.x - 8, PANEL_SIZE.y - 38)
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_panel.add_child(_scroll)
 	_box = VBoxContainer.new()
 	_box.add_theme_constant_override("separation", 1)
-	scroll.add_child(_box)
+	_scroll.add_child(_box)
 	_info = _label(_panel, "", Vector2(6, PANEL_SIZE.y - 15))
 	tip = ItemTip.new()
 	tip.stats = run.stats
 	add_child(tip)
+	_scroll.get_v_scroll_bar().value_changed.connect(func(_v): tip.on_scrolled())  # スクロール中は説明を出さない
 	_panel.hide()
 
 func is_open() -> bool:
@@ -62,11 +68,11 @@ func rows() -> Array:
 	if shop_id == "smith":
 		for i in Recipes.LIST.size():
 			var r: Array = Recipes.LIST[i]
-			out.append([r[0], "%s　%s" % [_item_text(r[0], r[1]), Recipes.cost_text(i)], Recipes.can_make(run.inventory, i)])
+			out.append([r[0], "%s\n　材料：%s" % [_item_text(r[0], r[1]), Recipes.cost_text(i)], Recipes.can_make(run.inventory, i)])
 	else:
 		for i in Shop.STOCK[shop_id].size():
 			var row: Array = Shop.STOCK[shop_id][i]
-			out.append([row[0], "%s　%dG" % [_item_text(row[0], row[2]), row[1]], Shop.can_buy(run.inventory, shop_id, i)])
+			out.append([row[0], "%s\n　値段：%dG" % [_item_text(row[0], row[2]), row[1]], Shop.can_buy(run.inventory, shop_id, i)])
 	return out
 
 ## i 番目の行を買う（鍛冶屋なら作る）。
@@ -118,9 +124,9 @@ func refresh() -> void:
 		var id: String = rs[i][0]
 		var b := _button(_box, rs[i][1], func(): choose(idx))
 		b.icon = ItemIcons.texture(id)
-		b.modulate = Color.WHITE if rs[i][2] else Color(1, 1, 1, 0.45)
-		b.mouse_entered.connect(func(): tip.show_item(id, 1, Vector2(PANEL_POS.x + PANEL_SIZE.x, b.global_position.y)))
-		b.mouse_exited.connect(tip.hide_tip)
+		b.modulate = Color.WHITE if rs[i][2] else Color(0.55, 0.55, 0.6)  # 透かすと後ろの文字が見えるので、暗くするだけ
+		b.mouse_entered.connect(func(): tip.hover(id, 1, b, func(): return b.global_position + Vector2(b.size.x, 0)))
+		b.mouse_exited.connect(func(): tip.unhover(b))
 
 func _say(text: String) -> void:
 	_info.text = text
@@ -152,6 +158,8 @@ func _button(parent: Node, text: String, on_press: Callable) -> Button:
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size.x = ROW_W
+	b.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY  # 長い説明は折り返す（見切れないように）
 	UiText.style_button(b)
 	b.pressed.connect(on_press)
 	parent.add_child(b)

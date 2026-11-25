@@ -211,12 +211,47 @@ func test_checkpoint_heals_in_town():
 	f._process(0.016)
 	assert_eq(f.player.hp, f.player.max_hp)
 
+## 宝箱でない拾いものの番号（宝箱は F で開ける）
+func _loose_pickup() -> int:
+	for i in f.area.pickups.size():
+		if not f.is_chest(f.area.pickups[i][1]):
+			return i
+	return -1
+
+func _chest_pickup() -> int:
+	for i in f.area.pickups.size():
+		if f.is_chest(f.area.pickups[i][1]):
+			return i
+	return -1
+
 func test_walking_on_pickup_collects_it():
 	_walk_out(_exit("town", "hills"))
-	var p = f.area.pickups[0]
+	var i := _loose_pickup()
+	var p = f.area.pickups[i]
 	f.player.mover.place(p[0])
 	f._process(0.016)
-	assert_true(f.run.is_picked(f.area.pickup_id(0)))
+	assert_true(f.run.is_picked(f.area.pickup_id(i)))
+
+## 宝箱は歩いても開かず、そばで F を押すと開く。開けた宝箱は開いたまま残る（2026-11-26）
+func test_chest_opens_with_f():
+	_walk_out(_exit("town", "hills"))
+	var i := _chest_pickup()
+	assert_gt(i, -1, "丘陵に宝箱がある")
+	var p = f.area.pickups[i]
+	f.player.mover.place(p[0])
+	f._process(0.016)
+	assert_false(f.run.is_picked(f.area.pickup_id(i)), "歩いただけでは開かない")
+	f._notice_time = 0.0
+	f._title_time = 0.0
+	assert_eq(f.ui_message(), "F：宝箱を開ける")
+	var key := InputEventKey.new()
+	key.pressed = true
+	key.physical_keycode = KEY_F
+	f._unhandled_input(key)
+	assert_true(f.run.is_picked(f.area.pickup_id(i)))
+	assert_true(f.run.inventory.equipment.has(p[1]))
+	assert_eq(f.chest_here(), -1)
+	assert_false(f.try_open_chest(), "2回は開かない")
 
 func test_no_control_while_dying():
 	f.kill_player(false)
@@ -291,15 +326,19 @@ func test_fade_in_not_skipped_by_long_frame():
 
 func test_pickup_collected_from_next_cell_edge():
 	_walk_out(_exit("town", "hills"))
-	var p = f.area.pickups[0]
+	var i := _loose_pickup()
+	var p = f.area.pickups[i]
 	var c: Vector2i = p[0]
-	f.player.mover.place(c)
-	f.player.mover.pos += Vector2(13, 0)
+	for d in [Vector2(13, 0), Vector2(-13, 0), Vector2(0, 13), Vector2(0, -13)]:
+		f.player.mover.place(c)
+		f.player.mover.pos += d
+		if f.player.mover.cell() != c and f.map.get_height(f.player.mover.cell()) == f.map.get_height(c):
+			break
 	f._process(0.016)
 	if f.player.mover.cell() == c or f.map.get_height(f.player.mover.cell()) != f.map.get_height(c):
 		pending("となりのマスが同じ高さでない")
 		return
-	assert_true(f.run.is_picked(f.area.pickup_id(0)))
+	assert_true(f.run.is_picked(f.area.pickup_id(i)))
 
 ## 体力は数値（初期 PlayerStats.BASE_HP）で、敵の攻撃力の分だけ減る（17.1）
 func test_player_hp_from_stats():
@@ -991,6 +1030,28 @@ func test_town_shops_and_smith():
 	assert_true(f.shop_menu.choose(idx))
 	assert_true(f.run.inventory.equipment.has("sword_1"))
 	assert_eq(f.run.inventory.count("wood"), 0)
+
+## お店：スクロールしている間は説明を出さない。止まってからカーソルを動かすと出る。長い行は折り返して見切れない（2026-11-26）
+func test_shop_tip_waits_while_scrolling_and_rows_fit():
+	f.enter_area("town", Continent.START_CELL)
+	f.player.mover.place(f.area.merchants[2][0] + Vector2i(0, 1))
+	assert_true(f.try_open_shop())
+	var sm: ShopMenu = f.shop_menu
+	var b: Button = sm._box.get_child(0)
+	b.mouse_entered.emit()
+	assert_true(sm.tip.visible)
+	sm._scroll.get_v_scroll_bar().value_changed.emit(30.0)
+	assert_false(sm.tip.visible, "スクロールすると消える")
+	var b2: Button = sm._box.get_child(3)
+	b2.mouse_entered.emit()
+	assert_false(sm.tip.visible, "スクロール中は出ない")
+	sm.tip._process(ItemTip.QUIET_SECONDS + 0.05)
+	var motion := InputEventMouseMotion.new()
+	sm.tip._input(motion)
+	assert_true(sm.tip.visible, "止まってからカーソルを動かすと出る")
+	assert_eq(sm.tip.item_id, Recipes.LIST[3][0])
+	for c in sm._box.get_children():
+		assert_lte((c as Button).get_combined_minimum_size().x, ShopMenu.ROW_W + 0.5, "行は枠に収まる")
 
 ## 敵を倒すと、お金とその地方の素材などを落とす
 func test_enemy_drops_loot():

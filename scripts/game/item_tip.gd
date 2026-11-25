@@ -12,6 +12,14 @@ var _body: Label
 var item_id := ""
 ## 装備のレベルの制限を見るのに使う（なければ制限を出さない）
 var stats: PlayerStats
+## スクロールしている間（と止まってから少しの間）は説明を出さない（2026-11-26 の3回目の直し）。
+## 止まってからカーソルを動かすと、そのとき重なっている品物の説明がまた出る。
+const QUIET_SECONDS := 0.35
+var quiet_time := 0.0
+var _hover: Control = null
+var _hover_id := ""
+var _hover_count := 0
+var _hover_at: Callable
 
 func _init() -> void:
 	color = Color(0.03, 0.04, 0.06, 0.96)
@@ -70,6 +78,38 @@ func hide_tip() -> void:
 	item_id = ""
 	hide()
 
+## カーソルが anchor（品物のボタン）に乗った。スクロール中でなければ説明を出す。where は説明を出す画面の点を返す。
+func hover(id: String, count: int, anchor: Control, where: Callable) -> void:
+	_hover = anchor
+	_hover_id = id
+	_hover_count = count
+	_hover_at = where
+	if quiet_time <= 0.0:
+		_show_hover()
+
+## カーソルが anchor から出た。
+func unhover(anchor: Control) -> void:
+	if anchor == _hover:
+		_hover = null
+		hide_tip()
+
+## 一覧がスクロールした。説明を消し、少しの間は出さない。
+func on_scrolled() -> void:
+	quiet_time = QUIET_SECONDS
+	hide_tip()
+
+func _process(delta: float) -> void:
+	quiet_time = maxf(0.0, quiet_time - delta)
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and quiet_time <= 0.0 and not visible:
+		_show_hover()
+
+func _show_hover() -> void:
+	if _hover == null or not is_instance_valid(_hover) or not _hover.is_visible_in_tree():
+		return
+	show_item(_hover_id, _hover_count, _hover_at.call())
+
 ## カーソルを合わせると tip に説明が出る、アイコンの箱（20×20）。count が1より大きければ右下に数。
 static func make_slot(id: String, count: int, tip: ItemTip, on_press := Callable(), dim := false) -> Button:
 	var b := Button.new()
@@ -96,8 +136,8 @@ static func make_slot(id: String, count: int, tip: ItemTip, on_press := Callable
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(l)
 	if tip != null:
-		b.mouse_entered.connect(func(): tip.show_item(id, count, b.global_position + Vector2(b.size.x, 0)))
-		b.mouse_exited.connect(tip.hide_tip)
+		b.mouse_entered.connect(func(): tip.hover(id, count, b, func(): return b.global_position + Vector2(b.size.x, 0)))
+		b.mouse_exited.connect(func(): tip.unhover(b))
 	if on_press.is_valid():
 		b.pressed.connect(on_press)
 	return b

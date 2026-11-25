@@ -153,6 +153,7 @@ func on_hit(source: String) -> void:
 func _wake_mimic() -> void:
 	if kind == EnemyKind.Kind.MIMIC and not awake:
 		awake = true
+		Sfx.play("bite", walker.pos)
 		walker.chase_range = EnemyKind.chase_range(kind)
 		walker.speed_mult = EnemyKind.speed_mult(kind)
 		_rest = 0.4
@@ -300,6 +301,7 @@ func _update_pounce(delta: float, alive_target: bool, trigger: float) -> void:
 				lunge_phase = 2
 				_lunge_time = 0.0
 				walker.speed_mult = EnemyKind.speed_mult(kind) * POUNCE_SPEED
+				Sfx.play("slime" if kind == EnemyKind.Kind.WEAK else "enemy_jump", walker.pos)
 		2:
 			_lunge_time += delta
 			walker.dir = _lunge_dir
@@ -332,6 +334,7 @@ func _update_flyer(delta: float, alive_target: bool) -> void:
 				_lunge_time = 0.0
 				_lunge_dir = d.normalized()
 				walker.speed_mult = EnemyKind.speed_mult(kind) * 3.2
+				Sfx.play("wing", walker.pos)
 		2:
 			_lunge_time += delta
 			walker.dir = _lunge_dir
@@ -367,6 +370,7 @@ func _update_spear(delta: float, alive_target: bool) -> void:
 			if _lunge_time >= SPEAR_WINDUP:
 				lunge_phase = 2
 				_lunge_time = 0.0
+				Sfx.play("thrust", walker.pos, -4.0)
 				if spear_hits(walker.pos, walker.height, _lunge_dir, target.mover.pos, target.mover.height):
 					melee_hit.emit()
 		2:
@@ -433,6 +437,7 @@ func _teleport() -> void:
 			best = p
 	walker.pos = best
 	walker.height = maxi(0, map.get_height(walker.cell()))
+	Sfx.play("teleport", best, -4.0)
 
 ## 射手：2秒ごとに撃つ。3回に1回は、0.2秒おきに3発続けて撃つ。
 func _update_shooter(delta: float) -> void:
@@ -476,6 +481,7 @@ func _update_charge(delta: float) -> void:
 				charge_phase = 2
 				_charge_time = 0.0
 				walker.speed_mult = EnemyKind.CHARGE_SPEED_MULT
+				Sfx.play("growl", walker.pos)
 		2:
 			_charge_time += delta
 			walker.dir = _charge_dir

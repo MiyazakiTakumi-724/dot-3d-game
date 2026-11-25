@@ -162,6 +162,35 @@ static func chest() -> VoxelModel:
 		_cache["chest"] = VoxelShade.apply(m)
 	return _cache["chest"]
 
+## 開けた宝箱（2026-11-26）：ふたが後ろに立ち、中が見える。中は空で、底に金色が少し光る。
+static func chest_open() -> VoxelModel:
+	if not _cache.has("chest_open"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(22, 16, 22)
+		VoxelDraw.fill(m, Vector3i(1, 1, 0), Vector3i(20, 14, 8), WOOD_LIGHT)
+		for z in [2, 5]:
+			VoxelDraw.fill(m, Vector3i(1, 1, z), Vector3i(20, 14, z), WOOD_DARK)
+		for x in [4, 5, 16, 17]:
+			for y in range(1, 15):
+				for z in range(0, 9):
+					if m.voxels().has(Vector3i(x, y, z)):
+						m.set_voxel(Vector3i(x, y, z), IRON)
+		# 中をくりぬく
+		for x in range(3, 19):
+			for y in range(3, 13):
+				for z in range(3, 9):
+					m.remove_voxel(Vector3i(x, y, z))
+		VoxelDraw.fill(m, Vector3i(3, 3, 2), Vector3i(18, 12, 2), WOOD_DARK.darkened(0.4))
+		for p in [Vector3i(6, 6, 3), Vector3i(12, 9, 3), Vector3i(15, 5, 3)]:
+			m.set_voxel(p, GOLD)
+		# 後ろに立ったふた
+		VoxelDraw.fill(m, Vector3i(1, 0, 9), Vector3i(20, 2, 21), WOOD_LIGHT)
+		VoxelDraw.fill(m, Vector3i(1, 2, 9), Vector3i(20, 2, 21), WOOD_DARK)
+		for x in [4, 5, 16, 17]:
+			VoxelDraw.fill(m, Vector3i(x, 0, 9), Vector3i(x, 0, 21), IRON)
+		_cache["chest_open"] = VoxelShade.apply(m)
+	return _cache["chest_open"]
+
 ## 墓石：遠くからでも見つけやすい、背の高い白っぽい石。上は丸く、前に十字を彫る。下に台。前は +y。
 static func grave() -> VoxelModel:
 	if not _cache.has("grave"):

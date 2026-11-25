@@ -49,6 +49,9 @@ var _climb := 0.0
 var _down := Down.NONE
 var _down_t := 0.0
 
+## このフレームに足を地面に着いたか（足音を鳴らすのに使う。2026-11-26）
+var stepped := false
+
 ## 毎フレーム。moved_px はこのフレームに歩いた距離（止まっていれば0）。
 func update(delta: float, moved_px: float) -> void:
 	_action_t = maxf(0.0, _action_t - delta)
@@ -61,9 +64,12 @@ func update(delta: float, moved_px: float) -> void:
 	_hurt_t = maxf(0.0, _hurt_t - delta)
 	if _down != Down.NONE:
 		_down_t += delta
+	stepped = false
 	if moved_px > 0.01:
 		if _moving:
+			var before := int(_walk_dist / STEP_PX)
 			_walk_dist += moved_px
+			stepped = int(_walk_dist / STEP_PX) != before and pose().begins_with("step")  # 足が地面に着いた
 		_moving = true
 	else:
 		_moving = false

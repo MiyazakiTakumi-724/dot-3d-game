@@ -47,6 +47,8 @@ var _swing_thrust := false
 ## 飛び降りたときに、少しの間だけ上に浮かせて「落ちていく」ように見せる量（px）
 var _drop_lift := 0.0
 var _last_height := 0
+## 足音の名前（エリアの地面で替わる。field.gd が入れる。2026-11-26）
+var step_sound := "step_grass"
 const SWING_SHOW := 0.15
 const DROP_SPEED := 200.0  ## 飛び降りの見た目の落ちる速さ（px/秒）
 
@@ -176,6 +178,10 @@ func _process(delta: float) -> void:
 	anim.set_charge(charge)
 	anim.set_climb(mover.climb_progress() if hp > 0 else 0.0)
 	anim.update(delta, moved if moved < TELEPORT_PX else 0.0)
+	if anim.stepped and controllable:
+		Sfx.play(step_sound, null, -8.0 if crouching else -3.0, 0.12)
+	if mover.height > _last_height and moved > 0.0 and moved < TELEPORT_PX and controllable:
+		Sfx.play("climb", null, -4.0)  # 歩いて段を登った
 	_apply_model()
 	_update_drop_lift(delta)
 	_sync()
@@ -191,6 +197,7 @@ func _update_drop_lift(delta: float) -> void:
 		lift_px = _drop_lift
 		if _drop_lift <= 0.0:
 			anim.play_land()  # 着いた瞬間に少し縮む
+			Sfx.play("land")
 
 func _sync() -> void:
 	world_pos = mover.pos

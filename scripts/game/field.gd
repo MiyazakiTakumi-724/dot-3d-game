@@ -64,15 +64,12 @@ var _title_time := 0.0
 var _grave_hint_time := 0.0
 ## 始めたときに、どうすればよいかを出しておく残り秒数
 var _start_hint_time := 8.0
-var _play_time := 0.0  ## 始めてからの秒数（操作の説明を出す間）
 var _boss_bar: Control  ## 下：戦っているボスの名前と体力
 var _boss_fill: ColorRect
 var _boss_label: Label
 var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・墓石のあるエリア（文字。画面には出さず、hud が描く）
 var hud: Hud  ## いのちとマナのバー・手に持つ物の箱・杖の魔法の待ち時間
-const GUIDE_SECONDS := 30.0  ## 操作の説明を出しておく時間
 var _message: Label  ## 真ん中：エリアの名前・門のヒント・やられた
-var _guide: Label  ## 下：操作の説明
 var _popups: Control  ## ダメージの数字を置く所（エリアを切り替えると片付ける）
 ## 真ん中に少しの間だけ出す知らせ（レベルアップ・武器を手に入れたなど）
 var _notice_text := ""
@@ -111,6 +108,11 @@ const WARM_BUDGET_MS := 10.0  ## 1フレームでモデル作りに使う時間
 
 func _ready() -> void:
 	world = Continent.build()
+	Sfx.attach(self)  # 効果音を鳴らす所（2026-11-26）
+	Sfx.level = settings.sfx_level
+	if DisplayServer.get_name() != "headless":
+		var mode := DisplayServer.window_get_mode()
+		settings.fullscreen = mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
 	var camp_info: Dictionary = Continent.load_map(world.area(Continent.START_AREA))[1]
 	run = RunState.new(Continent.START_AREA, camp_info["checkpoint"])
 	camera = StackCamera.new()
@@ -171,6 +173,9 @@ func _ready() -> void:
 	_maybe_screenshot()
 
 ## エリアを作り直す。今のエリアの地形・敵・弾・印を片付け、id のエリアを cell から始める。
+## 地面の見た目ごとの足音（2026-11-26）
+const STEP_SOUNDS := {"grass": "step_grass", "mountain": "step_gravel", "lava": "step_gravel", "castle": "step_stone", "tower": "step_stone", "town": "step_stone"}
+
 func enter_area(id: String, cell: Vector2i) -> void:
 	for e in enemies:
 		if is_instance_valid(e):
@@ -210,6 +215,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 		c.queue_free()
 
 	area = world.area(id)
+	player.step_sound = STEP_SOUNDS.get(area.theme, "step_grass")
 	run.visit(id)
 	var loaded := Continent.load_map(area)
 	map = loaded[0]
@@ -232,6 +238,8 @@ func enter_area(id: String, cell: Vector2i) -> void:
 		var p = area.pickups[i]
 		if not run.is_picked(area.pickup_id(i)):
 			_pickup_nodes[i] = _marker(p[0], Props.pickup(p[1]), 1)
+		elif is_chest(p[1]):
+			_marker(p[0], Props.chest_open(), 1)  # 開けた宝箱は、開いたまま残す
 	for ex in area.exits:
 		if ex.door_id != "" and not run.is_door_open(ex.door_id):
 			_close_gate(ex)
@@ -366,6 +374,7 @@ func boss_strike(at: Vector2, delay: float, radius: float, dmg: int, model: Voxe
 	var h := map.get_height(c)
 	_effect_sprite(Props.aim_shadow(), at, h, 0.0, delay).set_meta("steady", true)
 	_strikes.append([at, h, delay, radius, dmg, model])
+	Sfx.play("warn", at, -4.0)
 
 func strikes_count() -> int:
 	return _strikes.size()
@@ -379,6 +388,7 @@ func _step_strikes(delta: float) -> void:
 		_strikes.remove_at(i)
 		strikes_done += 1
 		_effect_sprite(s[5], s[0], s[1], 0.0, 0.35)
+		Sfx.play("strike", s[0], -3.0)
 		if area_state.result == AreaState.Result.PLAYING and player.mover.pos.distance_to(s[0]) < s[3] \
 				and absi(player.mover.height - s[1]) <= 1:
 			hurt_player(s[4])
@@ -401,6 +411,7 @@ func boss_roll(from: Vector2, dir: Vector2, dmg: int, model: VoxelModel = null) 
 		s.voxel_scale = BossModels.VOXEL_SCALE
 	s.set_meta("steady", true)
 	_rollers.append([from, dir, ROLL_WAIT, dmg, s, h])
+	Sfx.play("roll", from)
 
 func rollers_count() -> int:
 	return _rollers.size()
@@ -431,6 +442,7 @@ func _step_rollers(delta: float) -> void:
 		if stop:
 			camera.shake(2.0)
 			_effect_sprite(Props.rain_ring(12.0), r[0], r[5], 0.0, 0.3)
+			Sfx.play("break", r[0])
 			if is_instance_valid(s):
 				s.queue_free()
 			_rollers.remove_at(i)
@@ -466,6 +478,7 @@ func boss_pits(cells: Array, warn: float, open_for: float) -> int:
 		sprites.append(s)
 	if not ok.is_empty():
 		_pits_tmp.append([ok, warn, open_for, sprites])
+		Sfx.play("crack", HeightMap.cell_center(ok[0]))
 	return ok.size()
 
 ## 今開いている奈落のマスの数（テスト用）
@@ -487,6 +500,7 @@ func _step_pits(delta: float) -> void:
 			if p[1] > 0.0:
 				continue
 			camera.shake(2.5)
+			Sfx.play("pit", HeightMap.cell_center(p[0][0]))
 			for j in p[0].size():
 				var c: Vector2i = p[0][j]
 				map.set_pit(c, true)
@@ -524,6 +538,7 @@ var _hot: Array = []  # [位置, 高さ, 残り秒, ダメージ]
 var _hot_clock := 0.0
 func boss_fire(pos: Vector2, h: int, seconds: float, dmg: int) -> void:
 	_effect_sprite(Props.flame(rng.randi() % 3), pos, h, 0.0, seconds)
+	Sfx.play("fire", pos, -8.0)
 	_hot.append([pos, h, seconds, dmg])
 
 func _step_boss_floor(delta: float) -> void:
@@ -569,6 +584,7 @@ func _on_enemy_died(area_id: String, index: int, kind: EnemyKind.Kind, level: in
 		_drop_loot(w.cell(), Loot.roll_kind(kind, area.region, level, rng, loot_mult()))
 	if run.on_enemy_killed(kind, level) > 0:
 		notice("レベル%d になった！\nTab：ポイントを振る" % run.stats.level)
+		Sfx.play("level_up")
 		apply_stats()
 
 ## 落とし物を、そのマスとまわりの空いたマスに置く。
@@ -594,6 +610,7 @@ func loot_mult() -> float:
 func _on_enemy_exploded(pos: Vector2, h: int, e: Enemy) -> void:
 	_effect_sprite(Props.rain_ring(EnemyKind.BOMB_RADIUS), pos, h, 0.0, 0.4)
 	camera.shake(2.0)
+	Sfx.play("explosion", pos)
 	if area_state.result == AreaState.Result.PLAYING and not is_switching() \
 			and player.mover.pos.distance_to(pos) < EnemyKind.BOMB_RADIUS and absi(player.mover.height - h) <= 1:
 		hurt_player(e.attack)
@@ -612,6 +629,7 @@ func _on_enemy_lobbed(at: Vector2, h: int, delay: float, dmg: int, e: Enemy) -> 
 	stone.modulate = Color(0.75, 0.7, 0.62)
 	stone.set_meta("steady", true)
 	_lobs.append([at, ground, delay, delay, dmg, stone, e.walker.pos, e.walker.height])
+	Sfx.play("throw", e.walker.pos)
 
 func _step_lobs(delta: float) -> void:
 	for i in range(_lobs.size() - 1, -1, -1):
@@ -628,6 +646,7 @@ func _step_lobs(delta: float) -> void:
 			continue
 		_lobs.remove_at(i)
 		_effect_sprite(Props.rain_ring(10.0), l[0], l[1], 0.0, 0.25)
+		Sfx.play("arrow_hit", l[0])
 		if area_state.result == AreaState.Result.PLAYING and player.mover.pos.distance_to(l[0]) < 11.0 \
 				and absi(player.mover.height - l[1]) <= 1:
 			hurt_player(l[4])
@@ -638,6 +657,7 @@ func notice(text: String, seconds := LEVEL_UP_SECONDS) -> void:
 	_notice_time = seconds
 
 func _on_melee_hit(e: Enemy) -> void:
+	Sfx.play("enemy_swing", e.walker.pos)
 	if area_state.result == AreaState.Result.PLAYING and not is_switching():
 		hurt_player(e.attack)
 
@@ -647,6 +667,7 @@ func hurt_player(enemy_attack: int) -> bool:
 	if not player.take_hit(dmg):
 		return false
 	_popup(player.mover.pos, player.mover.height, dmg, Color("ff6b6b"))
+	Sfx.play("hurt")
 	return true
 
 ## 守り：防具の特色と守りの薬。
@@ -738,21 +759,30 @@ func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, s
 	match rule:
 		"miss":
 			_popup_text(e.walker.pos, e.walker.height, "とどかない", gray)
+			Sfx.play("miss", e.walker.pos)
 			return false
 		"pass":
 			_popup_text(e.walker.pos, e.walker.height, "すりぬけた", gray)
+			Sfx.play("miss", e.walker.pos)
 			return false
 		"block":
 			_popup_text(e.walker.pos, e.walker.height, "ふせいだ", gray)
+			Sfx.play("block", e.walker.pos)
 			return false
 		"armor":
 			dmg = 1
 			_popup_text(e.walker.pos, e.walker.height, "かたい", gray)
 			color = gray
+			Sfx.play("block", e.walker.pos)
 		"weak":
 			dmg *= 2
 			color = Color("ffd54a")
+			Sfx.play("weak", e.walker.pos)
+		_:
+			Sfx.play("arrow_hit" if source == "arrow" else "hit", e.walker.pos)
 	e.walker.take_damage(dmg)
+	if not e.walker.alive:
+		Sfx.play("boss_die" if e is Boss else "enemy_die", e.walker.pos)
 	_popup(e.walker.pos, e.walker.height, dmg, color)
 	if id != "":
 		_apply_traits(e, id)
@@ -771,6 +801,7 @@ func is_switching() -> bool:
 	return _switch_phase != 0
 
 func _start_switch(to: Dictionary) -> void:
+	Sfx.play("area")
 	_switch_phase = 1
 	_switch_time = 0.0
 	_switch_to = to
@@ -811,6 +842,9 @@ func _process(delta: float) -> void:
 	player.set_look(held_look(), run.inventory.equipment.current(Equipment.Slot.ARMOR))
 	if not _warm_queue.is_empty() and not is_switching():
 		Terrain.warm(_warm_queue, WARM_BUDGET_MS)
+	elif not is_switching():
+		Sfx.warm_step(2.0)  # 効果音を少しずつ作っておく
+	Sfx.listener = player.mover.pos
 	if is_switching():
 		_update_switch(delta)
 	else:
@@ -850,7 +884,6 @@ func _process(delta: float) -> void:
 	_grave_hint_time = maxf(0.0, _grave_hint_time - delta)
 	_notice_time = maxf(0.0, _notice_time - delta)
 	_start_hint_time = maxf(0.0, _start_hint_time - delta)
-	_play_time += delta
 	_arrow_blink += delta
 	var frame := int(_arrow_blink * 8.0) % 3
 	if _bonfire_node != null and is_instance_valid(_bonfire_node) and frame != _bonfire_frame:
@@ -881,12 +914,15 @@ func _sync_map() -> void:
 ## 画面を白くする（ブライトの光）。
 func flash_screen(seconds: float) -> void:
 	_flash_time = maxf(_flash_time, seconds)
+	Sfx.play("flash")
 
 ## 遊んでいる間の毎フレームの処理：拾う、たき火で回復、体当たり、鉄球、出口。
 func _play_step() -> void:
 	var c := player.mover.cell()
 	for i in _pickup_nodes.keys():
 		var p = area.pickups[i]
+		if is_chest(p[1]):
+			continue  # 宝箱は F で開ける（try_open_chest）
 		var reach := RunState.can_reach_pickup(player.mover.pos, player.mover.height, p[0], map.get_height(p[0]))
 		if reach and run.collect(area.pickup_id(i), p[1], p[2]):
 			_pickup_nodes[i].queue_free()
@@ -896,6 +932,7 @@ func _play_step() -> void:
 			and not run.is_near_checkpoint(area.id, c):
 		run.set_checkpoint(area.id, _campfire_cell)
 		notice("たき火で休んだ\n死んだら、ここから やり直す", 2.5)
+		Sfx.play("rest")
 	if run.is_near_checkpoint(area.id, c) and player.hp < player.max_hp:
 		player.set_hp(player.max_hp)
 	for e in enemies:
@@ -913,12 +950,21 @@ func _play_step() -> void:
 			d[3].queue_free()
 			_drops.remove_at(i)
 			_on_picked(d[1], d[2])
-	ball.rules_ball.try_pick_up(player.mover)
+	if ball.rules_ball.try_pick_up(player.mover):
+		Sfx.play("ball_pick")
 	_sync_ball_rank()
 	apply_stats()
 	var ex := world.exit_through(area.id, c, player.mover.edge_push)
 	if ex != null and (ex.door_id == "" or run.is_door_open(ex.door_id)):
 		_start_switch(world.arrival(area.id, ex, c))
+
+## F11：全画面とウィンドウを切りかえる（メニューを開いていても効く。2026-11-26）
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_F11:
+		settings.fullscreen = not settings.fullscreen
+		InventoryMenu.apply_window(settings.fullscreen)
+		menu.refresh()
+		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
@@ -943,7 +989,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				hotbar.select_slot(event.physical_keycode - KEY_0, run.inventory.equipment)
 			KEY_F:
-				if not try_open_shop():
+				if not try_open_shop() and not try_open_chest():
 					try_open_door()
 			KEY_TAB:
 				open_inventory()
@@ -963,7 +1009,10 @@ func use_item() -> bool:
 		return false  # 開いている間のクリックは画面の操作に使う
 	match hotbar.selected:
 		Hotbar.Item.IRON_BALL:
-			return ball.rules_ball.drop_at(player.mover, map, _aim_point())
+			var dropped := ball.rules_ball.drop_at(player.mover, map, _aim_point())
+			if dropped:
+				Sfx.play("ball_drop")
+			return dropped
 		Hotbar.Item.SWORD:
 			return swing_sword()
 		Hotbar.Item.BOW:
@@ -987,6 +1036,7 @@ func swing_sword() -> bool:
 	var strong_fall := st.skills_in(PlayerStats.Stat.SWORD) >= 1
 	var thrust := st.skills_in(PlayerStats.Stat.SWORD) >= 2  # 技能「突き」
 	player.swing(fall > 0, thrust)
+	Sfx.play("thrust" if thrust else "sword")
 	for g in _closed_gimmicks():
 		if g.by_sword(mv.pos, mv.height, mv.facing, map, thrust):
 			open_gimmick(g)
@@ -1020,6 +1070,7 @@ func start_bow() -> bool:
 		notice("矢がない", 1.5)
 		return false
 	bow.start()
+	Sfx.play("bow_draw")
 	return true
 
 ## 離して撃つ。カーソルの所へ（届かなければ手前に）山なりに飛ぶ。技能「連射」なら2本。
@@ -1041,6 +1092,7 @@ func release_bow() -> bool:
 		fired = true
 	if fired:
 		player.anim.play_loose()
+		Sfx.play("bow_shoot")
 	return fired
 
 func _fire_arrow(kind: Arrow.Kind, r: float, target: Vector2) -> void:
@@ -1156,6 +1208,7 @@ func spin_slash() -> bool:
 		return false
 	var mv := player.mover
 	player.spin()
+	Sfx.play("spin")
 	var id := run.inventory.equipment.current(Equipment.Slot.SWORD)
 	for e in targets():
 		if Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, float(ItemCatalog.trait_value(id, "reach", 1.0))):
@@ -1237,12 +1290,14 @@ func cast_spell(screen = null) -> bool:
 	if mana.value < Magic.cost_of(spell, cost_mult):
 		if magic.cooldown <= 0.0:
 			notice("マナが足りない", 1.0)
+			Sfx.play("no_mana")
 		return false
 	if spell == Magic.Spell.HEAL and player.hp >= player.max_hp:
 		return false
 	if not magic.try_cast(spell, mana, cost_mult):
 		return false
 	player.anim.play_cast()
+	Sfx.play("fire_cast" if spell in [Magic.Spell.FIREBALL, Magic.Spell.FIRE_PILLAR, Magic.Spell.FIRE_RAIN] else ("heal" if spell == Magic.Spell.HEAL else "magic"))
 	var aim := magic_aim_at(screen if screen != null else get_local_mouse_position())
 	match spell:
 		Magic.Spell.NULL_BOLT, Magic.Spell.FIREBALL, Magic.Spell.ICE_SHARD:
@@ -1272,6 +1327,7 @@ func _thunder(point: Vector2) -> void:
 	var ground := map.get_height(c) if map.in_bounds(c) else 0
 	_effect_sprite(Props.pillar(), point, ground, 0.0, 0.25).modulate = Color(1.2, 1.2, 2.0)
 	camera.shake(1.5)
+	Sfx.play("thunder", point)
 
 ## 魔法を敵に当てる。from_h は使ったときの段で、それより高い所の敵には当たらない（false を返す）。
 func _hit_enemy(e, spell: int, from_h: int) -> bool:
@@ -1341,6 +1397,7 @@ func _step_bolts(delta: float) -> void:
 
 ## 火の玉が弾ける。まわりの、高さの近い敵にダメージとやけど。地面の近くなら、そこが少しの間燃える（自分より高い地面は燃えない）。
 func _explode(pos: Vector2, z: float, from_h: int) -> void:
+	Sfx.play("magic_hit", pos)
 	_burn_gimmicks(pos, Magic.FIREBALL_RADIUS)
 	for e in targets():
 		if e.walker.pos.distance_to(pos) < Magic.FIREBALL_RADIUS \
@@ -1384,6 +1441,7 @@ func _fire_pillar(point: Vector2) -> void:
 		run.break_grave()
 	var ground := map.get_height(c) if map.in_bounds(c) else 0
 	_effect_sprite(Props.pillar(), point, ground, 0.0, 0.4)
+	Sfx.play("fire", point)
 
 ## 炎の雨：狙った点のまわりに降る。自分より高い所の敵には当たらない。高い所から使うほど広い。
 func _fire_rain(point: Vector2) -> void:
@@ -1396,6 +1454,7 @@ func _fire_rain(point: Vector2) -> void:
 		if e.walker.height <= mv.height and e.walker.pos.distance_to(point) < r:
 			_hit_enemy(e, Magic.Spell.FIRE_RAIN, mv.height)
 	_effect_sprite(Props.rain_ring(r), point, ground, 0.0, 0.5)
+	Sfx.play("fire", point)
 	for k in 5:
 		var off := Vector2.from_angle(rng.randf() * TAU) * rng.randf() * r
 		var fc := HeightMap.world_to_cell(point + off)
@@ -1443,6 +1502,7 @@ func drops_left() -> int:
 
 ## 技能を覚えたときの知らせ。使い方があるものは、そのキーも出す。
 func _on_skill_learned(skill: String) -> void:
+	Sfx.play("skill")
 	var how := {
 		"しゃがみ": "C か 左Ctrl：しゃがむ（撃つ敵の弾をよける）",
 		"回転斬り": "剣を持って Space：回転斬り",
@@ -1459,6 +1519,7 @@ func _on_skill_learned(skill: String) -> void:
 ## 拾った（宝箱・落ちているもの・敵の落とし物）ときの知らせ。
 func _on_picked(id: String, amount: int) -> void:
 	player.anim.play_pickup()  # かがんで拾う
+	Sfx.play("coin" if id == ItemCatalog.MONEY else ("item" if ItemCatalog.exists(id) else "pickup"))
 	if ItemCatalog.exists(id):
 		warm_hero_looks()
 		var slot := ItemCatalog.slot(id)
@@ -1485,19 +1546,24 @@ func use_tool() -> bool:
 		var amount: int = player.max_hp if d["heal"] < 0 else d["heal"]
 		player.set_hp(mini(player.max_hp, player.hp + amount))
 		player.anim.play_drink()
+		Sfx.play("drink")
+		Sfx.play("heal")
 	elif d.has("mana"):
 		if mana.value >= mana.max_value:
 			return false
 		mana.value = minf(mana.max_value, mana.value + d["mana"])
 		player.anim.play_drink()
+		Sfx.play("drink")
 	elif d.has("buff"):
 		var bf: Array = d["buff"]
 		buffs.add(bf[0], bf[1], bf[2])
 		player.anim.play_drink()
+		Sfx.play("drink")
 		notice("%s：%s" % [ItemCatalog.name_of(id), d["info"]], 1.5)
 	elif d.has("warp"):
 		inv.take(id, 1)
 		notice("帰りの羽で、たき火へ戻った", 2.0)
+		Sfx.play("teleport")
 		_start_switch({"area": run.checkpoint_area, "cell": run.respawn_cell()})
 		return true
 	elif d.has("bomb"):
@@ -1515,6 +1581,7 @@ func _throw_bomb(point: Vector2, power: int) -> void:
 	var s := _effect_sprite(Props.pickup("bomb"), point, h, 0.0, 1.0)
 	s.set_meta("steady", true)
 	_bombs.append([point, h, 1.0, power, player.mover.height])
+	Sfx.play("throw")
 
 func _step_bombs(delta: float) -> void:
 	for i in range(_bombs.size() - 1, -1, -1):
@@ -1525,6 +1592,7 @@ func _step_bombs(delta: float) -> void:
 		_bombs.remove_at(i)
 		camera.shake(3.0)
 		_effect_sprite(Props.rain_ring(20.0), b[0], b[1], 0.0, 0.4)
+		Sfx.play("explosion", b[0])
 		_burn_gimmicks(b[0], 20.0)
 		for e in targets():
 			if e.walker.pos.distance_to(b[0]) < 20.0 and absi(e.walker.height - b[1]) <= 1 and Damage.can_hit(b[4], e.walker.height):
@@ -1537,6 +1605,7 @@ func open_inventory() -> bool:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
 		return false
 	menu.open()
+	Sfx.play("ui_open")
 	return true
 
 func close_inventory() -> void:
@@ -1592,8 +1661,10 @@ func kill_player(fell: bool) -> void:
 	player.controllable = false
 	if fell:
 		player.anim.play_fall()  # 両手を上げて落ちていく
+		Sfx.play("fall")
 	else:
 		player.anim.play_die()  # ひざをついてから横たわる
+		Sfx.play("die")
 
 ## 野営地のたき火から再開する。敵は復活しない（倒した敵は時間で戻る）。
 func respawn() -> void:
@@ -1622,6 +1693,7 @@ func try_open_door() -> bool:
 		return false
 	run.open_door(ex.door_id)
 	player.anim.play_push()
+	Sfx.play("seal" if ex.door_id == RunState.SEAL_DOOR else "door")
 	for c in ex.cells(area.size()):
 		map.set_blocker(c, HeightMap.Blocker.NONE)
 	for s in _gate_nodes.get(ex.door_id, []):
@@ -1691,6 +1763,7 @@ func _on_enemy_shot(b: Bullet) -> void:
 	s.refresh()
 	_area_root.add_child(s)
 	_bullets.append([b, s])
+	Sfx.play("enemy_shoot", b.pos)
 
 ## 弾の絵を弾の高さ（z）に合わせる。
 func _place_bullet_sprite(b: Bullet, s: StackSprite) -> void:
@@ -1700,6 +1773,7 @@ func _place_bullet_sprite(b: Bullet, s: StackSprite) -> void:
 
 ## 鉄球が着いた。ダメージは17章の式で、攻撃力（強い鉄球なら上乗せ）・落とした高さ・レベルで決まる。
 func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
+	Sfx.play("ball_land", land_pos, 0.0, 0.04)
 	if area_state.result != AreaState.Result.PLAYING:
 		return  # 死んでいる間に着いた鉄球は何も壊さない（できたばかりの墓石を壊さないように）
 	if run.grave != null and run.grave.area_id == area.id and IronBall.touches_cell(land_pos, run.grave.cell):
@@ -1790,18 +1864,22 @@ func open_gimmick(g: Gimmick) -> void:
 		Gimmick.Kind.CRACK:
 			notice("岩が砕けた！", 1.5)
 			camera.shake(3.0)
+			Sfx.play("break")
 			for c in g.cells:
 				var dust := ImpactDust.new()
 				dust.setup(camera, HeightMap.cell_center(c), map.get_height(c), 4)
 				_area_root.add_child(dust)
 		Gimmick.Kind.THORNS:
 			notice("茨が燃えつきた！", 1.5)
+			Sfx.play("burn")
 			for c in g.cells:
 				_effect_sprite(Props.flame(rng.randi() % 3), HeightMap.cell_center(c), map.get_height(c), 0.0, 0.8)
 		Gimmick.Kind.VINES:
 			notice("つたを斬った！", 1.5)
+			Sfx.play("snip")
 		Gimmick.Kind.TARGET:
 			notice("的に当たった！\n橋が下りた", 2.0)
+			Sfx.play("bridge")
 			for s in _target_nodes.get(g.id, []):
 				s.set_model(Props.target(true))
 			_rebuild_terrain()
@@ -1842,6 +1920,40 @@ func _talk_here() -> String:
 			return t[1]
 	return ""
 
+## 2026-11-26（3回目の直し）：宝箱（装備の入った拾いもの）は、歩いて拾わず、そばで F を押して開ける。
+## そばとは、同じ高さで、宝箱のマスの中心から CHEST_REACH 以内。開けた宝箱は開いたまま残る。
+const CHEST_REACH := 24.0
+
+static func is_chest(id: String) -> bool:
+	return ItemCatalog.exists(id)
+
+## そばにある、まだ開けていない宝箱の番号（なければ -1）。
+func chest_here() -> int:
+	for i in _pickup_nodes.keys():
+		var p = area.pickups[i]
+		if is_chest(p[1]) and map.get_height(p[0]) == player.mover.height \
+				and player.mover.pos.distance_to(HeightMap.cell_center(p[0])) <= CHEST_REACH:
+			return i
+	return -1
+
+## そばの宝箱を開ける。なければ false。
+func try_open_chest() -> bool:
+	if area_state.result != AreaState.Result.PLAYING or is_switching():
+		return false
+	var i := chest_here()
+	if i < 0:
+		return false
+	var p = area.pickups[i]
+	if not run.collect(area.pickup_id(i), p[1], p[2]):
+		return false
+	var node: StackSprite = _pickup_nodes[i]
+	_pickup_nodes.erase(i)
+	node.set_model(Props.chest_open())
+	effect_at(Props.rain_ring(10.0), node.world_pos, node.base_height, 0.3)
+	Sfx.play("chest")
+	_on_picked(p[1], p[2])
+	return true
+
 ## 近くの商人のお店を開く。そばにいなければ false。
 func try_open_shop() -> bool:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
@@ -1864,6 +1976,7 @@ func _near_merchant() -> bool:
 	return false
 
 func _on_bought(id: String) -> void:
+	Sfx.play("craft" if shop_menu.shop_id == "smith" else "buy")
 	if ItemCatalog.exists(id):
 		warm_hero_looks()
 	apply_stats()
@@ -1874,6 +1987,7 @@ func toggle_map() -> void:
 	_sync_map()
 	map_view.visible = not map_view.visible
 	map_view.queue_redraw()
+	Sfx.play("ui_open" if map_view.visible else "ui_close")
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
@@ -1890,13 +2004,6 @@ func _build_ui() -> void:
 	_message.size = Vector2(320, 40)
 	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	layer.add_child(_message)
-	_guide = UiText.label()
-	_guide.position = Vector2(116, 2)
-	_guide.size = Vector2(200, 24)
-	_guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_guide.modulate.a = 0.85
-	_guide.text = "クリック:使う　1〜5:持ちかえ\nTab:持ち物　M:地図　右ドラッグ:カメラ"
-	layer.add_child(_guide)
 	_boss_bar = Control.new()
 	_boss_bar.position = Vector2(80, 24)
 	_boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1939,7 +2046,6 @@ func _build_ui() -> void:
 func _update_ui() -> void:
 	_status.text = status_text()
 	var b := active_boss()
-	_guide.visible = _play_time < GUIDE_SECONDS and b == null  # ボスの名前とかぶらないように
 	_message.text = ui_message()
 	_boss_bar.visible = b != null
 	if b != null:
@@ -2046,6 +2152,8 @@ func ui_message() -> String:
 		return "F：門を開ける"
 	if _notice_time > 0.0:
 		return _notice_text
+	if chest_here() >= 0:
+		return "F：宝箱を開ける"
 	if _title_time > 0.0:
 		return area.title if area.region == "はじまりの地" else "%s\n%s" % [area.region, area.title]
 	var talk := _talk_here()
@@ -2054,7 +2162,7 @@ func ui_message() -> String:
 	if _grave_hint_time > 0.0:
 		return "死んだ場所に墓石がある\n鉄球を落として壊すと、持ち物が戻る"
 	if _start_hint_time > 0.0:
-		return "WASD・矢印：移動\n地面の矢印の先へ歩くと、となりのエリアへ行ける"
+		return "地面の矢印の先へ歩くと、となりのエリアへ行ける"
 	return ""
 
 ## 確認用：エリアの敵を消し、15種類の敵をプレイヤーのまわりに並べて止める（`--zoo`）。
@@ -2106,6 +2214,9 @@ func _maybe_screenshot() -> void:
 				menu.page = InventoryMenu.Page.STATS
 			elif a == "--inventory=settings":
 				menu.page = InventoryMenu.Page.SETTINGS
+			elif a == "--inventory=controls":
+				menu.page = InventoryMenu.Page.SETTINGS
+				get_tree().create_timer(0.1).timeout.connect(menu.show_controls.bind(true))
 			elif a == "--inventory=items":
 				menu.page = InventoryMenu.Page.ITEMS
 				for id in ["hide", "bone", "herb", "potion", "bomb", "iron_ore", "star_shard", "giant_core", "seal_mt", "arrow", "ether", "feather"]:
