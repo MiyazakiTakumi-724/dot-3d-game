@@ -231,3 +231,18 @@ func test_real_chest_has_a_tail_decoys_do_not():
 	var real := BossModels.model("宝箱の王")
 	var fake := BossModels.model("宝箱の王", "decoy")
 	assert_gt(real.voxels().size(), fake.voxels().size())
+
+## 2026-11-25 夜のエラー：転がる大岩が砕けたり大蛇の影が消えたりして、絵が先に消えていると、次のフレームで止まった
+func test_effects_freed_elsewhere_do_not_stop_the_game():
+	_enter("岩転がしの巨人")
+	var s: StackSprite = f.effect_at(Props.aim_shadow(), f.player.mover.pos, 0, 2.0)
+	s.free()
+	f._step_effects(0.1)
+	assert_eq(f._effects.filter(func(x): return not is_instance_valid(x[0])).size(), 0)
+
+## 巨人の2段目で大岩を転がし続けても止まらない（砕けた大岩の絵が残らない）
+func test_giant_boulders_break_cleanly():
+	var b := _enter("岩転がしの巨人")
+	_half(b)
+	_run(12.0)
+	assert_eq(f._effects.filter(func(x): return not is_instance_valid(x[0])).size(), 0)

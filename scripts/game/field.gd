@@ -406,7 +406,7 @@ func rollers_count() -> int:
 func _step_rollers(delta: float) -> void:
 	for i in range(_rollers.size() - 1, -1, -1):
 		var r = _rollers[i]
-		var s: StackSprite = r[4]
+		var s = r[4]  # 消えているかもしれないので型を付けない
 		if r[2] > 0.0:
 			r[2] -= delta  # 転がりだす前に少しゆれる（よける合図）
 			if is_instance_valid(s):
@@ -544,7 +544,7 @@ func _step_lobs(delta: float) -> void:
 		var l = _lobs[i]
 		l[2] -= delta
 		var t := clampf(1.0 - l[2] / l[3], 0.0, 1.0)
-		var stone: StackSprite = l[5]
+		var stone = l[5]  # 消えているかもしれないので型を付けない
 		if is_instance_valid(stone):
 			stone.world_pos = (l[6] as Vector2).lerp(l[0], t)
 			var hy := lerpf(l[7] * StackSprite.LEVEL_PX, l[1] * StackSprite.LEVEL_PX, t) + 6.0 + sin(t * PI) * 34.0
@@ -1340,7 +1340,8 @@ func _effect_sprite(model: VoxelModel, pos: Vector2, h: int, lift: float, second
 func _step_effects(delta: float) -> void:
 	for i in range(_effects.size() - 1, -1, -1):
 		_effects[i][1] -= delta
-		var s: StackSprite = _effects[i][0]
+		# ほかの所（転がる大岩・大蛇の影など）が先に消した絵もある。型付きの変数に入れる前に確かめる（消えた絵を入れるとエラーで止まる）
+		var s = _effects[i][0]
 		if _effects[i][1] <= 0.0 or not is_instance_valid(s):
 			if is_instance_valid(s):
 				s.queue_free()
