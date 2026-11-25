@@ -15,6 +15,8 @@ var hp: int = MAX_HP
 var max_hp: int = MAX_HP
 ## 足の速さの倍率（体の動きのポイントで上がる）
 var speed_mult := 1.0
+## このフレームに歩いたか（弓を歩きながら溜めると遅い）
+var moving := false
 ## false の間は動かせない（死亡処理中など）。
 var controllable := true
 ## マウスカーソルの画面上の位置。null でなければ、歩く向きとは別にいつもそちらを向く。
@@ -176,11 +178,12 @@ func _process(delta: float) -> void:
 		if Input.is_physical_key_pressed(KEY_UP) or Input.is_physical_key_pressed(KEY_W): dir.y -= 1
 		if Input.is_physical_key_pressed(KEY_DOWN) or Input.is_physical_key_pressed(KEY_S): dir.y += 1
 		if dir != Vector2.ZERO:
-			var spd := SPEED * speed_mult * (CROUCH_SPEED if crouching else 1.0)
+			var spd := SPEED * speed_mult * (CROUCH_SPEED if crouching else 1.0) * (Bow.DRAW_MOVE if charge >= 0.0 else 1.0)
 			mover.move(camera.screen_dir_to_world(dir.normalized()) * spd * delta, delta)
 		if aim_screen != null:
 			aim_at_screen(aim_screen)
 	var moved := mover.pos.distance_to(before)
+	moving = moved > 0.01
 	anim.set_charge(charge)
 	anim.set_climb(mover.climb_progress() if hp > 0 else 0.0)
 	anim.update(delta, moved if moved < TELEPORT_PX else 0.0)

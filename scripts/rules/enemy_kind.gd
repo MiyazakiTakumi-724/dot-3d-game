@@ -110,6 +110,30 @@ static func hit_rule(k: Kind, source: String, facing: Vector2, at: Vector2, from
 		return "weak"
 	return ""
 
+## 武器の得意・不得意（2026-11-26 の4回目の直し）【提案】。弱点は×1.5、効きにくいと×0.5。
+## 矢が効きにくい敵を多くして、弓だけでは進みにくくする。剣・鉄球・魔法にもそれぞれ得意な相手がいる。
+const WEAK_MULT := 1.5
+const RESIST_MULT := 0.5
+## 種類 → {攻撃: 倍率}（ない攻撃は1）
+const AFFINITY := {
+	Kind.WEAK: {"sword": WEAK_MULT, "arrow": RESIST_MULT},
+	Kind.SHOOTER: {"sword": WEAK_MULT},
+	Kind.SHIELD: {"ball": WEAK_MULT, "bomb": WEAK_MULT, "arrow": RESIST_MULT},
+	Kind.SHADOW: {"magic": WEAK_MULT, "arrow": RESIST_MULT},
+	Kind.FLYER: {"arrow": WEAK_MULT, "magic": WEAK_MULT},
+	Kind.BOMBER: {"arrow": WEAK_MULT, "magic": RESIST_MULT},
+	Kind.GHOST: {"magic": WEAK_MULT, "arrow": RESIST_MULT},
+	Kind.SPEAR: {"ball": WEAK_MULT, "arrow": RESIST_MULT},
+	Kind.LOBBER: {"arrow": WEAK_MULT},
+	Kind.MAGE: {"sword": WEAK_MULT, "magic": RESIST_MULT},
+	Kind.BEETLE: {"ball": WEAK_MULT, "bomb": WEAK_MULT},
+	Kind.WASP: {"magic": WEAK_MULT},
+	Kind.MIMIC: {"magic": WEAK_MULT, "bomb": WEAK_MULT, "arrow": RESIST_MULT},
+}
+
+static func affinity(k: Kind, source: String) -> float:
+	return AFFINITY.get(k, {}).get(source, 1.0)
+
 ## 亡霊がプレイヤーに気づく距離。しゃがんで歩いていると短い。
 static func hearing(k: Kind, crouching: bool) -> float:
 	if k == Kind.GHOST and crouching:

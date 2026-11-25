@@ -460,7 +460,7 @@ func test_buy_sword_in_town_and_swing():
 	e.walker.height = f.player.mover.height
 	var hp: int = e.walker.hp
 	assert_true(f.use_item())
-	assert_eq(hp - e.walker.hp, Damage.sword(PlayerStats.BASE_ATTACK, 0, 0))
+	assert_eq(hp - e.walker.hp, roundi(Damage.sword(PlayerStats.BASE_ATTACK, 0, 0) * EnemyKind.affinity(e.kind, "sword")))
 	assert_false(f.use_item())  # 振る間隔
 
 func test_sword_not_usable_without_sword():
@@ -1171,7 +1171,8 @@ func test_flyers_dodge_sword_and_ball():
 		assert_eq(e.walker.hp, hp)
 		assert_true(f.damage_target(e, 3, f.player.mover.pos, "", Color.WHITE, "arrow"))
 		assert_true(f.damage_target(e, 3, f.player.mover.pos, "", Color.WHITE, "magic"))
-		assert_eq(e.walker.hp, hp - 6)
+		var want := roundi(3 * EnemyKind.affinity(k, "arrow")) + roundi(3 * EnemyKind.affinity(k, "magic"))
+		assert_eq(e.walker.hp, hp - want, "弱点の武器は1.5倍")
 
 ## 甲虫はかたい（剣は1だけ）。鉄球でひっくり返すと、剣がふつうに入る
 func test_beetle_flips_under_ball():
@@ -1184,7 +1185,7 @@ func test_beetle_flips_under_ball():
 	f.damage_target(e, 2, e.walker.pos, "", Color.WHITE, "ball")
 	assert_gt(e.flipped, 0.0)
 	f.damage_target(e, 8, f.player.mover.pos, "", Color.WHITE, "sword")
-	assert_eq(e.walker.hp, hp - 1 - 2 - 8)
+	assert_eq(e.walker.hp, hp - 1 - 3 - 8, "鉄球は弱点（1.5倍）")
 
 ## 目を回しているイノシシには2倍入る。すけている亡霊には入らない
 func test_stunned_double_and_faded_pass():

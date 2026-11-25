@@ -48,6 +48,11 @@ func _near_cell(m: HeightMap, cell: Vector2i) -> Vector2i:
 				return c
 	return cell
 
+## 大技と、離れたときの技を使わせない（前からの技だけを見る）
+func _quiet(b: Boss) -> void:
+	b._special = 999.0
+	b._far_t = -999.0
+
 func _half(b: Boss) -> void:
 	b.walker.take_damage(b.walker.max_hp / 2 + 1)
 
@@ -107,6 +112,7 @@ func test_giant_rolls_boulders_in_phase_two():
 ## 大蛇：2段目でもぐる（その間は攻撃が効かない）。影が先に出てから、足元に出る
 func test_snake_burrows_and_comes_up_under_player():
 	var b := _enter("草むらの大蛇")
+	_quiet(b)
 	_half(b)
 	_run(7.2)
 	assert_gt(b.burrow, 0.0)
@@ -191,6 +197,7 @@ func test_queen_bee_flies_calls_wasps_and_lands():
 	assert_eq(b.hit_rule("sword", f.player.mover.pos), "miss")
 	assert_eq(b.hit_rule("ball", b.walker.pos), "miss")
 	assert_eq(b.hit_rule("arrow", f.player.mover.pos), "")
+	_quiet(b)
 	_run(9.2)
 	var wasps := 0
 	for e in f.enemies:
@@ -218,6 +225,8 @@ func test_chest_king_hides_among_decoys():
 			spots[d.walker.cell()] = true
 	var where := b.walker.cell()
 	f.player.mover.place(Vector2i(1, 1))  # 噛みつかれない所
+	b._special = 999.0  # 大技と、離れたときの技は使わせない（入れ替わりだけ見る）
+	b._far_t = -999.0
 	_run(Boss.CHEST_SHUFFLE + 0.2)
 	assert_eq(b.decoys.filter(func(d): return is_instance_valid(d) and d.walker.alive).size(), Boss.DECOYS)
 	var moved := b.walker.cell() != where
@@ -414,3 +423,50 @@ func test_chest_king_spits_coins_and_calls_mimic():
 		if is_instance_valid(e) and e.kind == EnemyKind.Kind.MIMIC and e.minion:
 			mimics += 1
 	assert_eq(mimics, 1)
+
+# ---------------------------------------------------------------- 4回目の直し（2026-11-26）：構え・大技・離れると詰める
+
+## 構え：矢は構えで弱まる。剣で削りきると崩れて目を回し、その間は2倍入る
+func test_guard_softens_arrows_and_sword_breaks_it() -> void:
+	var b := _enter("廃城の主")
+	var hp: int = b.walker.hp
+	f.damage_target(b, 20, b.walker.pos + b.walker.dir * 10.0, "", Color.WHITE, "arrow")
+	assert_lt(hp - b.walker.hp, 20, "矢は構えで弱まる")
+	var tries := 0
+	while not b.guard.broken() and tries < 40:
+		f.damage_target(b, 10, b.walker.pos + b.facing() * 10.0, "", Color.WHITE, "sword")
+		tries += 1
+	assert_true(b.guard.broken(), "剣で崩れる")
+	assert_gt(b.stunned, 0.0, "崩れると目を回す")
+	assert_eq(b.hit_rule("arrow", f.player.mover.pos), "weak")
+
+## 大技：どのボスも、しばらく戦うといくつかの大技を使う
+func test_every_boss_uses_several_specials() -> void:
+	for g in WHERE:
+		var b := _enter(g)
+		_half(b)
+		_run(16.0, 0.1)
+		if not is_instance_valid(b):
+			continue
+		var kinds := {}
+		for s in b.specials_used:
+			kinds[s] = true
+		assert_gte(kinds.size(), 2, "%s の大技 %s" % [g, b.specials_used])
+
+## 離れたままでいると、詰めてくる技を使う
+func test_boss_punishes_keeping_away() -> void:
+	var b := _enter("廃城の主")
+	b._far_t = Boss.FAR_LIMIT + 0.1
+	b._special = 99.0
+	f.player.mover.pos = b.walker.pos + Vector2(Boss.FAR_RANGE + 30.0, 0)
+	_run(0.2)
+	assert_has(b.specials_used, "punish")
+
+## 崩れると、ためている大技はやめる
+func test_stagger_cancels_plans() -> void:
+	var b := _enter("ブライト")
+	b._later(0.5, b._ring.bind(16, 50.0, 0.0))
+	b.guard.value = 0.1
+	f.damage_target(b, 10, b.walker.pos - b.facing() * 10.0, "", Color.WHITE, "sword")
+	assert_true(b.guard.broken())
+	assert_eq(b._plan.size(), 0)

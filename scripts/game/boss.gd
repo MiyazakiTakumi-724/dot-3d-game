@@ -29,6 +29,10 @@ extends StackSprite
 ## ブライト：ときどき別の所へ消えて現れる（背中を取り直す）。2段目：回る光の柱の列。
 ## 女王蜂：ときどき針を8方向に撃つ。2段目：急降下して降りたときにも8方向。
 ## 宝箱の王：ときどき本物だけが口を開けて金貨を吐く（見分ける合図にもなる）。2段目：擬態箱を1つ呼ぶ。
+##
+## 2026-11-26（4回目の直し）：どのボスにも大技を4〜6つ足した（_special_move。数秒ごとに、段と距離に合う技を前と違うものから選ぶ。
+## 大技の前は体が光る（_tele）。連続技は _later で少しあとに動きを入れる）。離れたまま FAR_LIMIT 秒たつと、詰めてくる技（_punish_far）を使う。
+## 構え（BossGuard）を剣・鉄球・爆弾で削りきると崩れて目を回す（弓で逃げながら撃ち続けるだけでは勝てない）。
 
 const WAKE_RANGE := 120.0
 const SNAKE_VIEW := 0.7  ## 大蛇が見えるカメラの角度の幅（ラジアン、片側）
@@ -112,6 +116,30 @@ var _burrow_mark: StackSprite
 var _shuffle := CHEST_SHUFFLE
 var _minions: Array = []
 var _base_speed := 1.0
+## 大技（2026-11-26）
+const FAR_RANGE := 96.0  ## これより離れている時間を数える
+const FAR_LIMIT := 4.0  ## 離れたままこれだけたつと詰めてくる
+const SPECIAL_MIN := 3.0
+const SPECIAL_MAX := 5.0
+var _far_t := 0.0
+var _special := 4.0
+var _last_special := ""
+var _tele := 0.0  ## 大技の前に光っている残り秒（その間は動かない）
+var _plan: Array = []  ## [残り秒, Callable]：少しあとにする動き（連続技）
+var _pv := Vector2.ZERO  ## 主人公の速さ（先読みに使う）
+var _last_ppos := Vector2.INF
+var _leap_time := 0.0  ## 跳んでいる残り秒
+var _leap_total := 0.5
+var _leap_land := ""
+var _rush_t := 0.0  ## まっすぐ走る残り秒（体当たり）
+var _rush_mult := 4.0
+var _orbit_t := 0.0  ## 主人公のまわりを回る残り秒
+var _orbit_end: Callable
+var _orbit_dir := 1.0
+## 使った大技の名前（テスト用）
+var specials_used: Array = []
+## 構え（崩し、2026-11-26）。剣・鉄球・爆弾で削りきると崩れて目を回す
+var guard: BossGuard
 
 func setup(f: Node, name_: String, cell: Vector2i, map: HeightMap, cam: StackCamera, defeated := 0) -> void:
 	field = f
@@ -121,6 +149,7 @@ func setup(f: Node, name_: String, cell: Vector2i, map: HeightMap, cam: StackCam
 	attack = BossKind.attack(name_, defeated)
 	var hp := BossKind.hp(name_, defeated)
 	walker = EnemyWalker.new(map, cell, Vector2.DOWN, hp, 1)
+	guard = BossGuard.new(hp, BossGuard.WEAK.get(group, ""))
 	walker.chase_range = 400.0
 	_home = walker.pos
 	match group:
@@ -222,6 +251,33 @@ func hit_rule(source: String, from: Vector2) -> String:
 		return "weak"
 	return ""
 
+## 構えを通したダメージ（field.damage_target が使う）。構えを削りきると崩れて目を回す（STAGGER 秒、その間は×2）。
+func guard_damage(source: String, dmg: int) -> int:
+	if stunned > 0.0:
+		return dmg
+	var out := maxi(1, roundi(dmg * guard.mult(source)))
+	if guard.hit(source, dmg):
+		stunned = BossGuard.STAGGER
+		_interrupt()
+		_boom(2.0)
+	return out
+
+## 崩れたとき：ためている技・連続技・走り・跳びをやめる（跳んでいたら、着く所に下ろす）。
+func _interrupt() -> void:
+	_wind = -1.0
+	_dash_time = 0.0
+	_rush_t = 0.0
+	_orbit_t = 0.0
+	_tele = 0.0
+	_plan.clear()
+	if _leap_time > 0.0:
+		_leap_time = 0.0
+		walker.pos = _leap_to
+		_fix_height()
+	if _wind_kind in ["leaping", "rolling", "diving"]:
+		_wind_kind = ""
+	walker.speed_mult = _base_speed
+
 ## 攻撃が当たったあと（宝箱の王は口を開けて噛み返し、すぐ入れ替わる）。
 func on_hit(_source: String) -> void:
 	if group == "宝箱の王" and active:
@@ -279,6 +335,8 @@ func _check_phase() -> void:
 func _process(delta: float) -> void:
 	_hit_flash = maxf(0.0, _hit_flash - delta)
 	stunned = maxf(0.0, stunned - delta)
+	if active:
+		guard.update(delta)
 	open_time = maxf(0.0, open_time - delta)
 	var p := _player()
 	if not active and p.mover.pos.distance_to(walker.pos) < WAKE_RANGE:
@@ -298,25 +356,42 @@ func _process(delta: float) -> void:
 		if phase == 2:
 			_clock3 += delta
 		_summon += delta
-		match group:
-			"岩転がしの巨人": _giant(delta, p)
-			"草むらの大蛇": _snake(delta, p)
-			"満ち引きする溶岩": _lava(delta, p)
-			"廃城の主": _knight(delta, p)
-			"岩窟のぬし": _golem(delta, p)
-			"溶岩洞のぬし": _salamander(delta, p)
-			"双子": _twin(delta, p)
-			"らせん塔の番人": _guardian(delta, p)
-			"ブライト": _bright(delta, p)
-			"女王蜂": _queen(delta, p)
-			"宝箱の王": _chest_king(delta, p)
+		_track(delta, p)
+		_step_plan(delta)
+		if not _generic_motion(delta, p):
+			_far_t = _far_t + delta if _dist(p) > FAR_RANGE else maxf(0.0, _far_t - delta * 2.0)
+			_special -= delta * (1.35 if phase == 2 else 1.0)
+			if _free():
+				if _far_t >= FAR_LIMIT:
+					_far_t = 0.0
+					_special = maxf(_special, 2.0)
+					_punish_far(p)
+				elif _special <= 0.0:
+					_special = randf_range(SPECIAL_MIN, SPECIAL_MAX)
+					_special_move(p)
+			if _tele <= 0.0:
+				_dispatch(delta, p)
 	_step_rocks(delta)
 	_look()
 	super._process(delta)
 
+func _dispatch(delta: float, p: Player) -> void:
+	match group:
+		"岩転がしの巨人": _giant(delta, p)
+		"草むらの大蛇": _snake(delta, p)
+		"満ち引きする溶岩": _lava(delta, p)
+		"廃城の主": _knight(delta, p)
+		"岩窟のぬし": _golem(delta, p)
+		"溶岩洞のぬし": _salamander(delta, p)
+		"双子": _twin(delta, p)
+		"らせん塔の番人": _guardian(delta, p)
+		"ブライト": _bright(delta, p)
+		"女王蜂": _queen(delta, p)
+		"宝箱の王": _chest_king(delta, p)
+
 ## 色と姿（ためている間は光る。目を回していると黄色く点滅。2段目は少し赤い）。
 func _look() -> void:
-	if _wind >= 0.0 or _hit_flash > 0.0 or _glow:
+	if _wind >= 0.0 or _hit_flash > 0.0 or _glow or (_tele > 0.0 and int(_tele * 10.0) % 2 == 0):
 		self_modulate = Color(1.8, 1.8, 1.8)
 	elif stunned > 0.0:
 		self_modulate = Color(1.3, 1.2, 0.6) if int(_t * 8.0) % 2 == 0 else Color.WHITE
@@ -337,6 +412,8 @@ func _look() -> void:
 	elif group == "溶岩洞のぬし" and _wind_kind == "leaping":
 		var k := clampf(1.0 - _dash_time / 0.5, 0.0, 1.0)
 		lift_px = sin(k * PI) * 26.0
+	if _leap_time > 0.0:
+		lift_px = sin(clampf(1.0 - _leap_time / _leap_total, 0.0, 1.0) * PI) * 30.0
 	if group == "岩窟のぬし":
 		var want := "curl" if _wind_kind == "rolling" or stunned > 0.0 else ""
 		_use_model(want)
@@ -367,7 +444,7 @@ func _windup(delta: float, seconds: float, kind: String, start: bool) -> String:
 	return ""
 
 func _chase(delta: float, p: Player) -> void:
-	if _wind >= 0.0 or _dash_time > 0.0:
+	if _wind >= 0.0 or _dash_time > 0.0 or _tele > 0.0:
 		return  # ためている間は動かない
 	walker.chase(p.mover.pos, p.mover.height)
 	walker.step(delta)
@@ -840,6 +917,11 @@ func _queen(delta: float, p: Player) -> void:
 		_dash(delta, 3.5)
 		if _dist(p) < 12.0:
 			field.hurt_player(attack)
+		if _dash_time <= 0.0 and _dives_left > 0:
+			_dives_left -= 1
+			_dash_dir = (_lead(p, 0.3) - walker.pos).normalized()
+			_dash_time = 0.6
+			return
 		if _dash_time <= 0.0:
 			_wind_kind = ""
 			landed = QUEEN_LANDED
@@ -940,6 +1022,611 @@ func _shuffle_places() -> void:
 		decoys[i].move_to(cells[i + 1])
 	for c in cells:
 		field.effect_at(Props.rain_ring(8.0), HeightMap.cell_center(c), walker.map.get_height(c), 0.25)
+
+# ---------------------------------------------------------------- 大技（2026-11-26 の4回目の直し）
+
+## 大技を始めてよいか（ためている・走っている・跳んでいる・もぐっている間は始めない）。
+func _free() -> bool:
+	return _wind < 0.0 and _dash_time <= 0.0 and _tele <= 0.0 and _leap_time <= 0.0 and _rush_t <= 0.0 \
+		and _orbit_t <= 0.0 and burrow <= 0.0 and landed <= 0.0 and not (_wind_kind in ["leaping", "rolling", "diving"])
+
+## 主人公の速さを覚える（先読みに使う）。
+func _track(delta: float, p: Player) -> void:
+	if _last_ppos != Vector2.INF and delta > 0.0:
+		var v := (p.mover.pos - _last_ppos) / delta
+		if v.length() < 200.0:
+			_pv = _pv.lerp(v, clampf(delta * 6.0, 0.0, 1.0))
+	_last_ppos = p.mover.pos
+
+## t 秒後に主人公がいそうな所。
+func _lead(p: Player, t: float) -> Vector2:
+	return p.mover.pos + _pv * t
+
+func _later(t: float, f: Callable) -> void:
+	_plan.append([t, f])
+
+func _step_plan(delta: float) -> void:
+	var i := 0
+	while i < _plan.size():
+		_plan[i][0] -= delta
+		if _plan[i][0] <= 0.0:
+			var f: Callable = _plan[i][1]
+			_plan.remove_at(i)
+			if walker.alive and stunned <= 0.0 and f.is_valid():
+				f.call()
+		else:
+			i += 1
+
+## 体を光らせて t 秒ためてから f をする（その間は動かない）。
+func _telegraph(t: float, f: Callable) -> void:
+	_tele = t
+	Sfx.play("growl", walker.pos, -4.0, 0.15)
+	_later(t, f)
+
+## 跳ぶ・走る・回る（大技の動き）。動いている間は true（ふだんの戦い方はしない）。
+func _generic_motion(delta: float, p: Player) -> bool:
+	_tele = maxf(0.0, _tele - delta)
+	if _leap_time > 0.0:
+		_leap_time -= delta
+		var k := clampf(1.0 - _leap_time / _leap_total, 0.0, 1.0)
+		walker.pos = _leap_from.lerp(_leap_to, k)
+		if _leap_time <= 0.0:
+			_leap_time = 0.0
+			walker.pos = _leap_to
+			_fix_height()
+			_land(p)
+		return true
+	if _rush_t > 0.0:
+		_rush_t -= delta
+		walker.dir = _dash_dir
+		walker.speed_mult = _rush_mult
+		var before := walker.pos
+		walker.step(delta)
+		if _near(p, 14.0):
+			field.hurt_player(attack)
+		if walker.pos.distance_to(before) < 0.01 or _rush_t <= 0.0:
+			_rush_t = 0.0
+			walker.speed_mult = _base_speed
+		return true
+	if _orbit_t > 0.0:
+		_orbit_t -= delta
+		var d := p.mover.pos - walker.pos
+		if d.length() > 0.1:
+			var tangent := d.normalized().orthogonal() * _orbit_dir
+			var radial := d.normalized() * clampf((d.length() - 40.0) / 16.0, -1.0, 1.0)
+			walker.dir = (tangent + radial).normalized()
+			walker.speed_mult = maxf(_base_speed, 1.0) * 1.8
+			walker.step(delta)
+		if _orbit_t <= 0.0:
+			walker.speed_mult = _base_speed
+			if _orbit_end.is_valid():
+				_orbit_end.call()
+		return true
+	return false
+
+func _fix_height() -> void:
+	var c := walker.cell()
+	if walker.map.in_bounds(c):
+		walker.height = maxi(0, walker.map.get_height(c))
+
+## 降りられるマス（to のマスか、そのまわり）。なければ (-9999, -9999)。
+func _landing_cell(to: Vector2) -> Vector2i:
+	var map := walker.map
+	var c0 := HeightMap.world_to_cell(to)
+	for off in [Vector2i.ZERO, Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+		var c: Vector2i = c0 + off
+		if map.in_bounds(c) and not map.is_wall(c) and not map.is_pit(c) and not map.is_water(c) and not walker.forbidden.has(c):
+			return c
+	return Vector2i(-9999, -9999)
+
+## to へ跳ぶ（seconds 秒。着く所に影が出る）。着いたら land の技。跳べなければ false。
+func _leap(to: Vector2, seconds: float, land: String) -> bool:
+	var c := _landing_cell(to)
+	if c.x == -9999:
+		return false
+	_leap_from = walker.pos
+	_leap_to = to if HeightMap.world_to_cell(to) == c else HeightMap.cell_center(c)
+	_leap_total = seconds
+	_leap_time = seconds
+	_leap_land = land
+	Sfx.play("enemy_jump", walker.pos)
+	var s: StackSprite = field.effect_at(Props.aim_shadow(), _leap_to, walker.map.get_height(c), seconds)
+	if s != null:
+		s.set_meta("steady", true)
+	return true
+
+func _leap_at(p: Player, seconds: float, land: String) -> void:
+	_leap(_lead(p, seconds * 0.5), seconds, land)
+
+func _leap_home(seconds: float) -> void:
+	_left_home = false
+	_leap(_home, seconds, "slam")
+
+## 跳んで着いた（まわりに衝撃。land で技が足される）。
+func _land(p: Player) -> void:
+	_boom(3.0)
+	field.effect_at(Props.rain_ring(28.0), walker.pos, walker.height, 0.3)
+	if _near(p, 26.0):
+		field.hurt_player(attack)
+	match _leap_land:
+		"fire":
+			for i in 8:
+				field.boss_fire(walker.pos + Vector2.from_angle(i * TAU / 8.0) * 18.0, walker.height, 2.5, maxi(1, attack / 2))
+		"ring":
+			_ring(8, 60.0, randf() * TAU)
+		"quake":
+			var cells: Array = []
+			var c0 := walker.cell()
+			for i in 6:
+				cells.append(c0 + Vector2i((Vector2.from_angle(i * TAU / 6.0 + randf() * 0.5) * randf_range(2.0, 3.0)).round()))
+			field.boss_pits(cells, PIT_WARN, PIT_OPEN - 1.5)
+
+## まっすぐ走る（体当たり）。
+func _rush(dir: Vector2, seconds: float, mult: float) -> void:
+	if dir == Vector2.ZERO:
+		return
+	_dash_dir = dir.normalized()
+	_rush_t = seconds
+	_rush_mult = mult
+	Sfx.play("dash", walker.pos)
+
+func _rush_at(p: Player, seconds: float, mult: float) -> void:
+	_rush(p.mover.pos - walker.pos, seconds, mult)
+
+## 主人公のまわりを seconds 秒回り、そのあと end をする。
+func _orbit(seconds: float, end: Callable) -> void:
+	_orbit_t = seconds
+	_orbit_end = end
+	_orbit_dir = -1.0 if randf() < 0.5 else 1.0
+
+## 向き angle へ弾を撃つ（高さは主人公の低い方へ合わせる）。
+func _shoot_dir(angle: float, speed: float) -> void:
+	var p := _player()
+	var b := Bullet.new()
+	b.aim(walker.pos, walker.height, walker.pos + Vector2.from_angle(angle) * 60.0, mini(walker.height, p.mover.height), speed)
+	b.damage = attack
+	field.boss_shot(b)
+
+## まわり n 方向へ弾を撃つ。
+func _ring(n: int, speed: float, offset := 0.0) -> void:
+	for i in n:
+		_shoot_dir(offset + i * TAU / n, speed)
+
+## to へ弾を撃つ。
+func _throw_at(to: Vector2, speed: float) -> void:
+	var p := _player()
+	if not Damage.can_hit(walker.height, p.mover.height):
+		return
+	var b := Bullet.new()
+	b.aim(walker.pos, walker.height, to, p.mover.height, speed)
+	b.damage = attack
+	field.boss_shot(b)
+
+## 先読みして撃つ。
+func _aimed_shot(p: Player, lead: float, speed: float) -> void:
+	_throw_at(_lead(p, lead), speed)
+
+## 少しあとに落ちる攻撃（印が先に出る）。
+func _strike(at: Vector2, delay: float, r: float, model: VoxelModel = null) -> void:
+	field.boss_strike(at, delay, r, attack, model if model != null else Props.rain_ring(r))
+
+## 主人公の今いる所に落ちる攻撃。
+func _strike_on(p: Player, delay: float, r: float, model: VoxelModel) -> void:
+	_strike(p.mover.pos, delay, r, model)
+
+## from から dir へ n 個並ぶ攻撃（手前から順に落ちる）。
+func _strike_line(from: Vector2, dir: Vector2, n: int, spacing: float, d0: float, dstep: float, r: float, model: VoxelModel) -> void:
+	var d := dir.normalized()
+	for k in range(1, n + 1):
+		_strike(from + d * k * spacing, d0 + k * dstep, r, model)
+
+## center のまわりの輪（radii の順に外へ広がる）。gap の向きだけ空いている（そこへ逃げる）。
+func _ring_wave(center: Vector2, radii: Array, n: int, gap: float, d0: float, dstep: float, model: VoxelModel = null) -> void:
+	for j in radii.size():
+		var r: float = radii[j]
+		var count := maxi(5, int(n * r / radii[radii.size() - 1]))
+		for i in count:
+			var a := i * TAU / count
+			if absf(wrapf(a - gap, -PI, PI)) < 0.45:
+				continue
+			_strike(center + Vector2.from_angle(a) * r, d0 + j * dstep, 9.0, model)
+
+## 主人公のまわりに石や光が降る（先読みした所のまわり）。
+func _rain_around(p: Player, n: int, spread: float, model: VoxelModel) -> void:
+	var c := _lead(p, 0.6)
+	for i in n:
+		var at := c if i == 0 else c + Vector2.from_angle(randf() * TAU) * randf_range(10.0, spread)
+		_strike(at, randf_range(0.8, 1.4), 10.0, model)
+
+## 尾や腕でまわりを払う。
+func _sweep(r: float, low_dodge := false) -> void:
+	var p := _player()
+	field.effect_at(Props.rain_ring(r), walker.pos, walker.height, 0.25)
+	Sfx.play("sword", walker.pos)
+	if _dist(p) < r + 2.0 and absi(p.mover.height - walker.height) <= 1 and not (low_dodge and p.crouching):
+		field.hurt_player(attack)
+
+## 前と違う大技を選ぶ（テスト用に覚える）。
+func _choose(opts: Array) -> String:
+	var pool := opts.filter(func(o): return o != _last_special)
+	if pool.is_empty():
+		pool = opts
+	var pick: String = pool[randi() % pool.size()]
+	_last_special = pick
+	specials_used.append(pick)
+	return pick
+
+## 炎を置く（燃える跡）。
+func _fire_at(at: Vector2) -> void:
+	var c := HeightMap.world_to_cell(at)
+	if walker.map.in_bounds(c) and not walker.map.is_wall(c):
+		field.boss_fire(at, walker.map.get_height(c), 2.5, maxi(1, attack / 2))
+
+## 主人公のそば（2〜3マス）の歩けるマスへ消えて現れる。
+func _blink_near(p: Player) -> void:
+	var map := walker.map
+	for i in 24:
+		var at := p.mover.pos + Vector2.from_angle(randf() * TAU) * randf_range(32.0, 48.0)
+		var c := HeightMap.world_to_cell(at)
+		if not map.in_bounds(c) or map.is_wall(c) or map.is_pit(c) or map.is_water(c) or walker.forbidden.has(c):
+			continue
+		if absi(map.get_height(c) - p.mover.height) > 1:
+			continue
+		field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.35)
+		Sfx.play("teleport", walker.pos)
+		walker.pos = HeightMap.cell_center(c)
+		_fix_height()
+		field.effect_at(Props.rain_ring(14.0), walker.pos, walker.height, 0.35)
+		return
+
+## ボスごとの大技。
+func _special_move(p: Player) -> void:
+	match group:
+		"岩転がしの巨人", "土の巨人": _sp_giant(p)
+		"草むらの大蛇": _sp_snake(p)
+		"満ち引きする溶岩": _sp_lava(p)
+		"廃城の主", "闇の王": _sp_knight(p)
+		"岩窟のぬし": _sp_golem(p)
+		"溶岩洞のぬし": _sp_salamander(p)
+		"双子": _sp_twin(p)
+		"らせん塔の番人": _sp_guardian(p)
+		"ブライト": _sp_bright(p)
+		"女王蜂": _sp_queen(p)
+		"宝箱の王": _sp_chest(p)
+
+## 離れたままでいると、詰めてくる（弓で逃げながら撃ち続けるだけでは勝てない）。
+func _punish_far(p: Player) -> void:
+	specials_used.append("punish")
+	match group:
+		"岩転がしの巨人", "土の巨人":
+			_telegraph(0.5, _rain_around.bind(p, 8, 40.0, Props.crack_rock()))
+			_later(1.0, _quake_at.bind(p))
+		"草むらの大蛇":
+			_start_burrow(p)
+		"満ち引きする溶岩":
+			_lava_wave(p)
+			for i in 3:
+				_later(i * 0.5, _strike_on.bind(p, 0.8, 11.0, Props.flame(i % 3)))
+		"廃城の主", "闇の王":
+			_telegraph(0.4, _leap_at.bind(p, 0.6, "ring"))
+		"岩窟のぬし":
+			_telegraph(0.6, _golem_roll.bind(p))
+		"溶岩洞のぬし":
+			_telegraph(0.35, _leap_at.bind(p, 0.5, "fire"))
+		"双子":
+			_telegraph(0.35, _lunge_at.bind(p))
+		"らせん塔の番人":
+			_gears(p)
+			_later(0.4, _ring.bind(12, 55.0, randf() * TAU))
+		"ブライト":
+			_blink_near(p)
+			_later(0.4, _fan.bind(p, 80.0, 5, 0.2))
+		"女王蜂":
+			_telegraph(0.35, _queen_dive.bind(p, 0))
+		"宝箱の王":
+			_coin_rain(p)
+			_later(0.3, _chest_dash.bind(p))
+
+func _quake_at(p: Player) -> void:
+	_boom(3.0)
+	field.boss_pits(_quake_cells(p), PIT_WARN, PIT_OPEN - 1.0)
+
+# 巨人：石の雨・3連投げ・広がる地響きの輪（すき間へ逃げる）・2段目は跳び降りて踏みつけ、また岩棚へ戻る
+var _left_home := false  ## 巨人が岩棚から跳び降りている
+func _sp_giant(p: Player) -> void:
+	if _left_home:
+		_left_home = false
+		_choose(["go_home"])
+		_telegraph(0.4, _leap_home.bind(0.8))
+		return
+	var opts := ["rock_rain", "volley", "shock_ring"]
+	if phase == 2:
+		opts.append("leap_down")
+	match _choose(opts):
+		"rock_rain":
+			_telegraph(0.6, _rain_around.bind(p, 6 if phase == 1 else 9, 34.0, Props.crack_rock()))
+		"volley":
+			_tele = 0.4
+			for i in 3:
+				_later(0.4 + i * 0.35, _aimed_shot.bind(p, 0.6, 72.0))
+		"shock_ring":
+			_telegraph(0.7, _giant_ring)
+		"leap_down":
+			_left_home = true
+			_telegraph(0.6, _leap_at.bind(p, 0.8, "slam"))
+			_later(6.0, _leap_home.bind(0.8))
+
+func _giant_ring() -> void:
+	_boom(3.5)
+	_ring_wave(walker.pos, [32.0, 48.0, 64.0, 80.0], 14, randf() * TAU, 0.5, 0.3)
+
+# 大蛇：2回続けて突進・まわりを回ってから噛みつく・毒のつば・2段目は尾の3連払い。離れていると、もぐって足元から出る
+func _sp_snake(p: Player) -> void:
+	var opts := ["double_lunge", "coil", "spit"]
+	if phase == 2:
+		opts.append("tail_combo")
+	match _choose(opts):
+		"double_lunge":
+			_telegraph(0.4, _lunge_at.bind(p))
+			_later(1.2, _lunge_at.bind(p))
+		"coil":
+			_orbit(1.6, _lunge_at.bind(p))
+		"spit":
+			_tele = 0.4
+			for i in 3:
+				_later(0.4 + i * 0.25, _strike_on.bind(p, 0.9, 11.0, Props.rain_ring(11.0)))
+		"tail_combo":
+			_telegraph(0.5, _sweep.bind(26.0))
+			_later(1.0, _sweep.bind(30.0))
+			_later(1.5, _sweep.bind(36.0))
+
+func _lunge_at(p: Player) -> void:
+	_dash_dir = (p.mover.pos - walker.pos).normalized()
+	_dash_time = 0.45
+
+func _start_burrow(p: Player) -> void:
+	specials_used.append("burrow")
+	burrow = 1.6
+	_burrow_spot = p.mover.pos
+	_burrow_mark = field.effect_at(Props.aim_shadow(), _burrow_spot, p.mover.height, 1.6)
+	_burrow_mark.set_meta("steady", true)
+
+# 溶岩：らせんの火・追ってくる溶岩の手・まわりの噴火・2段目は火の玉を呼ぶ。離れていると溶岩の波
+func _sp_lava(p: Player) -> void:
+	var opts := ["spiral", "lava_hand", "eruption"]
+	if phase == 2:
+		opts.append("bombers")
+	match _choose(opts):
+		"spiral":
+			_tele = 0.5
+			var base := randf() * TAU
+			var arms := 1 if phase == 1 else 2
+			for i in 16:
+				for a in arms:
+					_later(0.5 + i * 0.09, _shoot_dir.bind(base + i * 0.4 + a * PI, 60.0))
+		"lava_hand":
+			for i in 3:
+				_later(i * 0.5, _strike_on.bind(p, 0.8, 11.0, Props.flame(i % 3)))
+		"eruption":
+			for i in 8:
+				var at := _home + Vector2.from_angle(i * TAU / 8.0 + randf() * 0.4) * randf_range(30.0, 90.0)
+				_strike(at, randf_range(0.9, 1.5), 11.0, Props.flame(i % 3))
+		"bombers":
+			_call_minions(EnemyKind.Kind.BOMBER, 2)
+
+func _lava_wave(p: Player) -> void:
+	_moves += 1
+	var horizontal := _moves % 2 == 0
+	var map := walker.map
+	var far := Vector2(map.size.x * HeightMap.CELL_PX - 4.0, p.mover.pos.y) if horizontal else Vector2(p.mover.pos.x, map.size.y * HeightMap.CELL_PX - 4.0)
+	field.boss_roll(far, Vector2(-1, 0) if horizontal else Vector2(0, -1), attack, Props.flame(2))
+
+# 廃城の主（闇の王）：3連斬り・跳び斬り・5方向の衝撃波・2段目は亡霊の剣が十字に降る。離れていると跳び斬り
+func _sp_knight(p: Player) -> void:
+	var opts := ["combo", "leap_slash", "wave5"]
+	if phase == 2:
+		opts.append("swords")
+	match _choose(opts):
+		"combo":
+			_telegraph(0.45, _sweep.bind(34.0, true))
+			_later(0.5, _rush_at.bind(p, 0.18, 3.5))
+			_later(0.85, _sweep.bind(34.0, true))
+			_later(1.25, _thrust.bind(p))
+		"leap_slash":
+			_telegraph(0.5, _leap_at.bind(p, 0.6, "ring"))
+		"wave5":
+			_telegraph(0.5, _fan.bind(p, 65.0, 5, 0.25))
+		"swords":
+			var c := p.mover.pos
+			for k in 4:
+				_strike(c + Vector2.from_angle(k * PI / 2.0 + PI / 4.0) * 22.0, 0.9, 9.0, Props.pillar())
+			_strike(c, 1.3, 10.0, Props.pillar())
+
+func _thrust(p: Player) -> void:
+	_strike_line(walker.pos, p.mover.pos - walker.pos, 4, 14.0, 0.25, 0.06, 8.0, Props.rain_ring(8.0))
+
+# 岩窟のぬし：大岩を3つ投げる・まわりを閉じる岩の輪（すき間から出る）・肩で突進・2段目は跳んで地響き。離れていると丸まって転がる
+func _sp_golem(p: Player) -> void:
+	var opts := ["boulder_toss", "cage", "shoulder"]
+	if phase == 2:
+		opts.append("leap_quake")
+	match _choose(opts):
+		"boulder_toss":
+			_telegraph(0.6, _boulders.bind(p))
+		"cage":
+			_telegraph(0.5, _cage.bind(p))
+		"shoulder":
+			_telegraph(0.5, _rush_at.bind(p, 0.5, 4.0))
+		"leap_quake":
+			_telegraph(0.6, _leap_at.bind(p, 0.8, "quake"))
+
+func _boulders(p: Player) -> void:
+	var c := _lead(p, 1.0)
+	var side := (c - walker.pos).normalized().orthogonal() * 22.0
+	for off in [Vector2.ZERO, side, -side]:
+		_strike(c + off, 1.2, 12.0, Props.crack_rock())
+
+func _cage(p: Player) -> void:
+	var c := p.mover.pos
+	var gap := randf() * TAU
+	var radii := [36.0, 24.0, 12.0]
+	for j in radii.size():
+		var r: float = radii[j]
+		var count: int = [10, 7, 4][j]
+		for i in count:
+			var a: float = i * TAU / count
+			if j < 2 and absf(wrapf(a - gap, -PI, PI)) < 0.5:
+				continue
+			_strike(c + Vector2.from_angle(a) * r, 1.0 + j * 0.4, 9.0, Props.crack_rock())
+
+func _golem_roll(p: Player) -> void:
+	var d := p.mover.pos - walker.pos
+	_dash_dir = Vector2(signf(d.x), 0) if absf(d.x) > absf(d.y) else Vector2(0, signf(d.y))
+	_dash_time = 2.0
+	_wind_kind = "rolling"
+
+# 溶岩洞のぬし：薙ぎ払う火炎・地を這う炎の列・尾を回す・跳びかかり。離れていると跳びかかる
+func _sp_salamander(p: Player) -> void:
+	match _choose(["flamethrower", "fire_line", "tail_spin", "leap"]):
+		"flamethrower":
+			_tele = 0.4
+			var base := (p.mover.pos - walker.pos).angle()
+			for i in 12:
+				_later(0.4 + i * 0.1, _shoot_dir.bind(base - 0.6 + i * 0.11, 85.0))
+		"fire_line":
+			var d := (p.mover.pos - walker.pos).normalized()
+			for k in range(1, 9):
+				_later(k * 0.08, _fire_at.bind(walker.pos + d * k * 12.0))
+		"tail_spin":
+			_telegraph(0.6, _sweep.bind(30.0))
+			_later(0.65, _ring.bind(8, 60.0, randf() * TAU))
+		"leap":
+			_telegraph(0.35, _leap_at.bind(p, 0.5, "fire"))
+
+# 双子：2回続けて突進・6方向の弾を2回・主人公をはさむ所へ跳ぶ（後ろの方は弾だけ）
+func _sp_twin(p: Player) -> void:
+	if hider and not enraged:
+		_choose(["ring6"])
+		_telegraph(0.4, _ring.bind(6, 65.0, (p.mover.pos - walker.pos).angle()))
+		_later(0.9, _ring.bind(6, 65.0, (p.mover.pos - walker.pos).angle() + PI / 6.0))
+		return
+	match _choose(["double_charge", "ring6", "flank"]):
+		"double_charge":
+			_telegraph(0.4, _lunge_at.bind(p))
+			_later(1.2, _lunge_at.bind(p))
+		"ring6":
+			_telegraph(0.4, _ring.bind(6, 65.0, 0.0))
+			_later(0.9, _ring.bind(6, 65.0, PI / 6.0))
+		"flank":
+			var other: Vector2 = partner.walker.pos if partner != null and is_instance_valid(partner) else walker.pos
+			var away := (p.mover.pos - other)
+			away = away.normalized() if away.length() > 0.1 else Vector2.RIGHT
+			_telegraph(0.3, _leap.bind(p.mover.pos + away * 36.0, 0.5, "ring"))
+
+# 番人：回る光の線・壁から転がる歯車・12方向の弾を2回・2段目は2本の線
+func _sp_guardian(p: Player) -> void:
+	var opts := ["laser", "gears", "ring12"]
+	if phase == 2:
+		opts.append("double_laser")
+	match _choose(opts):
+		"laser", "double_laser":
+			_tele = 0.6
+			var beams := 2 if _last_special == "double_laser" else 1
+			for k in 8:
+				for b in beams:
+					_later(0.6 + k * 0.15, _beam.bind(_turn + k * 0.3 * _spin + b * PI, 0.45))
+		"gears":
+			_gears(p)
+		"ring12":
+			_telegraph(0.4, _ring.bind(12, 55.0, randf() * TAU))
+			_later(1.0, _ring.bind(12, 55.0, randf() * TAU))
+
+func _beam(angle: float, delay: float) -> void:
+	_strike_line(walker.pos, Vector2.from_angle(angle), 5, HeightMap.CELL_PX, delay, 0.0, 8.0, Props.pillar())
+
+func _gears(p: Player) -> void:
+	field.boss_roll(Vector2(4.0, p.mover.pos.y), Vector2(1, 0), attack)
+	field.boss_roll(Vector2(p.mover.pos.x, 4.0), Vector2(0, 1), attack)
+
+# ブライト：光の輪を2回・先読みの光弾5つ・追ってくる闇の手・そばへ消えて現れる・2段目は8方向の光の柱
+func _sp_bright(p: Player) -> void:
+	var opts := ["light_ring", "homing", "dark_hands", "blink"]
+	if phase == 2:
+		opts.append("star")
+	match _choose(opts):
+		"light_ring":
+			_telegraph(0.5, _ring.bind(16, 50.0, 0.0))
+			_later(1.0, _ring.bind(16, 50.0, TAU / 32.0))
+		"homing":
+			for i in 5:
+				_later(i * 0.25, _aimed_shot.bind(p, 0.4, 85.0))
+		"dark_hands":
+			for i in 3:
+				_later(i * 0.5, _strike_on.bind(p, 0.8, 11.0, Props.pillar()))
+		"blink":
+			_blink_near(p)
+			_later(0.4, _fan.bind(p, 80.0, 5, 0.2))
+		"star":
+			for k in 8:
+				_strike_line(walker.pos, Vector2.from_angle(k * TAU / 8.0 + randf() * 0.2), 5, 14.0, 0.6, 0.12, 8.0, Props.pillar())
+
+# 女王蜂：急降下（2段目は3回続けて）・針の雨・らせんの針・2段目は蜂を呼ぶ
+var _dives_left := 0
+func _sp_queen(p: Player) -> void:
+	var opts := ["dive", "sting_rain", "spiral"]
+	if phase == 2:
+		opts.append_array(["triple_dive", "guards"])
+	match _choose(opts):
+		"dive":
+			_telegraph(0.4, _queen_dive.bind(p, 0))
+		"triple_dive":
+			_telegraph(0.4, _queen_dive.bind(p, 2))
+		"sting_rain":
+			_tele = 0.3
+			_rain_around(p, 6, 30.0, Props.rain_ring(10.0))
+		"spiral":
+			_tele = 0.3
+			var base := randf() * TAU
+			for i in 12:
+				_later(0.3 + i * 0.1, _shoot_dir.bind(base + i * 0.52, 65.0))
+		"guards":
+			_call_minions(EnemyKind.Kind.WASP, 2)
+
+func _queen_dive(p: Player, more: int) -> void:
+	_dives_left = more
+	_dash_dir = (_lead(p, 0.3) - walker.pos).normalized()
+	_dash_time = 0.6
+	_wind_kind = "diving"
+
+# 宝箱の王：金貨の雨・本物が走って噛みつく・すぐ入れ替わる・2段目はにせものも金貨を吐く
+func _sp_chest(p: Player) -> void:
+	var opts := ["coin_rain", "chest_dash", "shuffle"]
+	if phase == 2:
+		opts.append("fake_spit")
+	match _choose(opts):
+		"coin_rain":
+			_coin_rain(p)
+		"chest_dash":
+			_chest_dash(p)
+		"shuffle":
+			_shuffle = 0.0
+		"fake_spit":
+			open_time = maxf(open_time, 0.6)
+			for d in decoys:
+				if is_instance_valid(d) and d.walker.alive:
+					var b := Bullet.new()
+					b.aim(d.walker.pos, d.walker.height, p.mover.pos, p.mover.height, 55.0)
+					b.damage = attack
+					field.boss_shot(b)
+
+func _coin_rain(p: Player) -> void:
+	open_time = maxf(open_time, 0.8)
+	_rain_around(p, 7, 32.0, Props.pickup("money"))
+
+func _chest_dash(p: Player) -> void:
+	open_time = maxf(open_time, 1.2)
+	_telegraph(0.35, _rush_at.bind(p, 0.6, 4.0))
+
 
 func _draw() -> void:
 	if camera == null:

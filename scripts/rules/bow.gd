@@ -9,6 +9,10 @@ const MIN_RATE := 0.3
 const BASE_RANGE := 120.0  ## 平らな所でフルチャージのときに届く距離（px、7.5マス）【提案】
 const RANGE_PER_LEVEL := 16.0  ## 1段高い所から撃つと、これだけ遠くへ届く（低い所へは逆）【提案】
 const MIN_RANGE := 8.0
+## 弓を引いている間は歩くのが遅い（2026-11-26 の4回目の直し。逃げながら撃ち続けにくくする）【提案】
+const DRAW_MOVE := 0.45
+## 歩きながら溜めると、溜まるのが遅い
+const MOVING_CHARGE := 0.5
 
 var charging := false
 var charge_time := 0.0
@@ -21,9 +25,10 @@ func cancel() -> void:
 	charging = false
 	charge_time = 0.0
 
-func update(delta: float) -> void:
+## moving：歩いている（溜まるのが MOVING_CHARGE 倍に遅くなる）
+func update(delta: float, moving := false) -> void:
 	if charging:
-		charge_time += delta
+		charge_time += delta * (MOVING_CHARGE if moving else 1.0)
 
 func rate() -> float:
 	return MIN_RATE + (1.0 - MIN_RATE) * clampf(charge_time / FULL_CHARGE, 0.0, 1.0)

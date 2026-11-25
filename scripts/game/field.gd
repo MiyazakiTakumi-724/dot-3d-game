@@ -73,6 +73,7 @@ var _start_hint_time := 8.0
 var _boss_bar: Control  ## 下：戦っているボスの名前と体力
 var _boss_fill: ColorRect
 var _boss_label: Label
+var _guard_fill: ColorRect  ## ボスの構え（崩し）
 var _status: Label  ## 左上：体力・持ち物・手に持つアイテム・墓石のあるエリア（文字。画面には出さず、hud が描く）
 var hud: Hud  ## いのちとマナのバー・手に持つ物の箱・杖の魔法の待ち時間
 ## 画面全体の空気：雲の影・地方の暗さと明かり・舞うもの（2026-11-26）
@@ -820,6 +821,26 @@ func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, s
 			Sfx.play("weak", e.walker.pos)
 		_:
 			Sfx.play("arrow_hit" if source == "arrow" else "hit", e.walker.pos)
+	# 武器の得意・不得意（2026-11-26）。ふつうの敵は種類ごと、ボスは構え（崩し）
+	if e is Enemy:
+		var aff := EnemyKind.affinity(e.kind, source)
+		if aff > 1.0:
+			dmg = maxi(1, roundi(dmg * aff))
+			_popup_text(e.walker.pos, e.walker.height + 2, "弱点！", Color("ffb347"))
+			if color == Color.WHITE:
+				color = Color("ffb347")
+		elif aff < 1.0:
+			dmg = maxi(1, roundi(dmg * aff))
+			_popup_text(e.walker.pos, e.walker.height + 2, "効きにくい", gray)
+	elif e is Boss:
+		var before_broken: bool = e.guard.broken()
+		dmg = e.guard_damage(source, dmg)
+		if not before_broken and e.guard.broken():
+			_popup_text(e.walker.pos, e.walker.height + 3, "崩した！", Color("ffd54a"))
+			Sfx.play("weak", e.walker.pos)
+			camera.shake(2.0)
+		elif e.guard.mult(source) < 1.0:
+			_popup_text(e.walker.pos, e.walker.height + 2, "構えている", gray)
 	e.walker.take_damage(dmg)
 	if not e.walker.alive:
 		Sfx.play("boss_die" if e is Boss else "enemy_die", e.walker.pos)
@@ -869,7 +890,7 @@ func _update_switch(delta: float) -> void:
 func _process(delta: float) -> void:
 	roster.tick(delta)
 	sword.update(delta)
-	bow.update(delta * float(run.inventory.equipment.trait_of(Equipment.Slot.BOW, "charge", 1.0)))
+	bow.update(delta * float(run.inventory.equipment.trait_of(Equipment.Slot.BOW, "charge", 1.0)), player.moving)
 	magic.update(delta)
 	buffs.update(delta)
 	if area_state.result == AreaState.Result.PLAYING:
@@ -2212,6 +2233,16 @@ func _build_ui() -> void:
 	half.size = Vector2(1, 4)
 	half.position = Vector2(80, 12)
 	_boss_bar.add_child(half)
+	var gbg := ColorRect.new()
+	gbg.color = Color(0.08, 0.08, 0.1, 0.85)
+	gbg.size = Vector2(160, 2)
+	gbg.position = Vector2(0, 17)
+	_boss_bar.add_child(gbg)
+	_guard_fill = ColorRect.new()
+	_guard_fill.color = Color("e8d27a")
+	_guard_fill.size = Vector2(160, 2)
+	_guard_fill.position = Vector2(0, 17)
+	_boss_bar.add_child(_guard_fill)
 	_boss_label = UiText.label()
 	_boss_label.size = Vector2(160, 12)
 	_boss_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2238,7 +2269,9 @@ func _update_ui() -> void:
 	_message.text = ui_message()
 	_boss_bar.visible = b != null
 	if b != null:
-		_boss_label.text = b.group + ("（怒り）" if b.phase == 2 else "")
+		_boss_label.text = b.group + ("（怒り）" if b.phase == 2 else "") + ("　崩れた！" if b.guard.broken() else "")
+		_guard_fill.size.x = 160.0 * (b.guard.stagger / BossGuard.STAGGER if b.guard.broken() else b.guard.ratio())
+		_guard_fill.color = Color("ffd54a") if b.guard.broken() else Color("c8c0a0")
 		_boss_fill.size.x = 160.0 * b.walker.hp / b.walker.max_hp
 		var twin_hp := 0
 		var twin_max := 0
