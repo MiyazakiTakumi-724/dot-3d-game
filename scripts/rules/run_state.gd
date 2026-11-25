@@ -140,7 +140,15 @@ func is_door_open(id: String) -> bool:
 func can_open_door(id: String) -> bool:
 	if id == SEAL_DOOR:
 		return seal_bosses_left() == 0
+	if id == Story.MIST_DOOR:
+		return mist_bosses_left() == 0
+	if id == Story.KEEP_DOOR:
+		return inventory.count(Story.KEEPSAKE) > 0
 	return seals_left(id) == 0
+
+## 霧の門（霧の谷への門、2026-11-26）を開けるのに、あと何体の地方のぬしを倒せばよいか。
+func mist_bosses_left() -> int:
+	return maxi(0, Story.MIST_BOSSES - (REGION_BOSSES.size() - seal_bosses_left()))
 
 ## 封印を解くのに、あと何体の地方のボスを倒せばよいか。
 func seal_bosses_left() -> int:

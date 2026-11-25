@@ -102,6 +102,12 @@ var _regen_clock := 0.0
 var shop_menu: ShopMenu
 ## たき火から移動する画面（2026-11-26 の4回目の直し）
 var travel_menu: TravelMenu
+## 話す・読む画面（2026-11-26、ストーリー）
+var dialogue: DialogueBox
+## エリアの人・看板・墓 {cell, person, node}
+var _people: Array = []
+## ボスを倒したあとに出す言葉 [残り秒, 名前, ページ, full]
+var _story_queue: Array = []
 ## このエリアのボス
 var bosses: Array[Boss] = []
 ## 投げた爆弾 [位置, 高さ, 残り秒, StackSprite]
@@ -182,6 +188,10 @@ func _ready() -> void:
 	travel_menu.setup(run, world)
 	travel_menu.chosen.connect(_on_travel)
 	add_child(travel_menu)
+	dialogue = DialogueBox.new()
+	dialogue.setup()
+	dialogue.finished.connect(_on_dialogue_done)
+	add_child(dialogue)
 	var map_layer := CanvasLayer.new()
 	map_layer.layer = 5
 	add_child(map_layer)
@@ -191,6 +201,8 @@ func _ready() -> void:
 	StackCamera.apply_pixel_scale(self)
 	warm_hero_looks()
 	_maybe_screenshot()
+	if get_tree().current_scene == self and not _screenshot_mode():
+		show_prologue()
 
 ## エリアを作り直す。今のエリアの地形・敵・弾・印を片付け、id のエリアを cell から始める。
 ## 地面の見た目ごとの足音（2026-11-26）
@@ -228,6 +240,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_gimmick_nodes.clear()
 	_target_nodes.clear()
 	_talkers.clear()
+	_people.clear()
 	_arrows.clear()
 	_grave_node = null
 	if _popups != null:
@@ -267,6 +280,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_place_braziers()
 	_place_gimmicks()
 	_place_talkers(info)
+	_place_story(info)
 	for i in area.pickups.size():
 		var p = area.pickups[i]
 		if not run.is_picked(area.pickup_id(i)):
@@ -373,6 +387,13 @@ func _on_boss_part_died(b: Boss) -> void:
 		notice("%sを倒した！" % g, 4.0)
 	if run.can_open_door(RunState.SEAL_DOOR) and g in RunState.REGION_BOSSES and run.seal_bosses_left() == 0:
 		notice("%sを倒した！\n神秘の塔の封印が解けた（町の南西の門）" % g, 6.0)
+	elif g in RunState.REGION_BOSSES and run.mist_bosses_left() == 0 and RunState.REGION_BOSSES.size() - run.seal_bosses_left() == Story.MIST_BOSSES:
+		notice("%sを倒した！\n霧の谷の霧が 薄くなった（草原の 沼の小道の南）" % g, 6.0)
+	# ストーリー：倒したあとの言葉（ブライトは終わりの言葉）
+	if g == "ブライト":
+		_story_queue.append([3.0, "", Story.ending(Story.flags(run)), true])
+	elif not Story.boss_beat(g).is_empty():
+		_story_queue.append([2.0, g, Story.boss_beat(g), false])
 	apply_stats()
 
 ## ボスが手下を呼ぶ（廃城の主の亡霊・女王蜂の蜂・ブライトの影）。手下は倒しても落とし物も経験値もなく、戻ってもこない。
@@ -940,8 +961,11 @@ func _process(delta: float) -> void:
 	elif not is_switching():
 		Sfx.warm_step(2.0)  # 効果音を少しずつ作っておく
 	Sfx.listener = player.mover.pos
+	_step_story_queue(delta)
 	if is_switching():
 		_update_switch(delta)
+	elif dialogue != null and dialogue.is_open():
+		pass  # 話している間は世界を止める（2026-11-26）
 	else:
 		if area_state.update(delta):
 			respawn()
@@ -1091,7 +1115,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				hotbar.select_slot(event.physical_keycode - KEY_0, run.inventory.equipment)
 			KEY_F:
-				if not try_open_shop() and not try_open_chest() and not try_pull_lever() and not try_use_campfire():
+				if not try_open_shop() and not try_open_chest() and not try_pull_lever() and not try_talk() and not try_use_campfire():
 					try_open_door()
 			KEY_TAB:
 				open_inventory()
@@ -2393,11 +2417,17 @@ func door_hint(door_id: String) -> String:
 	if RunState.BOSS_DOORS.has(door_id):
 		var seal: String = RunState.BOSS_DOORS[door_id]
 		return "%sが %d個 そろうと開く（あと%d個）\n寄り道のエリアで探す" % [ItemCatalog.label(seal), RunState.SEALS_PER_DOOR, run.seals_left(door_id)]
+	if door_id == Story.MIST_DOOR:
+		return "霧が濃くて 進めない\n地方のぬしを あと%d体 倒すと 霧が薄くなる" % run.mist_bosses_left()
+	if door_id == Story.KEEP_DOOR:
+		return "闇の砦の門。紋章が 刻まれている\n村のお守りが 要りそうだ"
 	return "神秘の塔の封印の門\nあと%d体のボスを倒すと開く" % run.seal_bosses_left()
 
 ## 画面の真ん中に出す言葉。なければ空。
 func ui_message() -> String:
 	if map_view != null and map_view.visible:
+		return ""
+	if dialogue != null and dialogue.is_open():
 		return ""
 	if area_state.result == AreaState.Result.DYING:
 		return "やられた…\nたき火から やり直す"
@@ -2417,6 +2447,10 @@ func ui_message() -> String:
 	var talk := _talk_here()
 	if talk != "" and not shop_menu.is_open():
 		return talk
+	var who := person_here()
+	if not who.is_empty() and (dialogue == null or not dialogue.is_open()):
+		var pp: Dictionary = who["person"]
+		return ("F：読む（%s）" if Story.is_object(pp["look"]) else "F：話す（%s）") % pp["name"]
 	if travel_menu != null and near_campfire() and not travel_menu.is_open() and run.bonfire_areas().size() > 1:
 		return "F：たき火から移動する"
 	if _grave_hint_time > 0.0:
@@ -2526,6 +2560,22 @@ func _maybe_screenshot() -> void:
 			apply_stats()
 		elif a == "--notitle":
 			_title_time = 0.0
+		elif a == "--prologue":
+			show_prologue()
+		elif a == "--ending":
+			_open_dialogue("", Story.ending(Story.flags(run)), true)
+		elif a.begins_with("--talk="):
+			var who := a.trim_prefix("--talk=")
+			for pp in _people:
+				if pp["person"]["id"] == who:
+					for d in [Vector2i(0, 1), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, -1)]:
+						var c: Vector2i = pp["cell"] + d
+						if _walkable(c):
+							place = c
+							break
+			if place != null:
+				player.mover.place(place)
+				try_talk()
 	if place != null:
 		player.mover.place(place)
 		player.mover.pos += offset
@@ -2546,3 +2596,220 @@ func _maybe_screenshot() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(path)
 	get_tree().quit()
+
+# ---------------------------------------------------------------- ストーリー（2026-11-26 の4回目の直し）
+
+## はじまりの言葉（黒い画面）。テストと画面の確認では出さない。
+func show_prologue() -> void:
+	_open_dialogue("", Story.PROLOGUE, true)
+
+func _screenshot_mode() -> bool:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--screenshot") or a == "--noprologue":
+			return true
+	return false
+
+func _open_dialogue(name_: String, pages: Array, full := false) -> void:
+	if pages.is_empty() or dialogue == null:
+		return
+	if menu != null and menu.is_open():
+		close_inventory()
+	if shop_menu != null:
+		shop_menu.close()
+	if travel_menu != null:
+		travel_menu.close()
+	bow.cancel()
+	dialogue.open(name_, pages, full)
+	player.controllable = false
+	_freeze_actors(true)
+
+func _on_dialogue_done() -> void:
+	_freeze_actors(false)
+	if not is_switching():
+		player.controllable = true
+
+## 話している間は、敵とボスを止める（地形はカメラに合わせて描きつづける）。
+func _freeze_actors(on: bool) -> void:
+	for e in enemies + bosses:
+		if is_instance_valid(e):
+			e.set_process(not on)
+	for b in bosses:
+		if is_instance_valid(b):
+			for d in b.decoys:
+				if is_instance_valid(d):
+					d.set_process(not on)
+
+func _step_story_queue(delta: float) -> void:
+	if _story_queue.is_empty() or (dialogue != null and dialogue.is_open()) or is_switching():
+		return
+	_story_queue[0][0] -= delta
+	if _story_queue[0][0] > 0.0 or area_state.result != AreaState.Result.PLAYING:
+		return
+	var q = _story_queue.pop_front()
+	_open_dialogue(q[1], q[2], q[3])
+
+## そばにいる人・看板・墓（となり8マス）。なければ空。
+func person_here() -> Dictionary:
+	if area_state.result != AreaState.Result.PLAYING:
+		return {}
+	var c := player.mover.cell()
+	for p in _people:
+		var pc: Vector2i = p["cell"]
+		if absi(c.x - pc.x) <= 1 and absi(c.y - pc.y) <= 1:
+			return p
+	return {}
+
+## そばの人と話す・看板を読む（F）。いなければ false。
+func try_talk() -> bool:
+	if is_switching() or (dialogue != null and dialogue.is_open()):
+		return false
+	var p := person_here()
+	if p.is_empty():
+		return false
+	var who: Dictionary = p["person"]
+	var pages := Story.lines(who, Story.flags(run))
+	if pages.is_empty():
+		return false
+	if p["node"] != null and is_instance_valid(p["node"]) and not Story.is_object(who["look"]):
+		var d: Vector2 = player.mover.pos - HeightMap.cell_center(p["cell"])
+		p["node"].turn = d.angle() - PI / 2  # こちらを向く
+	_open_dialogue(who["name"], pages)
+	return true
+
+## 人・看板・墓の模型。
+static func person_model(look: String) -> VoxelModel:
+	match look:
+		"sign":
+			return Props.signboard()
+		"grave":
+			return Props.grave()
+	return Props.villager(look)
+
+## エリアの人・看板・墓を置く（Story.PEOPLE と、仕掛けのヒントの看板）。歩いて行ける所で、まわり8マスが同じ高さの平らな所に置き、
+## そのマスはふさぐ（道は切れない）。anchor の近くから探す。
+func _place_story(info: Dictionary) -> void:
+	var people: Array = Story.people(area.id).duplicate()
+	var kinds := {}
+	for g in area.gimmicks:
+		if run.is_gimmick_open(g.id) or kinds.has(g.kind) or g.cells.is_empty():
+			continue
+		kinds[g.kind] = true
+		people.append({"id": "hint_%d" % g.kind, "name": "看板", "look": "sign", "anchor": "gimmick", "at": g.cells[0],
+			"talk": [["", [Story.gimmick_hint(g.kind)]]]})
+	if people.is_empty():
+		return
+	var reach := _reachable_cells(info)
+	var used := {}
+	var avoid := _story_avoid(info)
+	for p in people:
+		var anchor := _story_anchor(p, info)
+		var c := _story_cell(anchor, reach, used, avoid)
+		if c.x < 0:
+			continue
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				used[c + Vector2i(dx, dy)] = true
+		map.set_blocker(c, HeightMap.Blocker.NPC)
+		var node := _marker(c, person_model(p["look"]), 1)
+		if p["look"] == "spirit":
+			node.modulate.a = 0.7
+		var to_anchor := HeightMap.cell_center(anchor) - HeightMap.cell_center(c)
+		if p["look"] != "sign" and to_anchor.length() > 1.0:
+			node.turn = to_anchor.angle() - PI / 2
+		_people.append({"cell": c, "person": p, "node": node})
+
+func _story_anchor(p: Dictionary, info: Dictionary) -> Vector2i:
+	var a: String = p.get("anchor", "center")
+	var center := map.size / 2
+	if a == "bonfire":
+		return info.get("checkpoint", center)
+	if a == "gimmick":
+		return p.get("at", center)
+	if a.begins_with("shop:"):
+		for m in area.merchants:
+			if m[1] == a.substr(5):
+				return m[0]
+	if a.begins_with("exit:"):
+		for ex in area.exits:
+			if ex.target == a.substr(5):
+				var mid := Trails.exit_middle(map, ex)
+				if mid.x >= 0:
+					return mid
+	return center
+
+## 人を置かないマス：拾いもの・出口のそば・敵の出る所・ボスのまわり・たき火・仕掛け。
+func _story_avoid(info: Dictionary) -> Dictionary:
+	var out := area.entry_safe_cells()
+	var spots: Array = []
+	for p in area.pickups:
+		spots.append(p[0])
+	for e in area.enemies:
+		spots.append(e[0])
+	for g in area.gimmicks:
+		spots.append_array(g.cells)
+		spots.append_array(g.trigger)
+	if info.has("checkpoint"):
+		spots.append(info["checkpoint"])
+	for c in spots:
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				out[c + Vector2i(dx, dy)] = true
+	for b in area.bosses:
+		for dy in range(-6, 7):
+			for dx in range(-6, 7):
+				out[b[0] + Vector2i(dx, dy)] = true
+	return out
+
+## anchor に一番近い、置けるマス（anchor からは2マス以上はなす）。なければ (-1, -1)。
+func _story_cell(anchor: Vector2i, reach: Dictionary, used: Dictionary, avoid: Dictionary) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for c in reach:
+		if used.has(c) or avoid.has(c):
+			continue
+		var d := Vector2(c - anchor).length_squared()
+		if d < 4.0 or d >= best_d:
+			continue
+		var h := map.get_height(c)
+		var flat := true
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var n: Vector2i = c + Vector2i(dx, dy)
+				if not reach.has(n) or map.get_height(n) != h or map.is_water(n):
+					flat = false
+		if flat:
+			best = c
+			best_d = d
+	return best
+
+## 出口とたき火から歩いて行けるマス（登りは1段、飛び降りは3段まで）。
+func _reachable_cells(info: Dictionary) -> Dictionary:
+	var seen := {}
+	var todo: Array[Vector2i] = []
+	for ex in area.exits:
+		var c := Trails.exit_middle(map, ex)
+		if c.x >= 0 and not seen.has(c):
+			seen[c] = true
+			todo.append(c)
+	if info.has("checkpoint"):
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var c: Vector2i = info["checkpoint"] + d
+			if _walkable(c) and not seen.has(c):
+				seen[c] = true
+				todo.append(c)
+	while not todo.is_empty():
+		var c: Vector2i = todo.pop_back()
+		var h := map.get_height(c)
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = c + d
+			if seen.has(n) or not _walkable(n):
+				continue
+			var dh := map.get_height(n) - h
+			if dh > 1 or dh < -3:
+				continue
+			seen[n] = true
+			todo.append(n)
+	return seen
+
+func _walkable(c: Vector2i) -> bool:
+	return map.in_bounds(c) and not map.is_wall(c) and not map.is_water(c) and not map.is_pit(c) and not map.is_void(c)

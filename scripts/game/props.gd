@@ -715,3 +715,64 @@ static func brittle_wall() -> VoxelModel:
 			m.set_voxel(Vector3i(x, 6, z), Color("1e1816"))
 		_cache["brittle"] = VoxelShade.apply(m)
 	return _cache["brittle"]
+
+## 町の人・旅人（2026-11-26、ストーリー）。look で服と頭が変わる：hunter 狩人（緑のマント・弓）・elder 町長（白いひげ・杖）・
+## smith 鍛冶屋の弟子（前かけ）・child 子ども（小さい）・granny おばあさん（ずきん・腰が曲がる）・traveler 旅人（マント・帽子）・
+## spirit まぼろし（青白い）。前は +y。
+static func villager(look := "traveler") -> VoxelModel:
+	var key := "villager/" + look
+	if not _cache.has(key):
+		var m := VoxelModel.new()
+		m.size = Vector3i(24, 24, 40)
+		var small := look == "child"
+		var s := 0.75 if small else 1.0
+		var cloth: Color = {"hunter": Color("3f6a3a"), "elder": Color("7a5a8a"), "smith": Color("6a4a32"), "child": Color("d0704a"),
+			"granny": Color("8a6a5a"), "traveler": Color("4a5a7a"), "spirit": Color("9ac0e8")}.get(look, Color("4a5a7a"))
+		var skin := Color("f0c49a") if look != "spirit" else Color("d8ecff")
+		var hair: Color = {"elder": Color("e8e4dc"), "granny": Color("d8d4cc"), "child": Color("5a3a20"), "spirit": Color("c8e0ff")}.get(look, Color("3a2a1a"))
+		var z0 := 0
+		VoxelDraw.fill(m, Vector3i(9, 10, z0), Vector3i(10, 12, z0 + int(5 * s)), Color("3a2a1a"))  # 足
+		VoxelDraw.fill(m, Vector3i(13, 10, z0), Vector3i(14, 12, z0 + int(5 * s)), Color("3a2a1a"))
+		var body_z := 11.0 * s
+		VoxelDraw.ellipsoid(m, Vector3(11.5, 11, body_z), Vector3(5.5 * s + 0.5, 4.5, 7.0 * s), cloth)  # 胴
+		var head_z := 22.0 * s + (1.0 if small else 2.0)
+		if look == "granny":
+			head_z -= 2.0  # 腰が曲がる
+		VoxelDraw.ellipsoid(m, Vector3(11.5, 11.5, head_z), Vector3(4.5, 4.5, 4.5), skin)  # 頭
+		VoxelDraw.ellipsoid(m, Vector3(11.5, 10.5, head_z + 1.5), Vector3(4.8, 4.6, 3.6), hair, func(p): return p.y <= 12 or p.z >= head_z + 2.0)
+		m.set_voxel(Vector3i(10, 16, int(head_z)), Color("2a1a10"))  # 目
+		m.set_voxel(Vector3i(13, 16, int(head_z)), Color("2a1a10"))
+		match look:
+			"hunter":
+				VoxelDraw.fill(m, Vector3i(7, 6, 6), Vector3i(16, 7, 19), Color("2e4a2a"))  # マント
+				VoxelDraw.rod(m, Vector3(17, 9, 6), Vector3(18, 9, 24), Color("8a5a2a"), 1)  # 背中の弓
+			"elder":
+				VoxelDraw.fill(m, Vector3i(10, 16, int(head_z) - 5), Vector3i(13, 16, int(head_z) - 2), Color("f0ece4"))  # ひげ
+				VoxelDraw.rod(m, Vector3(18, 14, 0), Vector3(18, 14, 26), Color("8a5a2a"), 1)  # 杖
+			"smith":
+				VoxelDraw.fill(m, Vector3i(8, 15, 5), Vector3i(15, 15, 16), Color("4a3a30"))  # 前かけ
+				VoxelDraw.rod(m, Vector3(17, 13, 10), Vector3(19, 15, 17), Color("9aa0a8"), 1)  # 金づち
+			"granny":
+				VoxelDraw.ellipsoid(m, Vector3(11.5, 11, head_z + 2.0), Vector3(5.2, 5.0, 3.6), Color("a04a4a"), func(p): return p.y <= 13)  # ずきん
+				VoxelDraw.rod(m, Vector3(17, 15, 0), Vector3(17, 15, 14), Color("6a4a2a"), 1)
+			"traveler":
+				VoxelDraw.fill(m, Vector3i(7, 6, 6), Vector3i(16, 7, 19), Color("3a4258"))
+				VoxelDraw.cylinder(m, Vector2(11.5, 11.5), 7.0, int(head_z) + 4, int(head_z) + 4, Color("6a5034"))  # 帽子
+				VoxelDraw.cylinder(m, Vector2(11.5, 11.5), 4.0, int(head_z) + 5, int(head_z) + 7, Color("5a4028"))
+			"child":
+				VoxelDraw.fill(m, Vector3i(8, 10, 12), Vector3i(15, 12, 12), Color("f0e0a0"))
+		_cache[key] = VoxelShade.apply(m)
+	return _cache[key]
+
+## 看板（2026-11-26、ヒント）：杭に打ちつけた板。前は +y。
+static func signboard() -> VoxelModel:
+	if not _cache.has("signboard"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(22, 10, 30)
+		VoxelDraw.fill(m, Vector3i(10, 4, 0), Vector3i(11, 5, 18), WOOD_DARK)  # 杭
+		VoxelDraw.fill(m, Vector3i(2, 3, 14), Vector3i(19, 6, 26), WOOD_LIGHT)  # 板
+		VoxelDraw.fill(m, Vector3i(2, 6, 14), Vector3i(19, 6, 14), WOOD_DARK)
+		for row in [17, 20, 23]:
+			VoxelDraw.fill(m, Vector3i(5, 7, row), Vector3i(16 - (row % 3) * 2, 7, row), Color("3a2a1a"))  # 文字のすじ
+		_cache["signboard"] = VoxelShade.apply(m)
+	return _cache["signboard"]

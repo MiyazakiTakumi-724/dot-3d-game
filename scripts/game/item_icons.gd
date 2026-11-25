@@ -48,7 +48,8 @@ const OTHER := {
 	"twin_mirror": ["mirror", "c8c0b0", "8ab0ff"], "gear": ["cog", "b0a890", "6a6050"], "bright_eye": ["eye", "fff0a0", "2a2a60"],
 	"queen_sting": ["fang", "f0c040", "3a2a1a"], "king_crown": ["crown", "f0c040", "c02a4a"],
 	"seal_mt": ["seal", "8d8f94", "e0e8f0"], "seal_gr": ["seal", "5a9a4a", "e0f0a0"], "seal_cs": ["seal", "7a6a9a", "f0d060"],
-	"seal_lv": ["seal", "a03a1a", "ffb03a"],
+	"seal_lv": ["seal", "a03a1a", "ffb03a"], "keepsake": ["heart", "d05a6a", "ffe0a0"],
+	"dark_shard": ["shard", "3a2a4a", "b08ae0"], "mist_moss": ["leaf", "6a9a8a", "c0e0d0"], "dark_crest": ["crest", "2a2430", "b08ae0"],
 	# 道具
 	"potion": ["flask", "e04a5a", "ffd0d8"], "potion_m": ["flask", "c02a5a", "ffb0c8"], "potion_l": ["flask_big", "a01a4a", "ffa0c0"],
 	"ether": ["flask", "3a7ae0", "c0e0ff"], "power": ["flask", "e07a1a", "ffe0a0"], "guard": ["flask", "7a8aa0", "e0e8f0"],
