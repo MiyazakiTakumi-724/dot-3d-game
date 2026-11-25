@@ -25,6 +25,8 @@ var _invulnerable := 0.0
 ## 技能「しゃがみ」を覚えていれば、C か左Ctrlを押している間しゃがむ（遅くなり、撃つ敵の弾をよけられる）
 var can_crouch := false
 var crouching := false
+## しゃがんでいられる時間と、次にしゃがめるまでの待ち（2026-11-26 の4回目の直し）
+var crouch := Crouch.new()
 const CROUCH_SPEED := 0.5
 const CROUCH_HIDE_LAYERS := 8  ## しゃがむと下の輪切り（足）をこれだけ描かず、体を下げる（主人公は細かく描くので、ゲームの座標で4px）
 const OUTLINE_COLOR := Color(0.09, 0.07, 0.12)  ## 体のまわりのふち（草の上でも見分けやすく）
@@ -161,7 +163,11 @@ func _process(delta: float) -> void:
 	self_modulate = Color(1.0 + 0.8 * f, 1.0 - 0.45 * f, 1.0 - 0.45 * f, alpha)
 	_swing_t = maxf(0.0, _swing_t - delta)
 	_spin_t = maxf(0.0, _spin_t - delta)
-	crouching = can_crouch and hp > 0 and controllable and (Input.is_physical_key_pressed(KEY_C) or Input.is_physical_key_pressed(KEY_CTRL))
+	var want_crouch := can_crouch and hp > 0 and controllable and (Input.is_physical_key_pressed(KEY_C) or Input.is_physical_key_pressed(KEY_CTRL))
+	var was_crouching := crouching
+	crouching = crouch.update(want_crouch, delta)
+	if was_crouching and not crouching and want_crouch:
+		Sfx.play("ui_close", null, -10.0)  # 時間が切れて立った
 	var before := mover.pos
 	if hp > 0 and controllable:
 		var dir := Vector2.ZERO

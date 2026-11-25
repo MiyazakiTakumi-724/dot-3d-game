@@ -99,6 +99,8 @@ var buffs := Buffs.new()
 var _regen_clock := 0.0
 ## お店・鍛冶屋の画面（商人のそばで F）
 var shop_menu: ShopMenu
+## たき火から移動する画面（2026-11-26 の4回目の直し）
+var travel_menu: TravelMenu
 ## このエリアのボス
 var bosses: Array[Boss] = []
 ## 投げた爆弾 [位置, 高さ, 残り秒, StackSprite]
@@ -175,6 +177,10 @@ func _ready() -> void:
 	shop_menu.setup(run)
 	shop_menu.bought.connect(_on_bought)
 	add_child(shop_menu)
+	travel_menu = TravelMenu.new()
+	travel_menu.setup(run, world)
+	travel_menu.chosen.connect(_on_travel)
+	add_child(travel_menu)
 	var map_layer := CanvasLayer.new()
 	map_layer.layer = 5
 	add_child(map_layer)
@@ -898,6 +904,8 @@ func _process(delta: float) -> void:
 		_step_boss_floor(delta)
 		if shop_menu.is_open() and not _near_merchant():
 			shop_menu.close()
+		if travel_menu.is_open() and not near_campfire():
+			travel_menu.close()
 		if area_state.result == AreaState.Result.PLAYING:
 			if player.hp <= 0 or player.mover.fell:
 				kill_player(player.mover.fell)
@@ -1028,7 +1036,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				hotbar.select_slot(event.physical_keycode - KEY_0, run.inventory.equipment)
 			KEY_F:
-				if not try_open_shop() and not try_open_chest() and not try_pull_lever():
+				if not try_open_shop() and not try_open_chest() and not try_pull_lever() and not try_use_campfire():
 					try_open_door()
 			KEY_TAB:
 				open_inventory()
@@ -2126,6 +2134,27 @@ func try_open_shop() -> bool:
 			return true
 	return false
 
+## たき火のそば（たき火のマスのまわり8マス）にいるか。
+func near_campfire() -> bool:
+	if _campfire_cell.x < 0:
+		return false
+	var c := player.mover.cell()
+	return absi(c.x - _campfire_cell.x) <= 1 and absi(c.y - _campfire_cell.y) <= 1
+
+## たき火のそばで F：一度休んだたき火へ移る画面を開く（2026-11-26 の4回目の直し）。
+func try_use_campfire() -> bool:
+	if area_state.result != AreaState.Result.PLAYING or is_switching() or not near_campfire():
+		return false
+	menu.close()
+	travel_menu.open(area.id)
+	return true
+
+func _on_travel(id: String) -> void:
+	if not run.travel_to(id):
+		return
+	Sfx.play("teleport")
+	_start_switch({"area": id, "cell": run.respawn_cell()})
+
 func _near_merchant() -> bool:
 	var c := player.mover.cell()
 	for tk in _talkers:
@@ -2321,6 +2350,8 @@ func ui_message() -> String:
 	var talk := _talk_here()
 	if talk != "" and not shop_menu.is_open():
 		return talk
+	if travel_menu != null and near_campfire() and not travel_menu.is_open() and run.bonfire_areas().size() > 1:
+		return "F：たき火から移動する"
 	if _grave_hint_time > 0.0:
 		return "死んだ場所に墓石がある\n鉄球を落として壊すと、持ち物が戻る"
 	if _start_hint_time > 0.0:

@@ -1439,3 +1439,33 @@ func test_ground_columns_draw_shadows():
 			n += 1
 			assert_not_null(s.material)
 	assert_gt(n, 100)
+
+## 2026-11-26（4回目）：たき火のそばで F を押すと、一度休んだたき火へ移る画面が開き、選ぶとそこへ移る。
+func test_travel_between_campfires():
+	f.enter_area("town", Continent.START_CELL)
+	var town_fire: Vector2i = f._campfire_cell
+	assert_true(town_fire.x >= 0, "町にたき火がある")
+	f.run.set_checkpoint("mt_2", Vector2i(3, 3))  # 山岳のたき火で休んだことにする
+	f.player.mover.place(town_fire + Vector2i(0, 1))
+	f._title_time = 0.0
+	f._start_hint_time = 0.0
+	assert_eq(f.ui_message(), "F：たき火から移動する")
+	assert_true(f.try_use_campfire())
+	assert_true(f.travel_menu.is_open())
+	var rows: Array = f.travel_menu.rows()
+	assert_eq(rows.size(), 2)
+	f.travel_menu.choose(1)
+	assert_false(f.travel_menu.is_open())
+	for i in 6:
+		f._process(0.25)
+	assert_eq(f.area.id, "mt_2")
+	assert_eq(f.run.checkpoint_area, "mt_2")
+
+## しゃがみは長く続けると立ち、すぐにはまたしゃがめない。
+func test_crouch_has_limit_in_field():
+	f.player.can_crouch = true
+	var c: Crouch = f.player.crouch
+	assert_true(c.update(true, 0.1))
+	c.update(true, Crouch.MAX_TIME)
+	assert_false(c.crouching)
+	assert_true(c.cooling())

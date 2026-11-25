@@ -31,9 +31,33 @@ var cleared := false
 const BOSS_DOORS := {"mt_boss": "seal_mt", "gr_boss": "seal_gr", "cs_boss": "seal_cs", "lv_boss": "seal_lv"}
 const SEALS_PER_DOOR := 3
 
+## 休んだことのあるたき火（エリア → たき火のマス）と、休んだ順（2026-11-26 の4回目の直し：たき火から移動できる）
+var _bonfires := {}
+var _bonfire_order: Array[String] = []
+
 func _init(cp_area: String, checkpoint: Vector2i) -> void:
 	checkpoint_area = cp_area
 	checkpoint_cell = checkpoint
+	_remember_bonfire(cp_area, checkpoint)
+
+func _remember_bonfire(area_id: String, cell: Vector2i) -> void:
+	if not _bonfires.has(area_id):
+		_bonfire_order.append(area_id)
+	_bonfires[area_id] = cell
+
+## 休んだことのあるたき火のエリア（休んだ順）。
+func bonfire_areas() -> Array[String]:
+	return _bonfire_order.duplicate()
+
+func bonfire_cell(area_id: String) -> Vector2i:
+	return _bonfires.get(area_id, Vector2i(-1, -1))
+
+## 休んだことのあるたき火へ移る（そこで休んだことになる）。行けなければ false。
+func travel_to(area_id: String) -> bool:
+	if not _bonfires.has(area_id):
+		return false
+	set_checkpoint(area_id, _bonfires[area_id])
+	return true
 
 ## ボスの間の前の門を開けるのに、あと何個の印が要るか（ほかの門は0）。
 func seals_left(door_id: String) -> int:
@@ -145,6 +169,7 @@ func visited_ids() -> Array:
 func set_checkpoint(area_id: String, cell: Vector2i) -> void:
 	checkpoint_area = area_id
 	checkpoint_cell = cell
+	_remember_bonfire(area_id, cell)
 
 ## 死んだあと再開するマス（たき火のすぐ南。地図を作るときに空けておく）。
 func respawn_cell() -> Vector2i:

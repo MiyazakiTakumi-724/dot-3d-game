@@ -62,8 +62,18 @@ func _draw() -> void:
 	if field == null or field.player == null:
 		return
 	_draw_status()
+	_draw_crouch()
 	_draw_hotbar()
 	Compass.draw_on(self, COMPASS_POS, north_dir(), COMPASS_RADIUS)
+
+## しゃがみの残りの時間（しゃがんでいる間）と、次にしゃがめるまでの戻り（待っている間）を、足もとに細いバーで出す。
+func _draw_crouch() -> void:
+	var p: Player = field.player
+	var c: Crouch = p.crouch
+	if not p.can_crouch or not (c.crouching or c.cooling()):
+		return
+	var at: Vector2 = field.camera.world_to_screen(p.mover.pos, p.mover.height * StackSprite.LEVEL_PX) + Vector2(-7, 5)
+	_bar(at.round(), 14.0, 1.0, c.gauge(), Color("8ad8ff") if c.crouching else Color(0.55, 0.56, 0.62))
 
 ## 北（全体マップの上、ワールドの y が減る向き）が、画面ではどちらか。
 func north_dir() -> Vector2:
