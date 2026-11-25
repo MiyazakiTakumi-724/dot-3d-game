@@ -54,7 +54,7 @@ const SLOW_SECONDS := 3.0
 const THUNDER_REACH := 80.0
 const THUNDER_RADIUS := 10.0
 ## 癒しで戻る いのち
-const HEAL_AMOUNT := 6
+const HEAL_AMOUNT := 10
 const INTERVAL := 0.35  ## どの魔法でも、次を使えるまで（秒）
 ## 火の玉：当たった所で弾け、まわりも焼く。落ちた所が少しの間燃える
 const FIREBALL_RADIUS := 14.0

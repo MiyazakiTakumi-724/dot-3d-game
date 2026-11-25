@@ -31,7 +31,7 @@ const REGION_LEVEL := {"はじまりの地": 1, "山岳": 2, "草原": 2, "廃�
 
 ## 敵1体の落とし物 [[id, 数], ...]。loot_mult は特色（狩人の弓）で素材が落ちやすくなる倍率。
 static func roll(region: String, level: int, rng: RandomNumberGenerator, loot_mult := 1.0) -> Array:
-	var out: Array = [[ItemCatalog.MONEY, 3 + 2 * level + rng.randi_range(0, 3)]]
+	var out: Array = [[ItemCatalog.MONEY, 4 + 3 * level + rng.randi_range(0, 4)]]  # 敵が強くなったので多め（2026-11-25 夜）
 	var mats: Array = REGION_MATERIALS.get(region, REGION_MATERIALS["はじまりの地"])
 	if rng.randf() < minf(1.0, MATERIAL_CHANCE * loot_mult):
 		out.append([mats[rng.randi_range(0, mats.size() - 1)], 1])

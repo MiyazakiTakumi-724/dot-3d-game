@@ -145,4 +145,4 @@ func test_label_and_traits():
 	assert_eq(ItemCatalog.trait_of("armor_travel"), "足＋10%")
 	assert_eq(ItemCatalog.trait_value("sword_light", "rate", 1.0), 1.3)
 	assert_eq(ItemCatalog.trait_value("sword_1", "rate", 1.0), 1.0)
-	assert_eq(ItemCatalog.trait_of("potion"), "いのち＋6")
+	assert_eq(ItemCatalog.trait_of("potion"), "いのち＋10")

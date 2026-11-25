@@ -1826,6 +1826,11 @@ func _build_ui() -> void:
 	_boss_fill.size = Vector2(160, 4)
 	_boss_fill.position = Vector2(0, 12)
 	_boss_bar.add_child(_boss_fill)
+	var half := ColorRect.new()  # 半分の印（ここを切ると2段目）
+	half.color = Color(1, 1, 1, 0.7)
+	half.size = Vector2(1, 4)
+	half.position = Vector2(80, 12)
+	_boss_bar.add_child(half)
 	_boss_label = UiText.label()
 	_boss_label.size = Vector2(160, 12)
 	_boss_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1848,12 +1853,12 @@ func _build_ui() -> void:
 
 func _update_ui() -> void:
 	_status.text = status_text()
-	_guide.visible = _play_time < GUIDE_SECONDS
-	_message.text = ui_message()
 	var b := active_boss()
+	_guide.visible = _play_time < GUIDE_SECONDS and b == null  # ボスの名前とかぶらないように
+	_message.text = ui_message()
 	_boss_bar.visible = b != null
 	if b != null:
-		_boss_label.text = b.group
+		_boss_label.text = b.group + ("（怒り）" if b.phase == 2 else "")
 		_boss_fill.size.x = 160.0 * b.walker.hp / b.walker.max_hp
 		var twin_hp := 0
 		var twin_max := 0

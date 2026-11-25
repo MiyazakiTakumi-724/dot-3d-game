@@ -118,15 +118,15 @@ const RANK_LEVEL := {1: 1, 2: 1, 3: 6, 4: 12, 5: 18}
 
 ## 道具（5番で手に持って使う）。効果：heal いのち（-1 で全部）/ mana マナ / buff 一時の強化 [種類, 量, 秒] / warp 最後のたき火へ / bomb 投げる
 const TOOLS := {
-	"potion": {"name": "回復薬", "heal": 6, "info": "いのち＋6"},
-	"potion_m": {"name": "回復薬・中", "heal": 15, "info": "いのち＋15"},
+	"potion": {"name": "回復薬", "heal": 10, "info": "いのち＋10"},
+	"potion_m": {"name": "回復薬・中", "heal": 25, "info": "いのち＋25"},
 	"potion_l": {"name": "回復薬・大", "heal": -1, "info": "いのちが全部戻る"},
 	"ether": {"name": "マナの薬", "mana": 30, "info": "マナ＋30"},
 	"power": {"name": "力の薬", "buff": ["atk", 3, 30.0], "info": "30秒 つよさ＋3"},
 	"guard": {"name": "守りの薬", "buff": ["def", 2, 30.0], "info": "30秒 守り＋2"},
 	"swift": {"name": "速さの薬", "buff": ["speed", 0.3, 30.0], "info": "30秒 足＋30%"},
 	"feather": {"name": "帰りの羽", "warp": true, "info": "最後に休んだ たき火へ戻る"},
-	"bomb": {"name": "爆弾", "bomb": 15, "info": "カーソルの所へ投げる。まわりに15ダメージ"},
+	"bomb": {"name": "爆弾", "bomb": 30, "info": "カーソルの所へ投げる。まわりに30ダメージ（甲虫はひっくり返る）"},
 }
 
 ## 矢（Arrow.Kind と同じ順）

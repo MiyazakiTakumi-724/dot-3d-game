@@ -344,7 +344,7 @@ func test_potion_restores_fixed_amount():
 	f.hotbar.select_slot(5)
 	f.player.set_hp(2)
 	assert_true(f.use_item())
-	assert_eq(f.player.hp, 2 + 6)
+	assert_eq(f.player.hp, 2 + 10)
 	assert_eq(f.run.inventory.count("potion"), 0)
 	assert_false(f.use_tool())
 
