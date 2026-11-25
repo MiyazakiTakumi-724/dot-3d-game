@@ -1,6 +1,6 @@
 class_name Continent
 extends RefCounted
-## 大陸のすべてのエリア（30）をまとめる（はじまりの地（町）・山岳・草原・廃城・溶岩・神秘の塔）。
+## 大陸のすべてのエリア（45）をまとめる（はじまりの地（町）・山岳・草原・廃城・溶岩・神秘の塔）。
 ## 地図は tools/area_maps/gen.py が作る。並べ方は docs/superpowers/specs/2026-11-25-full-game-design.md。
 
 const TOWN := preload("res://scripts/areas/town.gd")
@@ -35,6 +35,21 @@ const AREA_SCRIPTS := [
 	preload("res://scripts/areas/tw_2.gd"),
 	preload("res://scripts/areas/tw_3.gd"),
 	preload("res://scripts/areas/tw_4.gd"),
+	preload("res://scripts/areas/mt_6.gd"),
+	preload("res://scripts/areas/mt_7.gd"),
+	preload("res://scripts/areas/mt_8.gd"),
+	preload("res://scripts/areas/gr_6.gd"),
+	preload("res://scripts/areas/gr_7.gd"),
+	preload("res://scripts/areas/gr_8.gd"),
+	preload("res://scripts/areas/gr_x.gd"),
+	preload("res://scripts/areas/cs_6.gd"),
+	preload("res://scripts/areas/cs_7.gd"),
+	preload("res://scripts/areas/cs_8.gd"),
+	preload("res://scripts/areas/cs_x.gd"),
+	preload("res://scripts/areas/lv_6.gd"),
+	preload("res://scripts/areas/lv_7.gd"),
+	preload("res://scripts/areas/lv_8.gd"),
+	preload("res://scripts/areas/tw_5.gd"),
 ]
 const START_AREA := "town"
 const START_CELL: Vector2i = TOWN.START

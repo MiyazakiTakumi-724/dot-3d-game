@@ -20,6 +20,17 @@ const DATA := {
 	"ブライト": [660, 18, 300, [["bright_eye", 1], ["star_shard", 5]]],
 }
 
+## 体力がこの割合以下になると2段目（攻撃が増える）
+const PHASE2_RATIO := 0.5
+
+## 今の段（1か2）。
+static func phase(hp_now: int, hp_max: int) -> int:
+	return 2 if hp_now <= hp_max * PHASE2_RATIO else 1
+
+## 浮いているボス（剣と鉄球が届かない）
+static func flies(boss_name: String) -> bool:
+	return group(boss_name) == "女王蜂"
+
 static func group(statue_name: String) -> String:
 	return "双子" if statue_name.begins_with("双子") else statue_name
 

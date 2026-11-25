@@ -48,7 +48,7 @@ func test_continent_has_no_problems():
 	assert_eq(world.problems(), [])
 
 func test_all_areas():
-	assert_eq(world.ids().size(), 30)
+	assert_eq(world.ids().size(), 45)  # 30 ＋ 寄り道（各地方3）・草原と廃城の隠しボス・塔の回廊（2026-11-25 夜）
 	for id in ["town", "rocks", "hills", "forest", "mt_5", "gr_5", "cs_5", "lv_5", "tw_4"]:
 		assert_not_null(world.area(id), id)
 	assert_null(world.area("camp"), "野営地は町に作り替えた")
@@ -231,8 +231,10 @@ func test_main_path_reaches_every_boss_without_weapon_gimmicks():
 	var seen := _reachable_areas(false)
 	for id in ["mt_5", "gr_5", "cs_5", "lv_5", "tw_2", "tw_3", "tw_4"]:
 		assert_true(seen.has(id), id)
-	assert_false(seen.has("mt_x"), "隠しボスは仕掛けの先")
-	assert_false(seen.has("lv_x"), "隠しボスは仕掛けの先")
+	for id in ["mt_x", "lv_x", "gr_x", "cs_x"]:
+		assert_false(seen.has(id), "隠しボスは仕掛けの先 " + id)
+	for id in ["mt_6", "mt_7", "mt_8", "gr_6", "gr_7", "gr_8", "cs_6", "cs_7", "cs_8", "lv_6", "lv_7", "lv_8"]:
+		assert_true(seen.has(id), "寄り道のエリアは仕掛けなしで行ける " + id)
 
 func test_every_area_reachable_with_all_gimmicks_open():
 	assert_eq(_reachable_areas(true).size(), world.ids().size())
@@ -256,6 +258,26 @@ func test_regions_have_bonfire_boss_and_shortcut():
 	assert_eq(bosses["神秘の塔"], 4, "双子（2体）・番人・ブライト")
 	for d in ["forest_gate", "mt_gate", "gr_gate", "cs_gate", "lv_gate", RunState.SEAL_DOOR]:
 		assert_true(gates.has(d), d)
+	for d in RunState.BOSS_DOORS:
+		assert_true(gates.has(d), d)
+
+## 4つの地方には、地方の印が3つずつ（寄り道のエリアに1つずつ、仕掛けの奥ではない）。隠しボスは1エリアに1体
+func test_three_seals_per_region_and_one_hidden_boss_each():
+	var seals := {}
+	var hidden := {}
+	for id in world.ids():
+		var a := world.area(id)
+		var reach := Reach.reachable(maps[id], rules, _hub(id))
+		for p in a.pickups:
+			if ItemCatalog.is_key(p[1]):
+				seals[p[1]] = seals.get(p[1], 0) + 1
+				assert_true(reach.has(p[0]), "%s %s" % [id, p[0]])
+		if id.ends_with("_x"):
+			assert_eq(a.bosses.size(), 1, id)
+			hidden[a.region] = true
+	for seal in RunState.BOSS_DOORS.values():
+		assert_eq(seals.get(seal, 0), RunState.SEALS_PER_DOOR, seal)
+	assert_eq(hidden.size(), 4)
 
 func test_bonfire_has_room_to_respawn():
 	for id in world.ids():

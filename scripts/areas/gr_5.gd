@@ -54,7 +54,7 @@ const OBJECTS := [
 ]
 ## [辺, from, to, 相手, 門の id, この側から門を開けられるか]
 const EXITS := [
-	[ExitDef.Edge.WEST, 8, 11, "gr_4", "", false],
+	[ExitDef.Edge.WEST, 8, 11, "gr_4", "gr_boss", false],
 ]
 ## [マス, 向き, 種類, レベル（倒したボスの数は足す前）]
 const ENEMIES := [

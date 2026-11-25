@@ -29,40 +29,41 @@ const HEIGHTS := [
 const OBJECTS := [
 	"...............R",
 	"R......RR.RRRRRR",
-	".......R..R...R.",
-	"..........R...R.",
-	".R........R...R.",
+	"....RR....R...R.",
+	"..R.......R...R.",
+	".R..R.....R...R.",
 	"R.........RRYRR.",
 	"....R........R..",
 	"...........R....",
 	"...............R",
 	"R...............",
-	"....LL.R........",
-	".....LL...LLL...",
-	".............LL.",
-	"R.........R...RL",
-	"...........R..R.",
-	"....RR...R......",
+	"....LL.....R....",
+	".....LL...LL....",
+	".............LLR",
+	"..............RL",
+	".........R...R..",
+	".....R...R..R...",
 ]
 ## [辺, from, to, 相手, 門の id, この側から門を開けられるか]
 const EXITS := [
 	[ExitDef.Edge.WEST, 6, 8, "lv_2", "", false],
 	[ExitDef.Edge.SOUTH, 6, 8, "lv_4", "", false],
+	[ExitDef.Edge.EAST, 9, 11, "lv_7", "", false],
 ]
 ## [マス, 向き, 種類, レベル（倒したボスの数は足す前）]
 const ENEMIES := [
-	[Vector2i(12, 12), Vector2.RIGHT, EnemyKind.Kind.BOMBER, 3],
-	[Vector2i(8, 4), Vector2.RIGHT, EnemyKind.Kind.FLYER, 3],
-	[Vector2i(5, 9), Vector2.LEFT, EnemyKind.Kind.SHIELD, 3],
-	[Vector2i(4, 3), Vector2.UP, EnemyKind.Kind.SHOOTER, 3],
+	[Vector2i(7, 10), Vector2.DOWN, EnemyKind.Kind.SHIELD, 3],
+	[Vector2i(8, 4), Vector2.RIGHT, EnemyKind.Kind.BEETLE, 3],
+	[Vector2i(4, 3), Vector2.UP, EnemyKind.Kind.MIMIC, 3],
+	[Vector2i(2, 12), Vector2.LEFT, EnemyKind.Kind.SHOOTER, 3],
 ]
 ## [マス, 品物の id（ItemCatalog、お金は money）, 数]
 const PICKUPS := [
 	[Vector2i(11, 2), "staff_fire_3", 1],
-	[Vector2i(14, 9), "potion_m", 1],
-	[Vector2i(9, 1), "bomb", 2],
-	[Vector2i(2, 12), "obsidian", 2],
-	[Vector2i(15, 7), "fire_stone", 3],
+	[Vector2i(2, 9), "potion_m", 1],
+	[Vector2i(4, 1), "bomb", 2],
+	[Vector2i(10, 12), "obsidian", 2],
+	[Vector2i(5, 1), "fire_stone", 3],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く
 const MERCHANTS := [

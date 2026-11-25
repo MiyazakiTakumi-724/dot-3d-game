@@ -187,6 +187,8 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_bombs.clear()
 	_lobs.clear()
 	_hot.clear()
+	_rollers.clear()
+	_strikes.clear()
 	for b in bosses:
 		if is_instance_valid(b):
 			b.set_process(false)
@@ -329,6 +331,111 @@ func _on_boss_part_died(b: Boss) -> void:
 	if run.can_open_door(RunState.SEAL_DOOR) and g in RunState.REGION_BOSSES and run.seal_bosses_left() == 0:
 		notice("%sを倒した！\n神秘の塔の封印が解けた（町の南西の門）" % g, 6.0)
 	apply_stats()
+
+## ボスが手下を呼ぶ（廃城の主の亡霊・女王蜂の蜂・ブライトの影）。手下は倒しても落とし物も経験値もなく、戻ってもこない。
+func spawn_minion(kind: EnemyKind.Kind, at: Vector2) -> Enemy:
+	var c := HeightMap.world_to_cell(at)
+	if not map.in_bounds(c) or map.is_wall(c) or map.is_pit(c) or map.is_water(c):
+		return null
+	var e := Enemy.new()
+	e.setup(map, c, Vector2.DOWN, player, camera, kind, Enemy.SHOOT_INTERVAL, run.enemy_level(Loot.region_level(area.region)))
+	e.minion = true
+	e.walker.forbidden = area.entry_safe_cells()
+	e.shot.connect(_on_enemy_shot)
+	e.melee_hit.connect(_on_melee_hit.bind(e))
+	e.exploded.connect(_on_enemy_exploded.bind(e))
+	e.lobbed.connect(_on_enemy_lobbed.bind(e))
+	_area_root.add_child(e)
+	enemies.append(e)
+	_effect_sprite(Props.rain_ring(8.0), e.walker.pos, e.walker.height, 0.0, 0.3)
+	return e
+
+## ボスの体の一部（宝箱の王のにせものなど）をエリアに置く。
+func add_boss_part(n: Node) -> void:
+	_area_root.add_child(n)
+
+## 少しあとに落ちてくる攻撃（溶岩の火柱・ブライトの光の雨）。落ちる所に印が出て、delay 秒後にそこにいるとダメージ。
+var _strikes: Array = []  # [位置, 高さ, 残り秒, 広さ, ダメージ, 落ちたときの絵]
+## 落ちた攻撃の数（テスト用）
+var strikes_done := 0
+func boss_strike(at: Vector2, delay: float, radius: float, dmg: int, model: VoxelModel) -> void:
+	var c := HeightMap.world_to_cell(at)
+	if not map.in_bounds(c) or map.is_wall(c):
+		return
+	var h := map.get_height(c)
+	_effect_sprite(Props.aim_shadow(), at, h, 0.0, delay).set_meta("steady", true)
+	_strikes.append([at, h, delay, radius, dmg, model])
+
+func strikes_count() -> int:
+	return _strikes.size()
+
+func _step_strikes(delta: float) -> void:
+	for i in range(_strikes.size() - 1, -1, -1):
+		_strikes[i][2] -= delta
+		if _strikes[i][2] > 0.0:
+			continue
+		var s = _strikes[i]
+		_strikes.remove_at(i)
+		strikes_done += 1
+		_effect_sprite(s[5], s[0], s[1], 0.0, 0.35)
+		if area_state.result == AreaState.Result.PLAYING and player.mover.pos.distance_to(s[0]) < s[3] \
+				and absi(player.mover.height - s[1]) <= 1:
+			hurt_player(s[4])
+
+## 転がる大岩（岩転がしの巨人の2段目）。まっすぐ転がり、低い所へは落ち、高い所や壁で止まって砕ける。
+var _rollers: Array = []  # [位置, 向き, 待ち秒, ダメージ, 絵, 高さ]
+const ROLL_SPEED := 90.0
+const ROLL_WAIT := 0.7
+func boss_roll(from: Vector2, dir: Vector2, dmg: int) -> void:
+	var c := HeightMap.world_to_cell(from)
+	while map.in_bounds(c) and (map.is_wall(c) or map.is_pit(c)):
+		c += Vector2i(dir.round())  # 端が壁なら、転がりだせる所まで進める
+		var cc := HeightMap.cell_center(c)
+		from = Vector2(cc.x, from.y) if dir.x != 0.0 else Vector2(from.x, cc.y)
+	if not map.in_bounds(c):
+		return
+	var h := map.get_height(c)
+	var s := _effect_sprite(BossModels.model("", "boulder"), from, h, 0.0, 30.0)
+	s.voxel_scale = BossModels.VOXEL_SCALE
+	s.set_meta("steady", true)
+	_rollers.append([from, dir, ROLL_WAIT, dmg, s, h])
+
+func rollers_count() -> int:
+	return _rollers.size()
+
+func _step_rollers(delta: float) -> void:
+	for i in range(_rollers.size() - 1, -1, -1):
+		var r = _rollers[i]
+		var s: StackSprite = r[4]
+		if r[2] > 0.0:
+			r[2] -= delta  # 転がりだす前に少しゆれる（よける合図）
+			if is_instance_valid(s):
+				s.world_pos = r[0] + Vector2(sin(r[2] * 60.0), 0) * 1.0
+			continue
+		var next: Vector2 = r[0] + r[1] * ROLL_SPEED * delta
+		var c := HeightMap.world_to_cell(next + r[1] * 6.0)
+		var stop: bool = not map.in_bounds(c) or map.is_wall(c) or map.get_height(c) > r[5]
+		if not stop:
+			r[0] = next
+			var here := HeightMap.world_to_cell(next)
+			if map.in_bounds(here) and not map.is_pit(here):
+				r[5] = map.get_height(here)
+		if is_instance_valid(s):
+			s.world_pos = r[0]
+			s.base_height = r[5]
+		if area_state.result == AreaState.Result.PLAYING and player.mover.pos.distance_to(r[0]) < 10.0 \
+				and player.mover.height == r[5]:
+			hurt_player(r[3])
+		if stop:
+			camera.shake(2.0)
+			_effect_sprite(Props.rain_ring(12.0), r[0], r[5], 0.0, 0.3)
+			if is_instance_valid(s):
+				s.queue_free()
+			_rollers.remove_at(i)
+
+## 燃えている床の数（テスト用）
+func hot_count() -> int:
+	return _hot.size()
 
 ## ボスの弾（巨人の岩・火の息など）。敵の弾と同じに飛ぶ。
 func boss_shot(b: Bullet) -> void:
@@ -542,6 +649,9 @@ func targets() -> Array:
 	for b in bosses:
 		if is_instance_valid(b) and b.walker.alive and b.active:
 			out.append(b)
+			for d in b.decoys:
+				if is_instance_valid(d) and d.walker.alive:
+					out.append(d)
 	return out
 
 ## 攻撃を当てる。入ったら true。source は "sword"・"arrow"・"magic"・"ball"・"bomb"。id は武器の品物（特色を与える）。
@@ -634,6 +744,8 @@ func _process(delta: float) -> void:
 			respawn()
 		_step_bullets(delta)
 		_step_lobs(delta)
+		_step_strikes(delta)
+		_step_rollers(delta)
 		_step_shots(delta)
 		_step_bolts(delta)
 		_step_fires(delta)
@@ -708,7 +820,7 @@ func _play_step() -> void:
 			hurt_player(e.attack)
 			break
 	for b in bosses:
-		if is_instance_valid(b) and b.active and b.walker.touches(player.mover.pos, player.mover.height):
+		if is_instance_valid(b) and b.touch_hurts() and b.walker.touches(player.mover.pos, player.mover.height):
 			hurt_player(b.attack)
 			break
 	for i in range(_drops.size() - 1, -1, -1):
@@ -1422,7 +1534,7 @@ func try_open_door() -> bool:
 	if ex == null:
 		return false
 	if not run.can_open_door(ex.door_id):
-		notice("封印されていて開かない\nあと%d体のボスを倒すと開く" % run.seal_bosses_left(), 2.5)
+		notice(door_hint(ex.door_id), 2.5)
 		return false
 	run.open_door(ex.door_id)
 	player.anim.play_push()
@@ -1824,6 +1936,13 @@ func hotbar_text() -> String:
 		parts.append("[%s]" % t if item == hotbar.selected else " %s " % t)
 	return "".join(parts)
 
+## 開かない門の知らせ。封印の門はボスの数、ボスの間の門は地方の印の数。
+func door_hint(door_id: String) -> String:
+	if RunState.BOSS_DOORS.has(door_id):
+		var seal: String = RunState.BOSS_DOORS[door_id]
+		return "%sが %d個 そろうと開く（あと%d個）\n寄り道のエリアで探す" % [ItemCatalog.label(seal), RunState.SEALS_PER_DOOR, run.seals_left(door_id)]
+	return "神秘の塔の封印の門\nあと%d体のボスを倒すと開く" % run.seal_bosses_left()
+
 ## 画面の真ん中に出す言葉。なければ空。
 func ui_message() -> String:
 	if map_view != null and map_view.visible:
@@ -1831,8 +1950,9 @@ func ui_message() -> String:
 	if area_state.result == AreaState.Result.DYING:
 		return "やられた…\nたき火から やり直す"
 	if _gate_here() != null:
-		if _gate_here().door_id == RunState.SEAL_DOOR and not run.can_open_door(RunState.SEAL_DOOR):
-			return "神秘の塔の封印の門\nあと%d体のボスを倒すと開く" % run.seal_bosses_left()
+		var door := _gate_here().door_id
+		if not run.can_open_door(door):
+			return door_hint(door)
 		return "F：門を開ける"
 	if _notice_time > 0.0:
 		return _notice_text

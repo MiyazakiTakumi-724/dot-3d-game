@@ -60,6 +60,23 @@ AREAS = {
     'tw_2': A('塔の中', 'tower', (-34, 20), (20, 18)),
     'tw_3': A('塔の外周', 'tower', (-34, 38), (20, 18)),
     'tw_4': A('塔の最上階', 'tower', (-34, 56), (20, 16)),
+    # 寄り道のエリア（2026-11-25 夜）。地方ごとに3つ、どれにも「地方の印」が1つある。印を3つ持つとボスの間の門が開く。
+    # 草原と廃城の隠しボスのエリアも足した（各地方に隠しボス1体）。
+    'mt_6': A('凍った湖', 'mountain', (-66, 4), (22, 16)),
+    'mt_7': A('鷹の巣', 'mountain', (-24, -26), (16, 14)),
+    'mt_8': A('吹雪の谷', 'mountain', (-74, -26), (18, 14)),
+    'gr_6': A('沼の小道', 'grass', (48, 16), (22, 14)),
+    'gr_7': A('風車の跡', 'grass', (70, 16), (16, 14)),
+    'gr_8': A('果ての草原', 'grass', (70, -32), (30, 16)),
+    'gr_x': A('女王の巣', 'grass', (50, -32), (20, 16)),
+    'cs_6': A('古い墓地', 'castle', (22, -34), (18, 16)),
+    'cs_7': A('見張りの塔', 'castle', (18, -50), (16, 16)),
+    'cs_8': A('地下牢', 'castle', (-30, -64), (16, 14)),
+    'cs_x': A('宝物庫', 'castle', (-48, -64), (18, 14)),
+    'lv_6': A('黒い森', 'lava', (24, 20), (16, 16)),
+    'lv_7': A('硫黄の谷', 'lava', (38, 36), (16, 16)),
+    'lv_8': A('灰の丘', 'lava', (38, 52), (16, 14)),
+    'tw_5': A('塔の回廊', 'tower', (-14, 38), (18, 14)),
 }
 REGION = {}
 for k in AREAS:
@@ -82,7 +99,10 @@ LINKS = [
     ('mt_2', 'mt_3', -6, -4, '', None),
     ('mt_3', 'mt_4', -50, -48, '', None),
     ('mt_4', 'mt_2', -30, -28, 'mt_gate', 'mt_4'),
-    ('mt_4', 'mt_5', -42, -39, '', None),
+    ('mt_4', 'mt_5', -42, -39, 'mt_boss', 'mt_4'),   # ボスの間の門（山岳の印を3つ持つと開く）
+    ('mt_1', 'mt_6', 12, 14, '', None),
+    ('mt_4', 'mt_7', -16, -14, '', None),
+    ('mt_4', 'mt_8', -22, -20, '', None),
     ('mt_3', 'mt_x', -4, -2, '', None),
     # 草原
     ('hills', 'gr_1', 6, 8, '', None),
@@ -90,25 +110,41 @@ LINKS = [
     ('gr_2', 'gr_3', 76, 78, '', None),
     ('gr_3', 'gr_4', -10, -8, '', None),
     ('gr_4', 'gr_2', 8, 10, 'gr_gate', 'gr_4'),
-    ('gr_4', 'gr_5', -2, 1, '', None),
+    ('gr_4', 'gr_5', -2, 1, 'gr_boss', 'gr_4'),
+    ('gr_1', 'gr_6', 58, 60, '', None),
+    ('gr_6', 'gr_7', 22, 24, '', None),
+    ('gr_2', 'gr_7', 78, 80, '', None),
+    ('gr_3', 'gr_8', 78, 80, '', None),
+    ('gr_4', 'gr_8', 92, 94, '', None),
+    ('gr_8', 'gr_x', -26, -24, '', None),
     # 廃城
     ('forest', 'cs_1', 10, 12, '', None),
     ('cs_1', 'cs_2', 8, 10, '', None),
     ('cs_2', 'cs_3', -44, -42, '', None),
     ('cs_3', 'cs_4', -8, -6, '', None),
     ('cs_4', 'cs_2', 10, 12, 'cs_gate', 'cs_4'),
-    ('cs_4', 'cs_5', 1, 4, '', None),
+    ('cs_4', 'cs_5', 1, 4, 'cs_boss', 'cs_4'),
+    ('cs_1', 'cs_6', -22, -20, '', None),
+    ('cs_6', 'cs_7', 26, 28, '', None),
+    ('cs_2', 'cs_7', -40, -38, '', None),
+    ('cs_4', 'cs_8', -60, -58, '', None),
+    ('cs_8', 'cs_x', -58, -56, '', None),
     # 溶岩
     ('lv_1', 'lv_2', 12, 14, '', None),
     ('lv_2', 'lv_3', 42, 44, '', None),
     ('lv_3', 'lv_4', 28, 30, '', None),
     ('lv_4', 'lv_2', 12, 14, 'lv_gate', 'lv_4'),
-    ('lv_4', 'lv_5', 20, 23, '', None),
+    ('lv_4', 'lv_5', 20, 23, 'lv_boss', 'lv_4'),
+    ('lv_1', 'lv_6', 31, 33, '', None),
+    ('lv_3', 'lv_7', 45, 47, '', None),
+    ('lv_4', 'lv_8', 56, 58, '', None),
+    ('lv_7', 'lv_8', 44, 46, '', None),
     ('lv_4', 'lv_x', 58, 60, '', None),
     # 神秘の塔
     ('tw_1', 'tw_2', 27, 29, '', None),
     ('tw_2', 'tw_3', -26, -24, '', None),
     ('tw_3', 'tw_4', -26, -24, '', None),
+    ('tw_1', 'tw_5', -8, -6, '', None),
 ]
 
 def _link_exits(a, b, g0, g1, door, opener):
@@ -476,7 +512,7 @@ WALL_CH = {'mountain': 'R', 'grass': 'T', 'lava': 'R', 'castle': 'W', 'tower': '
 # ボスの像の色
 BOSS_TINT = {'岩転がしの巨人': '8d8f94', '草むらの大蛇': '6f9a5a', '満ち引きする溶岩': '7a4a3a', '廃城の主': '8a7f9a',
              '双子（左）': 'c9c3b6', '双子（右）': 'c9c3b6', 'らせん塔の番人': 'b8b2a4', 'ブライト': 'e8e2f0',
-             '岩窟のぬし': '6a6c73', '溶岩洞のぬし': '9a3a2a'}
+             '岩窟のぬし': '6a6c73', '溶岩洞のぬし': '9a3a2a', '女王蜂': 'f0c030', '宝箱の王': 'e8b83a'}
 
 
 def field(name, seed, base, amp, fine=1.5, tilt=(0.0, 0.0), scale=11):
@@ -720,13 +756,13 @@ LOOT = {
 # 地方ごとの敵の種類（EnemyKind.Kind の名前）
 REGION_ENEMIES = {
     'はじまりの地': ['WEAK', 'MELEE', 'SHOOTER'],
-    '山岳': ['MELEE', 'CHARGER', 'SHOOTER', 'FLYER'],
-    '草原': ['WEAK', 'CHARGER', 'SHADOW', 'SHOOTER'],
-    '廃城': ['SHIELD', 'GHOST', 'SHOOTER', 'MELEE'],
-    '溶岩': ['BOMBER', 'FLYER', 'SHIELD', 'SHOOTER'],
-    '神秘の塔': ['SHADOW', 'GHOST', 'SHIELD', 'FLYER'],
+    '山岳': ['MELEE', 'CHARGER', 'LOBBER', 'FLYER', 'SPEAR', 'WASP'],
+    '草原': ['WEAK', 'CHARGER', 'SHADOW', 'LOBBER', 'BEETLE', 'WASP'],
+    '廃城': ['SHIELD', 'GHOST', 'SPEAR', 'MAGE', 'MIMIC', 'SHOOTER'],
+    '溶岩': ['BOMBER', 'FLYER', 'SHIELD', 'BEETLE', 'MIMIC', 'SHOOTER'],
+    '神秘の塔': ['SHADOW', 'GHOST', 'MAGE', 'SPEAR', 'FLYER', 'SHIELD'],
 }
-FLAT_KINDS = {'WEAK', 'SHOOTER', 'CHARGER'}   # 段差を登らない敵（4×4の平地を作る）
+FLAT_KINDS = {'WEAK', 'SHOOTER', 'CHARGER', 'BEETLE'}   # 段差を登らない敵（4×4の平地を作る）
 DIR_NAMES = ['RIGHT', 'DOWN', 'LEFT', 'UP']
 
 def spawn(g, seed, n, kinds=None):
@@ -1140,6 +1176,126 @@ def make_tw_4():
     boss(g, 9, 9, 'ブライト')
     return g
 
+# ---------------------------------------------------------------- 寄り道のエリアと地方の印（2026-11-25 夜）
+SEAL = {'山岳': 'seal_mt', '草原': 'seal_gr', '廃城': 'seal_cs', '溶岩': 'seal_lv'}
+
+def seal(g):
+    """地方の印を1つ置く。出口から遠く、高い所ほど選ばれる（探して登って取る）。仕掛けの奥には置かない。"""
+    exits = [c for e in g.exits for c in exit_cells(g.name, *e[1:4])]
+    taken = {(x, y) for x, y, _, _ in g.pickups}
+    best, best_score = None, -1
+    for x, y in g.cells():
+        if not (2 <= x < g.w - 2 and 2 <= y < g.h - 2):
+            continue
+        if g.O[y][x] not in '.Fgs' or (x, y) in g.reserved or (x, y) in g.locked or (x, y) in taken or g.H[y][x] < 0:
+            continue
+        d = min(abs(x - ex) + abs(y - ey) for ex, ey in exits)
+        score = d + g.H[y][x] * 2 + random.Random(g.seed * 7 + x * 31 + y).random()
+        if score > best_score:
+            best, best_score = (x, y), score
+    pickup(g, best[0], best[1], SEAL[g.region], 1)
+    g.reserved.add(best)
+
+def side(name, seed, base, amp, mesa_n=3, fine=1.4, tilt=(0.0, 0.0), pre=None, after=None, enemies=5, loot_n=3):
+    """寄り道のエリア：ふつうのエリアに、地方の印を1つ。敵は少し多い。"""
+    def _after(g):
+        if after:
+            after(g)
+        seal(g)
+    return area(name, seed, base, amp, mesa_n=mesa_n, fine=fine, tilt=tilt, pre=pre, enemies=enemies, loot_n=loot_n, after=_after)
+
+def make_mt_6():
+    def _pre(g):
+        river(g, [(4, 4), (9, 7), (15, 6), (19, 9)], '~', 0.9, gaps=(3, 12))
+        pocket(g, 'CRACK', 13, 12, 15, 14, 'W', ('snow', 4))
+    return side('mt_6', 261, 2.0, 3.0, mesa_n=3, pre=_pre)
+
+def make_mt_7():
+    return side('mt_7', 271, 3.0, 3.5, mesa_n=3, tilt=(1.0, -1.0), enemies=4)
+
+def make_mt_8():
+    def _pre(g):
+        pocket(g, 'VINES', 3, 3, 5, 5, 'E', ('potion_m', 2))
+    return side('mt_8', 281, 2.5, 3.0, mesa_n=3, pre=_pre)
+
+def make_gr_6():
+    def _pre(g):
+        river(g, [(2, 3), (8, 6), (13, 5), (20, 9)], '~', 0.9, gaps=(6, 17), bridge='=')
+    def _after(g):
+        grass_patches(g, 369, threshold=0.5)
+    return side('gr_6', 361, 0.8, 2.2, mesa_n=2, pre=_pre, after=_after)
+
+def make_gr_7():
+    def _pre(g):
+        pocket(g, 'THORNS', 11, 9, 13, 11, 'W', ('scale', 4))
+    return side('gr_7', 371, 1.2, 2.6, mesa_n=3, pre=_pre, enemies=4)
+
+def make_gr_8():
+    def _pre(g):
+        barrier(g, 4, 'THORNS', 9, '~')   # 西の帯の先が女王の巣（炎で茨を燃やす）
+    def _after(g):
+        grass_patches(g, 389, threshold=0.55, ch='F')
+    return side('gr_8', 381, 1.0, 2.6, mesa_n=3, pre=_pre, after=_after, enemies=6, loot_n=4)
+
+def make_gr_x():
+    g = field('gr_x', 391, 1.0, 0.6, fine=0.5)
+    g.open_flat = True
+    for x, y in g.cells():
+        d = math.hypot((x - 10) / 9.0, (y - 8) / 7.0)
+        r = random.Random(x * 71 + y * 13).random()
+        if d >= 1.0 and r < 0.6:
+            g.O[y][x] = random.Random(x + y * 31).choice('TTBF')
+        elif d < 1.0 and r < 0.25:
+            g.O[y][x] = 'F'
+    boss(g, 12, 7, '女王蜂')
+    flatten_exits(g); loot(g, 392, 2, [('herb', 4), ('potion_m', 2)]); return g
+
+def make_cs_6():
+    def _pre(g):
+        pocket(g, 'CRACK', 12, 3, 14, 5, 'S', ('silver', 3))
+    return side('cs_6', 461, 1.0, 2.4, mesa_n=2, fine=1.2, pre=_pre)
+
+def make_cs_7():
+    return side('cs_7', 471, 1.5, 3.0, mesa_n=3, enemies=4)
+
+def make_cs_8():
+    def _pre(g):
+        barrier(g, 4, 'VINES', 6, '~')   # 西の帯の先が宝物庫（剣でつたを斬る）
+    return side('cs_8', 481, 1.0, 2.0, mesa_n=2, pre=_pre, enemies=4)
+
+def make_cs_x():
+    g = field('cs_x', 491, 1.0, 0.3, fine=0.3)
+    g.open_flat = True
+    flatten(g, 1, 1, 16, 12, 1)
+    for x in range(1, 17):
+        for y in range(1, 13):
+            g.O[y][x] = 's'
+    for x, y in [(4, 3), (13, 3), (4, 10), (13, 10)]:
+        g.O[y][x] = 'I'
+    boss(g, 9, 6, '宝箱の王')
+    flatten_exits(g); loot(g, 492, 2, [('money', 80), ('silver', 3)]); return g
+
+def make_lv_6():
+    def _pre(g):
+        pocket(g, 'THORNS', 9, 3, 11, 5, 'S', ('obsidian', 3))
+    return side('lv_6', 561, 1.5, 2.6, mesa_n=2, pre=_pre)
+
+def make_lv_7():
+    def _pre(g):
+        river(g, [(3, 2), (7, 7), (6, 12), (10, 15)], 'L', 0.6, gaps=(5, 14))
+    return side('lv_7', 571, 2.0, 3.0, mesa_n=2, pre=_pre, enemies=4)
+
+def make_lv_8():
+    return side('lv_8', 581, 2.0, 3.0, mesa_n=3, enemies=5)
+
+def make_tw_5():
+    g = field('tw_5', 741, 1.5, 1.5, fine=0.8)
+    mesas(g, 2, 742, rise=2, r=(2, 3))
+    dress(g, 741)
+    spawn(g, 744, 4)
+    loot(g, 743, 3)
+    return g
+
 EDGE = {'NORTH': 'ExitDef.Edge.NORTH', 'EAST': 'ExitDef.Edge.EAST', 'SOUTH': 'ExitDef.Edge.SOUTH', 'WEST': 'ExitDef.Edge.WEST'}
 DIRS = {'RIGHT': 'Vector2.RIGHT', 'DOWN': 'Vector2.DOWN', 'LEFT': 'Vector2.LEFT', 'UP': 'Vector2.UP'}
 
@@ -1319,6 +1475,11 @@ MAKERS = {
     'cs_1': make_cs_1, 'cs_2': make_cs_2, 'cs_3': make_cs_3, 'cs_4': make_cs_4, 'cs_5': make_cs_5,
     'lv_1': make_lv_1, 'lv_2': make_lv_2, 'lv_3': make_lv_3, 'lv_4': make_lv_4, 'lv_5': make_lv_5, 'lv_x': make_lv_x,
     'tw_1': make_tw_1, 'tw_2': make_tw_2, 'tw_3': make_tw_3, 'tw_4': make_tw_4,
+    'mt_6': make_mt_6, 'mt_7': make_mt_7, 'mt_8': make_mt_8,
+    'gr_6': make_gr_6, 'gr_7': make_gr_7, 'gr_8': make_gr_8, 'gr_x': make_gr_x,
+    'cs_6': make_cs_6, 'cs_7': make_cs_7, 'cs_8': make_cs_8, 'cs_x': make_cs_x,
+    'lv_6': make_lv_6, 'lv_7': make_lv_7, 'lv_8': make_lv_8,
+    'tw_5': make_tw_5,
 }
 
 def main():

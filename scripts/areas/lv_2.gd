@@ -52,7 +52,7 @@ const EXITS := [
 ]
 ## [マス, 向き, 種類, レベル（倒したボスの数は足す前）]
 const ENEMIES := [
-	[Vector2i(2, 8), Vector2.LEFT, EnemyKind.Kind.SHIELD, 3],
+	[Vector2i(2, 8), Vector2.LEFT, EnemyKind.Kind.MIMIC, 3],
 	[Vector2i(2, 4), Vector2.LEFT, EnemyKind.Kind.SHOOTER, 3],
 ]
 ## [マス, 品物の id（ItemCatalog、お金は money）, 数]

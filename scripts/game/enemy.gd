@@ -87,6 +87,8 @@ var _burst_left := 0
 var face := Vector2.DOWN
 ## 擬態箱が目を覚ましたか
 var awake := true
+## ボスが呼んだ手下（倒しても落とし物はなく、戻ってもこない）
+var minion := false
 ## 魔術師：消えている残り秒（正なら消えている）、現れる所の候補
 var _blink := 0.0
 var _home := Vector2.ZERO

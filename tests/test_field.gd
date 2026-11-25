@@ -1133,6 +1133,18 @@ func test_boss_defeat_is_remembered():
 	f.enter_area("mt_5", Vector2i(10, 18))
 	assert_eq(f.bosses.size(), 0)
 
+## ボスの間の門は、その地方の印を3つ持つと開く（たくさん探索してからボスを倒す形）
+func test_boss_door_needs_three_seals():
+	f.enter_area("mt_4", Vector2i(10, 7))
+	var ex := _exit("mt_4", "mt_5", true)
+	assert_not_null(ex)
+	f.player.mover.place(_mid(ex, 1))
+	assert_string_contains(f.ui_message(), "あと3個")
+	assert_false(f.try_open_door())
+	f.run.inventory.add("seal_mt", 3)
+	assert_eq(f.ui_message(), "F：門を開ける")
+	assert_true(f.try_open_door())
+
 ## 死んだらボスの体力は戻る
 func test_boss_heals_when_player_dies():
 	f.enter_area("gr_5", Vector2i(2, 9))

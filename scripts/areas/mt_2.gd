@@ -30,9 +30,9 @@ const OBJECTS := [
 	".B...P...R...R..",
 	"................",
 	"..............RR",
-	"...R.........P..",
-	"..............R.",
-	"R...............",
+	"...R..R......P..",
+	"......R.......R.",
+	"R.......P.......",
 	"..........P.....",
 	"......M......B..",
 	"................",
@@ -52,13 +52,13 @@ const EXITS := [
 ]
 ## [マス, 向き, 種類, レベル（倒したボスの数は足す前）]
 const ENEMIES := [
-	[Vector2i(8, 4), Vector2.RIGHT, EnemyKind.Kind.SHOOTER, 2],
-	[Vector2i(3, 13), Vector2.RIGHT, EnemyKind.Kind.FLYER, 2],
+	[Vector2i(8, 4), Vector2.RIGHT, EnemyKind.Kind.SPEAR, 2],
+	[Vector2i(3, 13), Vector2.RIGHT, EnemyKind.Kind.WASP, 2],
 ]
 ## [マス, 品物の id（ItemCatalog、お金は money）, 数]
 const PICKUPS := [
-	[Vector2i(15, 9), "potion", 1],
-	[Vector2i(0, 4), "bone", 2],
+	[Vector2i(7, 2), "potion", 1],
+	[Vector2i(14, 7), "bone", 2],
 	[Vector2i(3, 2), "iron_ore", 3],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く

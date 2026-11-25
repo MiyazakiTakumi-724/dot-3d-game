@@ -13,11 +13,11 @@ const HEIGHTS := [
 	"2223323332222233",
 	"2222223332222333",
 	"2222223333333333",
-	"2222223333333333",
-	"2222223333333333",
-	"3322223333333333",
-	"3322223333333333",
-	"3322223333323333",
+	"2222222333333333",
+	"2222222333333333",
+	"3322222333333333",
+	"3322222333333333",
+	"3322223332223333",
 	"3322223322222222",
 	"3321112222222222",
 	"3321111222222222",
@@ -31,11 +31,11 @@ const OBJECTS := [
 	"...........I....",
 	"................",
 	"..............B.",
-	"....B...........",
+	"................",
 	"...............I",
-	"................",
+	"........B.F.....",
 	"I...............",
-	"................",
+	".......T........",
 	"..WWWWW..B...B.I",
 	".BW...W.........",
 	"..W...X......F.T",
@@ -51,17 +51,17 @@ const EXITS := [
 ]
 ## [マス, 向き, 種類, レベル（倒したボスの数は足す前）]
 const ENEMIES := [
-	[Vector2i(13, 2), Vector2.UP, EnemyKind.Kind.SHIELD, 3],
-	[Vector2i(5, 6), Vector2.UP, EnemyKind.Kind.GHOST, 3],
-	[Vector2i(9, 7), Vector2.RIGHT, EnemyKind.Kind.SHOOTER, 3],
-	[Vector2i(10, 12), Vector2.LEFT, EnemyKind.Kind.MELEE, 3],
+	[Vector2i(13, 2), Vector2.UP, EnemyKind.Kind.MIMIC, 3],
+	[Vector2i(5, 6), Vector2.UP, EnemyKind.Kind.SHOOTER, 3],
+	[Vector2i(7, 10), Vector2.DOWN, EnemyKind.Kind.SHIELD, 3],
+	[Vector2i(11, 7), Vector2.LEFT, EnemyKind.Kind.GHOST, 3],
 ]
 ## [マス, 品物の id（ItemCatalog、お金は money）, 数]
 const PICKUPS := [
 	[Vector2i(3, 10), "silver", 4],
-	[Vector2i(12, 0), "potion_m", 1],
-	[Vector2i(10, 9), "scrap", 3],
-	[Vector2i(14, 15), "ether", 1],
+	[Vector2i(3, 0), "potion_m", 1],
+	[Vector2i(9, 13), "scrap", 3],
+	[Vector2i(0, 10), "ether", 1],
 	[Vector2i(2, 8), "money", 40],
 ]
 ## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く
