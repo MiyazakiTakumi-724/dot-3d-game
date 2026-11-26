@@ -37,6 +37,8 @@ signal lobbed(at: Vector2, height: int, delay: float, damage: int)
 signal split(pos: Vector2, height: int)
 ## 魔術師が手下を呼ぶ
 signal summon(kind: EnemyKind.Kind, pos: Vector2)
+## 突き飛ばされて止まった（落ちた段数とダメージ。2026-11-26 独自の開発1）
+signal knocked_down(levels: int, damage: int)
 
 const SHOOT_INTERVAL := 2.0
 const SHOOT_RANGE := 140.0
@@ -255,6 +257,17 @@ func _process(delta: float) -> void:
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	frenzy = maxf(0.0, frenzy - delta)
 	_track(delta)
+	if walker.knocking():
+		# 突き飛ばされている間は、技も歩きも止まる（2026-11-26 独自の開発1）
+		_end_act()
+		if walker.update_knock(delta):
+			knocked_down.emit(walker.last_fall_levels, walker.last_fall_damage)
+		_tint()
+		world_pos = walker.pos
+		base_height = walker.height
+		lift_px = 0.0
+		super._process(delta)
+		return
 	var alive_target := target.hp > 0
 	if kind == EnemyKind.Kind.GHOST:
 		walker.chase_range = EnemyKind.hearing(kind, target.crouching)

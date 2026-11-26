@@ -147,3 +147,14 @@ static func hearing(k: Kind, crouching: bool) -> float:
 	if k == Kind.GHOST and crouching:
 		return GHOST_QUIET_RANGE
 	return chase_range(k)
+
+
+## 突き飛ばされやすさ（2026-11-26 独自の開発1）。0 は動かない（飛ぶ敵・黒騎士・擬態箱）、0.5 は重い（甲虫・盾持ち）。
+const KNOCK := {
+	Kind.FLYER: 0.0, Kind.WASP: 0.0, Kind.GHOST: 0.0, Kind.BOMBER: 0.0,
+	Kind.DARK_KNIGHT: 0.0, Kind.MIMIC: 0.0,
+	Kind.BEETLE: 0.5, Kind.SHIELD: 0.5,
+}
+
+static func knock_mult(k: Kind) -> float:
+	return KNOCK.get(k, 1.0)

@@ -16,7 +16,7 @@ const NAMES := {
 }
 
 const STOCK := {
-	"tool": [["potion", 15, 1], ["potion_m", 40, 1], ["ether", 30, 1], ["feather", 60, 1], ["bomb", 30, 1],
+	"tool": [["hook", 80, 1], ["potion", 15, 1], ["potion_m", 40, 1], ["ether", 30, 1], ["feather", 60, 1], ["bomb", 30, 1],
 		["arrow", 15, 10], ["arrow_poison", 30, 5]],
 	"weapon": [["sword_1", 40, 1], ["bow_1", 40, 1], ["staff_none_1", 40, 1], ["armor_1", 30, 1],
 		["ball_heavy", 150, 1], ["sword_light", 150, 1], ["sword_bronze", 160, 1], ["bow_short", 150, 1], ["bow_long", 160, 1],
@@ -36,6 +36,8 @@ static func can_buy(inv: Inventory, shop_id: String, index: int) -> bool:
 	var row: Array = STOCK[shop_id][index]
 	if inv.money < row[1]:
 		return false
+	if ItemCatalog.is_key(row[0]) and inv.count(row[0]) > 0:
+		return false  # 大事な物（鉤縄）は1つだけ
 	return not (ItemCatalog.exists(row[0]) and inv.equipment.has(row[0]))
 
 ## 買う。買えなければ false。

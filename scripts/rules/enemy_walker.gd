@@ -57,6 +57,81 @@ func _init(height_map: HeightMap, start_cell: Vector2i, start_dir: Vector2, hp_m
 func cell() -> Vector2i:
 	return HeightMap.world_to_cell(pos)
 
+# ---------------------------------------------------------------- 突き飛ばし（2026-11-26 独自の開発1）
+## 剣・鉄球・爆弾で押されると、少しの間すべる。下への段差はいくつでも落ち（climb は関係ない）、上と壁と水には入らない。
+## 奈落へ落ちると倒れる。2段以上落ちると、落ちた段数で痛い（fall_damage）。高い所から突き落とすのが、上を取る強み。
+const KNOCK_SPEED := 160.0
+## 1段より多く落ちたとき、1段ごとに最大いのちのこの割合
+const FALL_PER_LEVEL := 0.15
+var _knock_vel := Vector2.ZERO
+var _knock_left := 0.0
+var _knock_drop := 0
+## 最後に突き飛ばされて落ちた段数と、そのダメージ（画面に出す用）
+var last_fall_levels := 0
+var last_fall_damage := 0
+## 突き飛ばされて奈落へ落ちた
+var fell_into_pit := false
+
+## levels 段落ちたときのダメージ。1段までは0。
+static func fall_damage(hp_max: int, levels: int) -> int:
+	if levels <= 1:
+		return 0
+	return mini(hp_max, ceili(hp_max * FALL_PER_LEVEL * (levels - 1)))
+
+## d の向きへ dist px 突き飛ばす。飛ぶ敵は押されない。
+func knock(d: Vector2, dist: float) -> void:
+	if not alive or flying or dist <= 0.0 or d == Vector2.ZERO:
+		return
+	if not knocking():
+		_knock_drop = 0
+	_knock_vel = d.normalized() * KNOCK_SPEED
+	_knock_left = maxf(_knock_left, dist / KNOCK_SPEED)
+
+func knocking() -> bool:
+	return alive and _knock_left > 0.0
+
+## 突き飛ばされて動く。この呼び出しで止まったら true（落ちた段数とダメージは last_fall_*）。
+func update_knock(delta: float) -> bool:
+	if not knocking():
+		return false
+	var t := minf(delta, _knock_left)
+	_knock_left -= t
+	var v := _knock_vel * t
+	for axis in [Vector2(v.x, 0.0), Vector2(0.0, v.y)]:
+		if axis == Vector2.ZERO or not _knock_axis(axis):
+			continue
+		if not alive:
+			return true
+	if _knock_left > 0.0:
+		return false
+	_knock_left = 0.0
+	last_fall_levels = _knock_drop
+	last_fall_damage = fall_damage(max_hp, _knock_drop)
+	_knock_drop = 0
+	if last_fall_damage > 0:
+		take_damage(last_fall_damage)
+	return true
+
+## 1軸だけ動かす。入れないマスなら止める。動けたら true。
+func _knock_axis(v: Vector2) -> bool:
+	var np := pos + v
+	var c := HeightMap.world_to_cell(np)
+	if c != cell():
+		if map.is_pit(c):
+			pos = np
+			fell_into_pit = true
+			last_fall_levels = height
+			_knock_left = 0.0
+			take_damage(hp)
+			return true
+		if map.is_wall(c) or map.is_water(c) or forbidden.has(c) or map.get_height(c) > height:
+			_knock_left = 0.0
+			return false
+		_knock_drop += height - map.get_height(c)
+		height = map.get_height(c)
+	pos = np
+	return true
+
 ## 近くにいる target（高さ target_h）へ向きを変える。step() の前に毎フレーム呼ぶ。
 func chase(target: Vector2, target_h: int) -> void:
 	_chasing = false

@@ -126,6 +126,10 @@ var title_menu: TitleMenu
 var pause_menu: PauseMenu
 const TITLE_TURN := 0.12  ## タイトル画面でカメラが回る速さ（1秒あたりのラジアン）
 var _ui_layer: CanvasLayer
+## 鉤縄（2026-11-26 独自の開発1）
+var hook := Hook.new()
+var hook_rope: HookRope
+var _hook_pull := {}  # 体を引き上げている間：{"from": 位置, "h0": 段, "to": マス, "t": 秒}
 var _shots: Array = []  # 飛んでいる矢 [Arrow, StackSprite, ダメージ]
 const STUCK_ARROW_SECONDS := 0.8  ## 落ちた矢を地面に刺さったまま見せる時間
 var _arrow_blink := 0.0
@@ -176,6 +180,10 @@ func _ready() -> void:
 	aim_reticle.set_model(Props.aim_ring())
 	add_child(aim_reticle)
 	rng.randomize()
+	hook_rope = HookRope.new()
+	hook_rope.camera = camera
+	hook_rope.visible = false
+	add_child(hook_rope)
 
 	enter_area(Continent.START_AREA, Continent.START_CELL)
 	player.setup(map, rules, Continent.START_CELL, camera)
@@ -446,6 +454,7 @@ func spawn_minion(kind: EnemyKind.Kind, at: Vector2) -> Enemy:
 ## 敵の技（2026-11-26）に要るつなぎ：落ちてくる矢を調べる・スライムが分かれる・魔術師が呼ぶ。
 func _wire_enemy(e: Enemy) -> void:
 	e.field = self
+	e.knocked_down.connect(_on_enemy_knocked.bind(e))
 	e.split.connect(_on_slime_split)
 	e.summon.connect(_on_enemy_summon)
 
@@ -875,7 +884,13 @@ static func body_extra(e) -> float:
 		return EnemyModels.BODY_EXTRA
 	return 0.0
 
-func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, source := "sword") -> bool:
+## 攻撃で敵を突き飛ばす距離（px。2026-11-26 独自の開発1）。矢と魔法は押さない（剣・鉄球・爆弾の役目）。
+const KNOCK_DIST := {"sword": 12.0, "ball": 14.0, "bomb": 24.0}
+const KNOCK_THRUST := 22.0
+const KNOCK_FALL_SLASH := 18.0
+const KNOCK_SPIN := 16.0
+
+func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, source := "sword", knock := -1.0) -> bool:
 	var rule: String = e.hit_rule(source, from)
 	var gray := Color("b0b8c8")
 	match rule:
@@ -933,7 +948,35 @@ func damage_target(e, dmg: int, from: Vector2, id := "", color := Color.WHITE, s
 	elif e.has_method("flash"):
 		e.flash()
 	e.on_hit(source)
+	_knock(e, from, knock if knock >= 0.0 else KNOCK_DIST.get(source, 0.0))
 	return true
+
+## 敵を from から離れる向きへ突き飛ばす。崖から落とすと痛い（EnemyWalker.knock）。
+func _knock(e, from: Vector2, dist: float) -> void:
+	if not (e is Enemy) or not e.walker.alive:
+		return
+	dist *= EnemyKind.knock_mult(e.kind)
+	if dist <= 0.0:
+		return
+	var d: Vector2 = e.walker.pos - from
+	if d.length() < 2.0:
+		d = e.walker.pos - player.mover.pos  # 真上に落ちた鉄球などは、主人公から離れる向き
+	e.walker.knock(d, dist)
+
+## 突き飛ばされた敵が止まった。段差から落ちていれば、落ちた段数で痛い。
+func _on_enemy_knocked(levels: int, dmg: int, e: Enemy) -> void:
+	if not is_instance_valid(e):
+		return
+	if e.walker.fell_into_pit:
+		_popup_text(e.walker.pos, e.walker.height, "奈落へ！", Color("ffd54a"))
+		Sfx.play("fall", e.walker.pos)
+	elif dmg > 0:
+		_popup_text(e.walker.pos, e.walker.height + 2, "%d段 落ちた！" % levels, Color("ffd54a"))
+		_popup(e.walker.pos, e.walker.height, dmg, Color("ffd54a"))
+		Sfx.play("ball_land", e.walker.pos)
+		camera.shake(1.0 + levels * 0.5)
+	if not e.walker.alive:
+		Sfx.play("enemy_die", e.walker.pos)
 
 func _popup_text(pos: Vector2, h: int, text: String, color: Color) -> void:
 	_popups.add_child(DamagePopup.make_text(camera, pos, h * StackSprite.LEVEL_PX, text, color))
@@ -977,6 +1020,7 @@ func _process(delta: float) -> void:
 	else:
 		run.play_time += delta / maxf(Engine.time_scale, 0.01)
 	roster.tick(delta)
+	hook.update(delta)
 	sword.update(delta)
 	bow.update(delta * float(run.inventory.equipment.trait_of(Equipment.Slot.BOW, "charge", 1.0)), player.moving)
 	magic.update(delta)
@@ -1018,6 +1062,7 @@ func _process(delta: float) -> void:
 			shop_menu.close()
 		if travel_menu.is_open() and not near_campfire():
 			travel_menu.close()
+		_step_hook(delta)
 		if area_state.result == AreaState.Result.PLAYING and not in_title:
 			if player.hp <= 0 or player.mover.fell:
 				kill_player(player.mover.fell)
@@ -1164,6 +1209,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				open_inventory()
 			KEY_SPACE:
 				spin_slash()
+			KEY_R:
+				use_hook()
 			KEY_M:
 				toggle_map()
 			_:
@@ -1212,7 +1259,8 @@ func swing_sword() -> bool:
 	for e in targets():
 		if Sword.hits(mv.pos, mv.height, mv.facing, e.walker.pos, e.walker.height, thrust, reach + body_extra(e) / Sword.REACH):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
-			damage_target(e, dmg, mv.pos, id, Color("ffb347") if fall > 0 else Color.WHITE, "sword")
+			damage_target(e, dmg, mv.pos, id, Color("ffb347") if fall > 0 else Color.WHITE, "sword",
+					KNOCK_THRUST if thrust else (KNOCK_FALL_SLASH if fall > 0 else -1.0))
 	if run.grave != null and run.grave.area_id == area.id:
 		var g := run.grave.cell
 		if Sword.hits(mv.pos, mv.height, mv.facing, HeightMap.cell_center(g), map.get_height(g), thrust):
@@ -1382,7 +1430,7 @@ func spin_slash() -> bool:
 	for e in targets():
 		if Sword.hits_around(mv.pos, mv.height, e.walker.pos, e.walker.height, float(ItemCatalog.trait_value(id, "reach", 1.0)) + body_extra(e) / Sword.REACH):
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), 0)
-			damage_target(e, dmg, mv.pos, id, Color.WHITE, "sword")
+			damage_target(e, dmg, mv.pos, id, Color.WHITE, "sword", KNOCK_SPIN)
 	return true
 
 ## 今の装備で持ちかえられる物の姿（立ち姿・歩く姿・鉄球を放した姿）を、先に作っておく
@@ -2994,3 +3042,72 @@ func _pause_quit() -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		autosave()  # ウィンドウを閉じたときも書く
+
+
+# ---------------------------------------------------------------- 鉤縄（2026-11-26 独自の開発1）
+
+func has_hook() -> bool:
+	return run.inventory.count(Hook.ID) > 0
+
+## R：カーソルの所へ鉤縄を投げる。敵なら引き寄せ、1〜3段上の地面なら体を引き上げる。使えたら true。
+func use_hook(screen = null) -> bool:
+	if area_state.result != AreaState.Result.PLAYING or is_switching() or not player.controllable or in_title:
+		return false
+	if not has_hook():
+		notice("鉤縄を 持っていない\n（町の道具屋で 買える）", 2.0)
+		return false
+	if not hook.is_ready() or not _hook_pull.is_empty():
+		return false
+	var at: Vector2 = screen if screen != null else get_local_mouse_position()
+	var aim := magic_aim_at(at)
+	var mv := player.mover
+	var hand := mv.height * StackSprite.LEVEL_PX + 8.0
+	var e = aim["enemy"]
+	if e != null and e is Enemy and Hook.reaches(mv.pos, e.walker.pos):
+		hook.use()
+		Sfx.play("hook", e.walker.pos)
+		hook_rope.show_rope(mv.pos, hand, e.walker.pos, e.walker.height * StackSprite.LEVEL_PX + 6.0, 0.22)
+		var mult := EnemyKind.knock_mult(e.kind)
+		if mult <= 0.0:
+			_popup_text(e.walker.pos, e.walker.height, "動かない", Color("b0b8c8"))
+			return true
+		var d: Vector2 = mv.pos - e.walker.pos
+		e.walker.knock(d, maxf(0.0, d.length() - Hook.PULL_STOP) * minf(1.0, mult * 1.5))
+		if e.walker.height > mv.height:
+			_popup_text(e.walker.pos, e.walker.height + 2, "引きずり下ろせ！", Color("ffd54a"))
+		return true
+	var c := Hook.ledge(map, mv.pos, mv.height, aim["point"] if e == null else e.walker.pos)
+	if c.x < 0:
+		_popup_text(aim["point"], int(aim["level"]), "かからない", Color("b0b8c8"))
+		Sfx.play("miss")
+		return false
+	hook.use()
+	Sfx.play("hook")
+	_hook_pull = {"from": mv.pos, "h0": mv.height, "to": c, "t": 0.0}
+	player.controllable = false
+	bow.cancel()
+	return true
+
+## 体を引き上げている間：縄を描き、少し山なりに動かし、着いたら置き直す。
+func _step_hook(delta: float) -> void:
+	if _hook_pull.is_empty():
+		return
+	var mv := player.mover
+	_hook_pull["t"] += delta
+	var k := clampf(_hook_pull["t"] / Hook.PULL_TIME, 0.0, 1.0)
+	var to_pos := HeightMap.cell_center(_hook_pull["to"])
+	var h0: int = _hook_pull["h0"]
+	var h1 := map.get_height(_hook_pull["to"])
+	mv.pos = (_hook_pull["from"] as Vector2).lerp(to_pos, k)
+	player.lift_px = (h1 - h0) * StackSprite.LEVEL_PX * k + sin(k * PI) * 6.0
+	hook_rope.show_rope(mv.pos, (h0 * StackSprite.LEVEL_PX) + player.lift_px + 8.0, to_pos, h1 * StackSprite.LEVEL_PX, 0.05)
+	if k >= 1.0:
+		mv.place(_hook_pull["to"])
+		player.lift_px = 0.0
+		_hook_pull = {}
+		if area_state.result == AreaState.Result.PLAYING and not is_switching():
+			player.controllable = true
+		Sfx.play("land")
+
+func hook_pulling() -> bool:
+	return not _hook_pull.is_empty()

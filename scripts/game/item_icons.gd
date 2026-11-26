@@ -49,6 +49,7 @@ const OTHER := {
 	"queen_sting": ["fang", "f0c040", "3a2a1a"], "king_crown": ["crown", "f0c040", "c02a4a"],
 	"seal_mt": ["seal", "8d8f94", "e0e8f0"], "seal_gr": ["seal", "5a9a4a", "e0f0a0"], "seal_cs": ["seal", "7a6a9a", "f0d060"],
 	"seal_lv": ["seal", "a03a1a", "ffb03a"], "keepsake": ["heart", "d05a6a", "ffe0a0"],
+	"hook": ["hook", "9aa0aa", "c8a060"],
 	"dark_shard": ["shard", "3a2a4a", "b08ae0"], "mist_moss": ["leaf", "6a9a8a", "c0e0d0"], "dark_crest": ["crest", "2a2430", "b08ae0"],
 	# 道具
 	"potion": ["flask", "e04a5a", "ffd0d8"], "potion_m": ["flask", "c02a5a", "ffb0c8"], "potion_l": ["flask_big", "a01a4a", "ffa0c0"],
@@ -166,6 +167,18 @@ static func _armor(img: Image, a: Color, b: Color) -> void:
 
 static func _shape(img: Image, kind: String, a: Color, b: Color) -> void:
 	match kind:
+		"hook":
+			# 縄（差し色）がとぐろを巻き、先に鉄の爪（主な色）
+			for i in 7:
+				_px(img, 2 + i, 13 - i / 2, b)
+			_disc(img, 5, 12, 2.5, b)
+			_disc(img, 5, 12, 1.2, Color(0, 0, 0, 0))
+			_line(img, Vector2i(8, 10), Vector2i(10, 6), a)
+			_line(img, Vector2i(10, 6), Vector2i(10, 2), a)
+			_line(img, Vector2i(10, 2), Vector2i(13, 4), a)
+			_line(img, Vector2i(10, 2), Vector2i(7, 4), a)
+			_line(img, Vector2i(10, 6), Vector2i(13, 7), a.lightened(0.2))
+			_px(img, 10, 3, a.lightened(0.4))
 		"coin":
 			_disc(img, 8, 8, 5.5, a)
 			_disc(img, 8, 8, 3.5, a.lightened(0.15))
