@@ -5,21 +5,24 @@ sprite stacking（輪切りのドット絵を重ねて3Dに見せる手法）を
 ## まず読むもの
 
 1. `docs/design.md`：ゲーム全体の仕様。ここを正とする。【提案】が付いた項目はClaudeの提案で、ユーザーの明確な承認はまだない。
-2. `docs/superpowers/specs/2026-11-26-tuning-4.md`：遊んでみての直し（4回目）。グラフィックを映像に近づける、たき火から移動、しゃがみの時間と待ち、
+2. `docs/superpowers/specs/2026-11-26-steam-push-1.md`：独自の開発1（Steamリリースに向けて、ユーザーが「独自に進めて」と任せた）。
+   セーブ・タイトル・止める画面・設定の保存、敵を崖から落とす・鉤縄・転がる岩、カメラの向きで現れる幻の橋、ストーリー（闇の王＝ガルド・記憶のかけら・本当の終わり）、
+   装飾品・記録のページ、UIのチェック。すべて【提案】。下の tuning-4 と食い違う所はこちらが優先。
+3. `docs/superpowers/specs/2026-11-26-tuning-4.md`：遊んでみての直し（4回目）。グラフィックを映像に近づける、たき火から移動、しゃがみの時間と待ち、
    弓だけで勝てないように（ボスの構え・敵の得意不得意・弓を引く間は遅い・離れると詰める）、敵とボスの技を増やす、ストーリー（話す画面・町の人・看板とヒント）、
    新しい地方「霧の谷」（6エリア・狼・黒騎士・ボス「闇の王」）。下の tuning-3 と食い違う所はこちらが優先。
-3. `docs/superpowers/specs/2026-11-26-tuning-3.md`：遊んでみての直し（3回目）。効果音75種、高低差を増やしエリアを少し広く四角でない形に、敵とボスを大きく、
+4. `docs/superpowers/specs/2026-11-26-tuning-3.md`：遊んでみての直し（3回目）。効果音75種、高低差を増やしエリアを少し広く四角でない形に、敵とボスを大きく、
    影と光（地面に落ちる長い影・雲の影・暗い地方の明かり・舞うもの）、操作の一覧は設定から、方位はいつも右上、1920×1080、宝箱は F、仕掛けを8種類に。下の tuning-2 と食い違う所はこちらが優先。
-4. `docs/superpowers/specs/2026-11-25-tuning-2.md`：遊んでみての直し（2回目）。伸びとダメージの式を下げ、装備のレベル制限をやめて強い敵だけが落とす結晶に、
+5. `docs/superpowers/specs/2026-11-25-tuning-2.md`：遊んでみての直し（2回目）。伸びとダメージの式を下げ、装備のレベル制限をやめて強い敵だけが落とす結晶に、
    たき火のエリアをせまく敵なしに、ほとんどの敵が1段登る、全体マップと画面に方位・出口・門、ボスの技を増やす（巨人と岩窟のぬしは奈落を開ける）。下の balance-pass と食い違う所はこちらが優先。
-5. `docs/superpowers/specs/2026-11-25-balance-pass.md`：遊んでみての直し（敵とボスを強く賢く、敵15種・ボス11体、45エリアと地方の印、
+6. `docs/superpowers/specs/2026-11-25-balance-pass.md`：遊んでみての直し（敵とボスを強く賢く、敵15種・ボス11体、45エリアと地方の印、
    いのちとマナのバー、品物のアイコン、ボスは素材だけ落とし装備にはレベルの制限）。2026-11-25 夜の依頼で、Claudeが決めて実装した。下の設計と食い違う所はこちらが優先。
-6. `docs/superpowers/specs/2026-11-25-full-game-design.md`：ゲームを完成まで作る設計（町・せまい30エリア・敵9種・ランク1〜5の品物・素材・作る・ボス9体）。
+7. `docs/superpowers/specs/2026-11-25-full-game-design.md`：ゲームを完成まで作る設計（町・せまい30エリア・敵9種・ランク1〜5の品物・素材・作る・ボス9体）。
    ユーザーが「もう指示はしないから完成まで作って、説明しきれなかった部分は自分で補填して」と任せたので、Claudeが決めて実装した（2026-11-25）。
    `docs/superpowers/specs/2026-11-25-world-map-design.md`（大陸の全体の最初の設計）と食い違う所は、こちらが優先。
-7. `docs/superpowers/specs/2026-11-24-world-areas-design.md`：試作3「大陸のエリアをつなぐ」の設計（ユーザー承認済み、実装済み）。試作2の設計と食い違う所はこちらが優先。計画は `docs/superpowers/plans/2026-11-24-world-areas.md`。
-8. `docs/superpowers/specs/2026-11-23-death-loop-design.md`：試作2「死と取り返しの流れ」の設計（ユーザー承認済み）。持ち物・墓石・奈落のルールは試作3でもこのまま。
-9. 古い計画（完了済み）：`docs/superpowers/plans/` の 2026-11-23・2026-11-24 の試作1・試作2のもの。
+8. `docs/superpowers/specs/2026-11-24-world-areas-design.md`：試作3「大陸のエリアをつなぐ」の設計（ユーザー承認済み、実装済み）。試作2の設計と食い違う所はこちらが優先。計画は `docs/superpowers/plans/2026-11-24-world-areas.md`。
+9. `docs/superpowers/specs/2026-11-23-death-loop-design.md`：試作2「死と取り返しの流れ」の設計（ユーザー承認済み）。持ち物・墓石・奈落のルールは試作3でもこのまま。
+10. 古い計画（完了済み）：`docs/superpowers/plans/` の 2026-11-23・2026-11-24 の試作1・試作2のもの。
 
 ## 現状
 
@@ -81,7 +84,17 @@ M キーで全体マップ（`scripts/game/world_map_view.gd`、行ったエリ�
 - ストーリー（`Story`：はじまり・人と看板の言葉・ボスのあと・終わり。`DialogueBox`：話す画面。人と看板は field.gd の `_place_story` が置き、F で話す）。
 - 霧の谷（mv_1〜6、theme mist）：霧の門（ぬし2体で開く）・村のお守りで開く闇の砦の門・狼と黒騎士（敵は17種）・ボス「闇の王」（ボスは12体）・宵闇の剣。エリアは51。
 
-テストはGUTで600件、すべて通る（1分半ほど）。
+2026-11-26（昼）に独自の開発1を入れた（設計は `2026-11-26-steam-push-1.md`）：
+- ゲームの名前は「灯りの瞳」。起動するとタイトル画面（`TitleMenu`）。セーブは3つの枠（`SaveGame`、`RunState.to_dict`）で、たき火・エリア移動・ボス・タイトルへ・おわるときに書く。
+  Esc で止める画面（`PauseMenu`）。設定の欄は `SettingsPanel` を3か所で使い、`user://settings.json` に保存（画面のゆれ・カメラを回す間ゆっくり、を足した）。
+  テストと画面の確認では、タイトルを出さず、セーブもしない（`field._real_run`）。
+- 高低差の戦い：剣・鉄球・爆弾で敵を押し（`EnemyWalker.knock`、`EnemyKind.knock_mult`）、崖から落とすと落ちた段数で痛い。鉤縄（`Hook`、R）。
+  転がる岩（`Boulder`。field.gd が崖のふちに置く。F・剣・鉄球・爆弾で押す）。
+- カメラ：幻の橋（`PhantomBridge`。field.gd の `_plan_phantom` が地図から決め、なければ低い地面に柱を立てる。瞳の印の向きから見ると橋がある）。
+- ストーリー：`Story.FRAGMENTS`（記憶のかけら12）と `PHANTOM_REWARDS`（幻の橋の向こうの宝）、ガルドの場面（`GARDE_BEAT`）と本当の終わり（`TRUE_ENDING`）。
+- 装飾品（`Charms`、ItemCatalog.KEYS の charm_*）と、インベントリの「記録」のページ（`JournalPanel`）。
+
+テストはGUTで664件、すべて通る（1分45秒ほど）。
 
 ゲームシステム（design.md 7・11・17章）を試作3の上に入れた（2026-11-24）：レベル・経験値・振り分けポイントと技能、17章のダメージ式（体力は数値、敵にもレベル）、
 インベントリ画面（装備・ステータス・設定）、剣・弓と矢・杖と魔法（マナ）、防具、簡単モード。（試すために野営地の宝箱に置いていた武器は、町のお店と鍛冶屋に替えた。）
@@ -91,7 +104,7 @@ M キーで全体マップ（`scripts/game/world_map_view.gd`、行ったエリ�
 
 ### 操作（試作3）
 
-WASD・矢印：移動／左クリック：手に持つアイテムを使う（鉄球はカーソルの場所に落とす。届くのは1.5マス。剣はカーソルの方へ振る、押したままで連続。弓は押して溜め、離して撃つ。杖は押したままで魔法を続けて使う、ホイールで使う魔法を替える。弾の魔法は敵にカーソルを重ねるとその高さへ飛ぶ）／1〜5：手に持つアイテム（鉄球・剣・弓・杖・道具。持っていない武器は選べない。最初は鉄球だけ。道具はホイールで替える）／Tab：インベントリ（装備する品物を選ぶ、ポイントを振る。開いている間も世界は動く）／Space：回転斬り（技能）／C・左Ctrl：しゃがむ（技能。1.5秒まで、立ったら2秒待つ）／F：宝箱を開ける・レバーを引く・人と話す・看板を読む・たき火のそばで移動の画面・門を開ける・商人のそばでお店を開く（話す画面は F・Space・Enter・クリックで次へ、Esc で閉じる）／F11：全画面とウィンドウ／右ドラッグ・Q/E：カメラ／鉄球は近く（12px）を歩いて拾う。落ちているものはマスの中心から14pxで拾う。試作1は X/Z のまま。
+WASD・矢印：移動／左クリック：手に持つアイテムを使う（鉄球はカーソルの場所に落とす。届くのは1.5マス。剣はカーソルの方へ振る、押したままで連続。弓は押して溜め、離して撃つ。杖は押したままで魔法を続けて使う、ホイールで使う魔法を替える。弾の魔法は敵にカーソルを重ねるとその高さへ飛ぶ）／1〜5：手に持つアイテム（鉄球・剣・弓・杖・道具。持っていない武器は選べない。最初は鉄球だけ。道具はホイールで替える）／Tab：インベントリ（装備する品物を選ぶ、ポイントを振る。開いている間も世界は動く）／Space：回転斬り（技能）／C・左Ctrl：しゃがむ（技能。1.5秒まで、立ったら2秒待つ）／F：宝箱を開ける・レバーを引く・人と話す・看板を読む・たき火のそばで移動の画面・門を開ける・商人のそばでお店を開く（話す画面は F・Space・Enter・クリックで次へ、Esc で閉じる）／F11：全画面とウィンドウ／R：鉤縄（持っていれば）／Esc：止める画面（つづける・設定・セーブしてタイトルへ・おわる）／F：岩を押す・幻の橋の宝箱／右ドラッグ・Q/E：カメラ／鉄球は近く（12px）を歩いて拾う。落ちているものはマスの中心から14pxで拾う。試作1は X/Z のまま。
 
 ## コマンド
 
@@ -102,7 +115,8 @@ WASD・矢印：移動／左クリック：手に持つアイテムを使う（�
 
 - `run_tests.sh` は、`godot` コマンドにPATHが通っている前提。Windowsでは Godot の実行ファイルに置き換えるか、エディタのGUTパネルから実行する。
 - ゲームの実行は、Godotエディタで `project.godot` を開いてF5を押す。
-- 画面の確認（画像は640×360）：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--inventory=staff` で試しの杖を持って杖の欄、`--gear` で試しの武器と防具を持ち `--hold=2` で手に持つ物を選ぶ、`--exp=30` で経験値を足す。`--inventory=items` で持ち物のページ、`--shop=weapon`（tool・smith・山岳…）でお店の画面（商人のそばに `--player` で立つ）、`--boss` でボスを起こす、`--zoo` ですべての種類（17種）の敵をプレイヤーのまわりに並べる、`--tip=N` で持ち物のページのN番目の説明を出す。`--fps` で平均FPSも出す。`--talk=<人の id>` で話す画面、`--prologue`・`--ending` ではじまり・終わりの言葉（画面の確認ではふだん、はじまりの言葉は出さない）。`--map` で全体マップ。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
+- 画面の確認（画像は640×360）：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--inventory=staff` で試しの杖を持って杖の欄、`--gear` で試しの武器と防具を持ち `--hold=2` で手に持つ物を選ぶ、`--exp=30` で経験値を足す。`--inventory=items` で持ち物のページ、`--shop=weapon`（tool・smith・山岳…）でお店の画面（商人のそばに `--player` で立つ）、`--boss` でボスを起こす、`--zoo` ですべての種類（17種）の敵をプレイヤーのまわりに並べる、`--tip=N` で持ち物のページのN番目の説明を出す。`--fps` で平均FPSも出す。`--talk=<人の id>` で話す画面、`--prologue`・`--ending` ではじまり・終わりの言葉（画面の確認ではふだん、はじまりの言葉は出さない）。`--map` で全体マップ。`--title`（`=load`・`=new`・`=settings`）でタイトル画面、`--pause`（`=settings`）で止める画面、
+`--inventory=journal`（`journal_beasts`・`journal_charms`）で記録のページ、`--phantom`（`=off`・`=near`・`=chest`）で幻の橋の印の後ろに立つ。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
 
 ## 構成
 
@@ -152,6 +166,11 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
   run_state.gd       死んだときの持ち物の移し替え、take_drop（敵の落とし物は拾い済みにしない）、拾い済み（"エリア:番号"）、開けた門、チェックポイント。墓石はエリアを覚える。
                      stats（PlayerStats、死んでも残る）と bosses_defeated（敵のレベル＝敵ごとのレベル＋この数）
   area_state.gd      PLAYING / DYING と再開のタイミング（CLEAR は試作2の名残で使っていない）
+  save_game.gd       セーブの枠（2026-11-26 独自の開発1。3つ、user://save_N.json）。write・read・summary（タイトルの一覧）・time_text
+  hook.gd            鉤縄（R。ledge で登れるふち、reaches で敵）
+  boulder.gd         転がる岩（push・update の合図 drop/crash/fall/sink・damage_to。spots は置く所、細い道はふさがない）
+  phantom_bridge.gd  幻の橋（view_angle の向きから見ると solid。find は地図の行けない高い所へ、plan は柱を立てる所）
+  charms.gd          装飾品7つの効き目の数
 scripts/render/  描画まわり
   shadow_map.gd      地面に落ちる影（2026-11-26）。エリアの物のてっぺんの高さの絵（1マス8×8）と、地面の柱の材質（shadow.gdshader が日の方へたどる）。日は SUN
   atmosphere.gd      画面全体の空気（2026-11-26、CanvasLayer 1）。atmosphere.gdshader をかけ算で重ねる：雲の影・ふちの暗さ・地方の暗さと明かり（set_lights、16まで）。
@@ -201,6 +220,7 @@ scripts/areas/   51エリアのデータ（tools/area_maps/gen.py の生成物�
   dialogue_box.gd・travel_menu.gd（scripts/game/）  話す画面（CanvasLayer 12、開いている間は世界が止まる）と、たき火から移る画面
   hud.gd・item_icons.gd・item_tip.gd（scripts/game/）  いのちとマナのバー・手に持つ物の箱、品物のアイコン、カーソルで出る説明
   compass.gd（scripts/game/）  方位の絵（画面の右上と全体マップで使う）
+  title_menu.gd・pause_menu.gd・settings_panel.gd・journal_panel.gd・hook_rope.gd（scripts/game/）  タイトル画面・止める画面（Esc）・設定の欄・記録のページ・鉤縄の縄の絵
 scripts/audio/   効果音（2026-11-26）。sfx_synth.gd（SfxSynth：レシピから音を作る）と sfx.gd（Sfx：鳴らす、遠いほど小さい、history はテスト用）
 scripts/game/field.gd エリアを入れ替えるメインシーンの中身（enter_area・切り替え・死と再開・門・宝箱・レバー・UI・明かり）
 scenes/field.tscn     メインシーン（試作3）

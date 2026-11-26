@@ -110,6 +110,10 @@ func _item_text(id: String, n: int) -> String:
 			text += "\n　" + t
 	elif ItemCatalog.is_tool_item(id):
 		text += "\n　" + ItemCatalog.trait_of(id)
+	elif ItemCatalog.is_key(id):
+		if run.inventory.count(id) > 0:
+			text += "（持っている）"
+		text += "\n　" + str(ItemCatalog.KEYS[id].get("short", ""))
 	return text
 
 func refresh() -> void:
