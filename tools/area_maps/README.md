@@ -1,11 +1,11 @@
 # 大陸のエリアの地図を作るスクリプト
 
-`scripts/areas/` のエリアのデータ（continent.gd 以外の45ファイル）は、ここの `gen.py` が作ったもの。
+`scripts/areas/` のエリアのデータ（continent.gd 以外の51ファイル）は、ここの `gen.py` が作ったもの。
 地図・出口・敵・拾いものを直すときは、`gen.py` を直して作り直す（.gd を手で直すと、次に作り直したときに消える）。
 
 ```sh
 cd tools/area_maps
-python3 gen.py              # 45エリアを作って scripts/areas/*.gd に書き出す
+python3 gen.py              # 51エリアを作って scripts/areas/*.gd に書き出す
 python3 gen.py --preview    # preview_<エリア>.png も作る（Pillow が要る）
 cd ../.. && ./run_tests.sh test_areas_layout.gd
 ```
@@ -25,4 +25,7 @@ cd ../.. && ./run_tests.sh test_areas_layout.gd
     出口・敵・物・仕掛けの位置も一緒にずらすので、となりのエリアとのつながりはそのまま。
   - 町と休憩所のほかのエリアは、ふちをノイズで島の外にして、四角でない形にする（`roughen`。出口の道・物・仕掛けのまわりは残し、
     つながりが切れるときは外側から1マスずつ、切れないものだけ削る）。休憩所は広げたあともう一度せまくする（`recarve_rest`）。
+- 2026-11-26（4回目の直し）：霧の谷（mv_1〜mv_6、地方の見た目 `mist`）を足した。物の記号 k は枯れ木（通れない）。
+  霧の谷の村跡（mv_2）は `keep_pad` で、広げたあとも広場をまるごと残す（四すみに焼けた家の壁）。
+  エリアを足すときは、AREAS・LINKS・MAKERS と、`scripts/areas/continent.gd` の preload の並びに足す。
 - preview_*.png は git に入れない。
