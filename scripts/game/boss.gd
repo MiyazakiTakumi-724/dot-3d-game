@@ -246,7 +246,7 @@ func airborne() -> bool:
 func hit_rule(source: String, from: Vector2) -> String:
 	if airborne() and source in ["sword", "ball"]:
 		return "miss"
-	var blocked := blocks_ball(from) if source in ["ball", "bomb"] else blocks(from)
+	var blocked := blocks_ball(from) if source in ["ball", "bomb", "boulder"] else blocks(from)
 	if blocked:
 		return "block"
 	if stunned > 0.0:

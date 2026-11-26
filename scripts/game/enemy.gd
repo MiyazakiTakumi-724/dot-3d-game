@@ -216,7 +216,7 @@ func hit_rule(source: String, from: Vector2) -> String:
 
 ## 攻撃が当たったあと（甲虫は鉄球でひっくり返る。擬態箱は目を覚ます）。
 func on_hit(source: String) -> void:
-	if kind == EnemyKind.Kind.BEETLE and source in ["ball", "bomb"]:
+	if kind == EnemyKind.Kind.BEETLE and source in ["ball", "bomb", "boulder"]:
 		flipped = EnemyKind.FLIP_SECONDS
 		_end_act()
 	if kind == EnemyKind.Kind.BOMBER and source == "sword" and walker.alive and (_fuse < 0.0 or _fuse > 0.1):

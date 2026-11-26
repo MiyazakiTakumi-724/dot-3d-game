@@ -300,6 +300,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	for g in area.gimmicks:
 		if run.is_gimmick_open(g.id):
 			_apply_open(g)
+	_plan_phantom(info)
 	if area.theme in TRAIL_THEMES and not _deco.has("paths"):
 		# 出口とたき火をつなぐ土の道（見た目だけ。2026-11-26 の4回目の直し）
 		_deco["paths"] = Trails.cells(map, area.exits, info.get("checkpoint", Vector2i(-1, -1)))
@@ -315,6 +316,8 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	_place_gimmicks()
 	_place_talkers(info)
 	_place_story(info)
+	_place_boulders(info)
+	_place_phantom()
 	for i in area.pickups.size():
 		var p = area.pickups[i]
 		if not run.is_picked(area.pickup_id(i)):
@@ -428,7 +431,8 @@ func _on_boss_part_died(b: Boss) -> void:
 	if g == "ブライト":
 		_story_queue.append([3.0, "", Story.ending(Story.flags(run)), true])
 	elif not Story.boss_beat(g).is_empty():
-		_story_queue.append([2.0, g, Story.boss_beat(g), false])
+		var beat := Story.boss_beat_for(g, Story.flags(run))
+		_story_queue.append([2.0, "ガルド" if beat == Story.GARDE_BEAT else g, beat, false])
 	apply_stats()
 	autosave()
 
@@ -803,7 +807,11 @@ func apply_stats() -> void:
 	var move_skills := run.stats.skills_in(PlayerStats.Stat.MOVE)
 	player.can_crouch = move_skills >= 1
 	rules.max_drop = 3 + (1 if move_skills >= 2 else 0)  # 受け身
-	player.mover.slow_climb = move_skills >= 3  # よじ登り
+	var inv := run.inventory
+	if Charms.has(inv, Charms.CAPE):
+		rules.max_drop += Charms.CAPE_DROP  # 羽根のマント
+	player.mover.slow_climb = move_skills >= 3 or Charms.has(inv, Charms.BOOTS)  # よじ登り・登山靴
+	player.mover.climb_seconds = Charms.BOOTS_CLIMB if Charms.has(inv, Charms.BOOTS) else PlayerMover.CLIMB_SECONDS
 	var new_max := run.stats.max_hp(run.inventory.equipment.armor_hp())
 	if new_max > player.max_hp:
 		player.hp += new_max - player.max_hp
@@ -956,6 +964,8 @@ func _knock(e, from: Vector2, dist: float) -> void:
 	if not (e is Enemy) or not e.walker.alive:
 		return
 	dist *= EnemyKind.knock_mult(e.kind)
+	if Charms.has(run.inventory, Charms.GLOVES):
+		dist *= Charms.GLOVES_MULT
 	if dist <= 0.0:
 		return
 	var d: Vector2 = e.walker.pos - from
@@ -1026,7 +1036,7 @@ func _process(delta: float) -> void:
 	magic.update(delta)
 	buffs.update(delta)
 	if area_state.result == AreaState.Result.PLAYING:
-		mana.update(delta)
+		mana.update(delta * (Charms.RING_REGEN if Charms.has(run.inventory, Charms.RING) else 1.0))
 		_regen(delta)
 	player.mover.tick(delta)
 	if bow.charging and (hotbar.selected != Hotbar.Item.BOW or menu.is_open() or area_state.result != AreaState.Result.PLAYING):
@@ -1050,6 +1060,8 @@ func _process(delta: float) -> void:
 		_step_lobs(delta)
 		_step_strikes(delta)
 		_step_rollers(delta)
+		_step_boulders(delta)
+		_step_phantom(delta)
 		_step_pits(delta)
 		_step_shots(delta)
 		_step_bolts(delta)
@@ -1203,7 +1215,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				hotbar.select_slot(event.physical_keycode - KEY_0, run.inventory.equipment)
 			KEY_F:
-				if not try_open_shop() and not try_open_chest() and not try_pull_lever() and not try_talk() and not try_use_campfire():
+				if not try_open_shop() and not try_open_chest() and not try_pull_lever() and not try_talk() and not try_use_campfire() \
+						and not try_push_boulder():
 					try_open_door()
 			KEY_TAB:
 				open_inventory()
@@ -1261,6 +1274,10 @@ func swing_sword() -> bool:
 			var dmg := Damage.sword(current_attack(), st.points_in(PlayerStats.Stat.SWORD), fall, strong_fall)
 			damage_target(e, dmg, mv.pos, id, Color("ffb347") if fall > 0 else Color.WHITE, "sword",
 					KNOCK_THRUST if thrust else (KNOCK_FALL_SLASH if fall > 0 else -1.0))
+	for r in boulders:
+		var b: Boulder = r[0]
+		if b.resting() and Sword.hits(mv.pos, mv.height, mv.facing, b.pos, b.height, thrust, reach):
+			push_boulder(b, mv.facing)
 	if run.grave != null and run.grave.area_id == area.id:
 		var g := run.grave.cell
 		if Sword.hits(mv.pos, mv.height, mv.facing, HeightMap.cell_center(g), map.get_height(g), thrust):
@@ -1301,6 +1318,8 @@ func release_bow() -> bool:
 		var k := run.inventory.take_arrow(_bow_skills())
 		if k < 0:
 			break
+		if Charms.has(run.inventory, Charms.QUIVER) and rng.randf() < Charms.QUIVER_SAVE:
+			run.inventory.add(Arrow.ID[k], 1)  # 狩人の矢筒：矢が減らない
 		var target := _aim_point()
 		if i == 1:  # 2本目は少し横にずらす
 			var side := (target - player.mover.pos).normalized().orthogonal() * 6.0
@@ -1381,7 +1400,8 @@ func _step_shots(delta: float) -> void:
 		_arrow_landed(a, dmg, from)
 
 func _bow_range() -> float:
-	return float(run.inventory.equipment.trait_of(Equipment.Slot.BOW, "range", 1.0))
+	var hawk := Charms.HAWK_RANGE if Charms.has(run.inventory, Charms.HAWK) else 1.0
+	return float(run.inventory.equipment.trait_of(Equipment.Slot.BOW, "range", 1.0)) * hawk
 
 func _arrow_landed(a: Arrow, dmg: int, from := Vector2.ZERO) -> void:
 	if area_state.result != AreaState.Result.PLAYING:
@@ -1822,6 +1842,7 @@ func _step_bombs(delta: float) -> void:
 		for g in _closed_gimmicks():
 			if (g.kind == Gimmick.Kind.CRACK and g.by_ball(b[0], 1)) or g.by_bomb(b[0], 20.0):
 				open_gimmick(g)
+		_hit_boulders(b[0], b[1], 20.0, b[0])
 
 func open_inventory() -> bool:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
@@ -2011,6 +2032,7 @@ func _on_ball_landed(land_pos: Vector2, _legacy_damage: int) -> void:
 		if IronBall.hits(land_pos, ball.rules_ball.height, e.walker.pos, e.walker.height, radius + body_extra(e)):
 			# 鉄球は上から落ちるので、盾では防げない（浮いている敵には当たらない）。ボスの弱点は、ボスが決める
 			damage_target(e, damage, land_pos, id, Color.WHITE, "ball")
+	_hit_boulders(land_pos, ball.rules_ball.height, radius, player.mover.pos)
 
 func _ball_attack() -> int:
 	var extra := int(ItemCatalog.trait_value(ball.rules_ball.item, "atk", 0)) + int(buffs.value("atk"))
@@ -2277,6 +2299,8 @@ func chest_here() -> int:
 func try_open_chest() -> bool:
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
 		return false
+	if open_phantom_chest():
+		return true
 	var i := chest_here()
 	if i < 0:
 		return false
@@ -2530,10 +2554,14 @@ func ui_message() -> String:
 		return "F：門を開ける"
 	if _notice_time > 0.0:
 		return _notice_text
-	if chest_here() >= 0:
+	if chest_here() >= 0 or phantom_chest_here():
 		return "F：宝箱を開ける"
 	if lever_here() != null:
 		return "F：レバーを引く"
+	if boulder_here() != null:
+		return "F：岩を押す"
+	if on_eye_rune() and not phantom.solid:
+		return Story.PHANTOM_HINT
 	if _title_time > 0.0:
 		return area.title if area.region == "はじまりの地" else "%s\n%s" % [area.region, area.title]
 	var talk := _talk_here()
@@ -2600,6 +2628,20 @@ func _maybe_screenshot() -> void:
 				menu.page = InventoryMenu.Page.STATS
 			elif a == "--inventory=settings":
 				menu.page = InventoryMenu.Page.SETTINGS
+			elif a.begins_with("--inventory=journal"):
+				# 記録のページ（--inventory=journal・journal_beasts・journal_charms）。試しに少し集めた形にする
+				menu.page = InventoryMenu.Page.JOURNAL
+				for n in [1, 2, 4, 7]:
+					run.flags[Story.fragment_flag(n)] = true
+				for k in [EnemyKind.Kind.WEAK, EnemyKind.Kind.MELEE, EnemyKind.Kind.SHOOTER, EnemyKind.Kind.SHIELD, EnemyKind.Kind.BEETLE]:
+					run.kills[k] = 3 + int(k)
+				run.inventory.add(Charms.CAPE, 1)
+				run.inventory.add(Charms.HAWK, 1)
+				menu.journal.select_fragment(4)
+				if a == "--inventory=journal_beasts":
+					menu.journal.show_tab(JournalPanel.Tab.BESTIARY)
+				elif a == "--inventory=journal_charms":
+					menu.journal.show_tab(JournalPanel.Tab.CHARMS)
 			elif a == "--inventory=controls":
 				menu.page = InventoryMenu.Page.SETTINGS
 				get_tree().create_timer(0.1).timeout.connect(menu.show_controls.bind(true))
@@ -2678,6 +2720,13 @@ func _maybe_screenshot() -> void:
 					title_menu.show_slots(TitleMenu.Mode.NEW)
 				"settings":
 					title_menu.show_mode(TitleMenu.Mode.SETTINGS)
+		elif a.begins_with("--phantom") and phantom != null:
+			# 幻の橋：瞳の印の後ろに立ち、印の向きから見る（--phantom=off でほかの向き、=chest で宝箱のそば）
+			place = phantom.start - phantom.dir
+			camera.angle = phantom.view_angle() + (PI * 0.5 if a == "--phantom=off" else (0.35 if a == "--phantom=near" else 0.0))
+			if a == "--phantom=chest":
+				place = _phantom_chest_cell
+			_step_phantom(0.0)
 		elif a.begins_with("--pause"):
 			pause_menu.visible = true  # 画面の確認では木を止めない（止めると撮れない）
 			pause_menu._info.text = "遊んだ時間 1:23"
@@ -2865,6 +2914,14 @@ func _story_avoid(info: Dictionary) -> Dictionary:
 		for dy in range(-6, 7):
 			for dx in range(-6, 7):
 				out[b[0] + Vector2i(dx, dy)] = true
+	if phantom != null:  # 幻の橋のまわり（橋の下に人や岩を置くと、橋がふさがる）
+		var keep: Array[Vector2i] = [phantom.start, phantom.goal, phantom.start - phantom.dir]
+		keep.append_array(phantom.cells)
+		keep.append_array(phantom.pillar)
+		for c in keep:
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					out[c + Vector2i(dx, dy)] = true
 	return out
 
 ## anchor に一番近い、置けるマス（anchor からは2マス以上はなす）。なければ (-1, -1)。
@@ -3111,3 +3168,279 @@ func _step_hook(delta: float) -> void:
 
 func hook_pulling() -> bool:
 	return not _hook_pull.is_empty()
+
+
+# ---------------------------------------------------------------- 転がる岩（2026-11-26 独自の開発1）
+
+## [Boulder, StackSprite, 浮かせる量（落ちた直後の絵）]
+var boulders: Array = []
+## F で押せる距離（px）。押す向きは主人公から岩へ
+const BOULDER_REACH := 20.0
+## 岩を置くエリアの広さ：このマス数ごとに1つ（3つまで）
+const BOULDER_CELLS := 350
+
+## 崖のふちの高い所に岩を置く。町・たき火・ボスの間（広場）と、敵のいないエリアには置かない。
+func _place_boulders(info: Dictionary) -> void:
+	boulders.clear()
+	if area.open_flat or not area.bosses.is_empty() or area.enemies.is_empty():
+		return
+	var reach := _reachable_cells(info)
+	var avoid := _story_avoid(info)
+	for y in map.size.y:
+		for x in map.size.x:
+			var c := Vector2i(x, y)
+			if not reach.has(c):
+				avoid[c] = true
+	for m in area.merchants:
+		for dy in range(-2, 3):
+			for dx in range(-2, 3):
+				avoid[m[0] + Vector2i(dx, dy)] = true
+	var count := clampi(map.size.x * map.size.y / BOULDER_CELLS, 1, 3)
+	for c in Boulder.spots(map, avoid, count, hash(area.id)):
+		add_boulder(c)
+
+## 岩を1つ置く（テストでも使う）。
+func add_boulder(c: Vector2i) -> Boulder:
+	var b := Boulder.new(map, c)
+	var s := _marker(c, Props.boulder(), 2)
+	s.sort_map = map
+	boulders.append([b, s, 0.0])
+	return b
+
+func boulders_rolling() -> int:
+	var n := 0
+	for r in boulders:
+		if r[0].rolling():
+			n += 1
+	return n
+
+## そばの、押せる岩（同じ高さ）。なければ null。
+func boulder_here() -> Boulder:
+	var mv := player.mover
+	var best: Boulder = null
+	var best_d := BOULDER_REACH
+	for r in boulders:
+		var b: Boulder = r[0]
+		if not b.resting() or b.height != mv.height:
+			continue
+		var d := mv.pos.distance_to(b.pos)
+		if d < best_d:
+			best = b
+			best_d = d
+	return best
+
+## F：そばの岩を押す。動かなければ「動かない」。
+func try_push_boulder() -> bool:
+	var b := boulder_here()
+	if b == null:
+		return false
+	player.anim.play_push()
+	push_boulder(b, b.pos - player.mover.pos)
+	return true
+
+## 岩を d の向きへ押す。転がりだしたら true。
+func push_boulder(b: Boulder, d: Vector2) -> bool:
+	if not b.push(d):
+		_popup_text(b.pos, b.height, "動かない", Color("b0b8c8"))
+		return false
+	Sfx.play("rumble", b.pos)
+	camera.shake(1.0)
+	return true
+
+## 剣・鉄球・爆弾が岩に当たった：当てた所から遠ざかる向きへ押す。
+func _hit_boulders(point: Vector2, h: int, radius: float, from: Vector2) -> void:
+	for r in boulders:
+		var b: Boulder = r[0]
+		if b.resting() and absi(b.height - h) <= 1 and b.pos.distance_to(point) < radius + Boulder.RADIUS * 0.5:
+			push_boulder(b, b.pos - from)
+
+func _step_boulders(delta: float) -> void:
+	for i in range(boulders.size() - 1, -1, -1):
+		var r = boulders[i]
+		var b: Boulder = r[0]
+		var s = r[1]
+		if not b.rolling():
+			continue
+		var before := b.height
+		var ev := b.update(delta)
+		match ev:
+			"drop":
+				r[2] = float(before - b.height) * StackSprite.LEVEL_PX
+				camera.shake(1.5)
+				Sfx.play("land", b.pos, -2.0)
+			"crash":
+				_boulder_crash(b)
+			"fall", "sink":
+				Sfx.play("splash" if ev == "sink" else "fall", b.pos)
+		r[2] = maxf(0.0, r[2] - delta * 220.0)
+		if is_instance_valid(s):
+			s.world_pos = b.pos
+			s.base_height = b.height
+			s.lift_px = r[2] + absf(sin(b.pos.x * 0.4 + b.pos.y * 0.4)) * 1.2
+		if b.state == Boulder.State.GONE:
+			if is_instance_valid(s):
+				s.queue_free()
+			boulders.remove_at(i)
+			continue
+		_boulder_hits(b)
+
+## 転がる岩が、同じ高さの敵と主人公に当たる。
+func _boulder_hits(b: Boulder) -> void:
+	for e in targets():
+		if not is_instance_valid(e) or not e.walker.alive or e.walker.flying or e.walker.height != b.height:
+			continue
+		if e.walker.pos.distance_to(b.pos) > Boulder.RADIUS + body_extra(e) or not b.can_hit(e.get_instance_id()):
+			continue
+		var dmg := b.damage_to(e.walker.max_hp, e is Boss)
+		if Charms.has(run.inventory, Charms.GLOVES):
+			dmg = ceili(dmg * Charms.GLOVES_MULT)
+		var col := Color("ffb347") if b.fallen > 0 else Color.WHITE
+		if b.fallen > 0:
+			_popup_text(e.walker.pos, e.walker.height + 3, "岩が %d段 落ちた！" % b.fallen, Color("ffd54a"))
+		damage_target(e, dmg, b.pos - b.dir * 12.0, "", col, "boulder", Boulder.KNOCK)
+		camera.shake(2.0)
+	var mv := player.mover
+	if area_state.result == AreaState.Result.PLAYING and mv.height == b.height and mv.pos.distance_to(b.pos) < Boulder.RADIUS \
+			and b.can_hit("player"):
+		hurt_player(b.player_damage())
+
+## 砕けた：土ぼこりと音。ひびの岩・もろい壁にぶつかったなら壊す。
+func _boulder_crash(b: Boulder) -> void:
+	camera.shake(3.0)
+	Sfx.play("break", b.pos)
+	var dust := ImpactDust.new()
+	dust.setup(camera, b.pos, b.height, 5)
+	_area_root.add_child(dust)
+	var at := HeightMap.cell_center(b.crash_cell)
+	for g in _closed_gimmicks():
+		if g.kind in [Gimmick.Kind.CRACK, Gimmick.Kind.BRITTLE] and g.cells.has(b.crash_cell):
+			open_gimmick(g)
+		elif g.by_bomb(at, 10.0):
+			open_gimmick(g)
+
+
+# ---------------------------------------------------------------- 幻の橋（2026-11-26 独自の開発1）
+
+## このエリアの幻の橋（なければ null）と、その絵
+var phantom: PhantomBridge
+var _phantom_slabs: Array = []
+var _phantom_rune: StackSprite
+var _phantom_chest: StackSprite
+var _phantom_chest_cell := Vector2i(-1, -1)
+
+## 地図を読んだすぐあと（地形を描く前）に、幻の橋をかける所を決める。行けない高い所がなければ、低い地面に柱を立てる。
+## 町・広場・ボスの間には置かない。
+func _plan_phantom(info: Dictionary) -> void:
+	phantom = null
+	if area.open_flat or not area.bosses.is_empty() or area.theme == "town":
+		return
+	var reach := _reachable_cells(info)
+	var avoid := _story_avoid(info)
+	for m in area.merchants:
+		for dy in range(-2, 3):
+			for dx in range(-2, 3):
+				avoid[m[0] + Vector2i(dx, dy)] = true
+	var b := PhantomBridge.find(map, reach, avoid, hash(area.id))
+	if b == null:
+		b = PhantomBridge.plan(map, reach, avoid, hash(area.id))
+		if b != null:
+			b.raise(map)
+	phantom = b
+
+## 橋の板・瞳の印・向こうの宝箱を置く（地形を描いたあと）。
+func _place_phantom() -> void:
+	_phantom_slabs.clear()
+	_phantom_rune = null
+	_phantom_chest = null
+	_phantom_chest_cell = Vector2i(-1, -1)
+	if phantom == null:
+		return
+	phantom.view_scale = Charms.EYE_VIEW if Charms.has(run.inventory, Charms.EYE) else 1.0
+	for c in phantom.cells:
+		var s := _marker(c, Props.phantom_slab(), 0, false)
+		s.base_height = phantom.height
+		s.lift_px = -float(Props.SLAB_Z) * StackSprite.LEVEL_PX / 8.0
+		s.force_hidden = true
+		_phantom_slabs.append(s)
+	_phantom_rune = _marker(phantom.start, Props.eye_rune(), 1, false)
+	_phantom_rune.lift_px = 0.5
+	_phantom_rune.turn = Vector2(phantom.dir).angle() - PI / 2
+	var room: Array = phantom.pillar if not phantom.pillar.is_empty() else PhantomBridge.region(map, phantom.goal, {})
+	var far := phantom.goal
+	for c in room:
+		if map.get_height(c) == phantom.height and Vector2(c - phantom.start).length() > Vector2(far - phantom.start).length():
+			far = c
+	_phantom_chest_cell = far
+	_phantom_chest = _marker(far, Props.chest_open() if phantom_opened() else Props.chest(), 1)
+	_step_phantom(0.0)
+
+func phantom_opened() -> bool:
+	return run.flags.get("phantom:" + area.id, false)
+
+## カメラの向きで、橋をかける・外す。消えたとき橋の上にいたら、下の地面へ落ちる。
+func _step_phantom(delta: float) -> void:
+	if phantom == null:
+		return
+	var mv := player.mover
+	var changed := phantom.update(map, camera.angle, mv.cell(), delta)
+	var a := phantom.alpha(camera.angle)
+	for s in _phantom_slabs:
+		if is_instance_valid(s):
+			s.force_hidden = a <= 0.01
+			s.modulate = Color(1, 1, 1, a * (0.9 if phantom.solid else 0.6))
+	if is_instance_valid(_phantom_rune):
+		_phantom_rune.modulate = Color(1, 1, 1, 0.85 + 0.15 * a)
+	if not changed:
+		return
+	if phantom.solid:
+		Sfx.play("seal", HeightMap.cell_center(phantom.start), -6.0)
+		return
+	var c := mv.cell()
+	if phantom.has(c):
+		mv.place(c)  # 足場が消えた：下の地面へ落ちる
+		player.anim.play_land()
+		Sfx.play("fall", mv.pos, -4.0)
+	for e in targets():
+		if is_instance_valid(e) and phantom.has(e.walker.cell()) and not e.walker.flying:
+			e.walker.height = map.get_height(e.walker.cell())
+
+## そばの、幻の橋の向こうの宝箱（まだ開けていない）。
+func phantom_chest_here() -> bool:
+	if _phantom_chest_cell.x < 0 or phantom_opened():
+		return false
+	return map.get_height(_phantom_chest_cell) == player.mover.height \
+			and player.mover.pos.distance_to(HeightMap.cell_center(_phantom_chest_cell)) <= CHEST_REACH
+
+## 瞳の印の上か、そばにいる。
+func on_eye_rune() -> bool:
+	return phantom != null and player.mover.height == phantom.height \
+			and player.mover.pos.distance_to(HeightMap.cell_center(phantom.start)) <= 20.0
+
+## 幻の橋の向こうの宝箱を開ける：記憶のかけら・装飾品・お金。
+func open_phantom_chest() -> bool:
+	if not phantom_chest_here():
+		return false
+	run.flags["phantom:" + area.id] = true
+	if is_instance_valid(_phantom_chest):
+		_phantom_chest.set_model(Props.chest_open())
+		effect_at(Props.rain_ring(10.0), _phantom_chest.world_pos, _phantom_chest.base_height, 0.3)
+	Sfx.play("chest")
+	player.anim.play_pickup()
+	var reward := Story.phantom_reward(area.id)
+	if reward.begins_with("frag:"):
+		var n := int(reward.substr(5))
+		run.flags[Story.fragment_flag(n)] = true
+		var got := Story.fragment_count(run.flags)
+		_open_dialogue("記憶のかけら %d（%d / %d）" % [n, got, Story.FRAGMENTS.size()], [Story.fragment(n)])
+	elif reward != "":
+		run.inventory.add(reward, 1)
+		apply_stats()
+		if phantom != null:
+			phantom.view_scale = Charms.EYE_VIEW if Charms.has(run.inventory, Charms.EYE) else 1.0
+		notice("%sを手に入れた！\n%s" % [ItemCatalog.name_of(reward), ItemCatalog.KEYS[reward]["info"]], 4.0)
+		Sfx.play("item")
+	else:
+		run.inventory.money += Story.PHANTOM_MONEY
+		notice("お金 ＋%d" % Story.PHANTOM_MONEY, 1.5)
+	autosave()
+	return true

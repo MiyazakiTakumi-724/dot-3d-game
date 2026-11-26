@@ -20,6 +20,8 @@ var since_drop := INF
 ## 技能「よじ登り」：2段の段差を、押し続けると CLIMB_SECONDS で登れる
 var slow_climb := false
 const CLIMB_SECONDS := 0.6
+## よじ登りにかかる秒（装飾品「登山靴」で短くなる。2026-11-26）
+var climb_seconds := CLIMB_SECONDS
 var _climb_time := 0.0
 var _climb_pushed := false
 
@@ -50,7 +52,7 @@ func move(world_delta: Vector2, delta := 0.0) -> void:
 			_try(pos + Vector2(0, world_delta.y))
 	if _climb_pushed:
 		_climb_time += delta
-		if _climb_time >= CLIMB_SECONDS:
+		if _climb_time >= climb_seconds:
 			_climb_time = 0.0
 			_climb_up(world_delta)
 	else:
@@ -58,7 +60,7 @@ func move(world_delta: Vector2, delta := 0.0) -> void:
 
 ## よじ登りの進み具合（0〜1）。見た目用。
 func climb_progress() -> float:
-	return _climb_time / CLIMB_SECONDS
+	return _climb_time / climb_seconds
 
 ## 押していた2段上のマスへ登る。マスの境目を少し越えた所に立つ。
 func _climb_up(world_delta: Vector2) -> void:

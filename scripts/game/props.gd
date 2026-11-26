@@ -776,3 +776,68 @@ static func signboard() -> VoxelModel:
 			VoxelDraw.fill(m, Vector3i(5, 7, row), Vector3i(16 - (row % 3) * 2, 7, row), Color("3a2a1a"))  # 文字のすじ
 		_cache["signboard"] = VoxelShade.apply(m)
 	return _cache["signboard"]
+
+## 転がる岩（2026-11-26 独自の開発1）：丸い大岩。上に苔、まわりにひび。押すと崖から転がり落ちる。
+static func boulder() -> VoxelModel:
+	if not _cache.has("boulder"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(26, 26, 25)
+		var rock := Color("8f8a80")
+		VoxelDraw.ellipsoid(m, Vector3(12.5, 12.5, 12.0), Vector3(12.2, 12.2, 12.0), rock)
+		for p: Vector3i in m.voxels().keys():
+			var h := VoxelDraw.hash3(p.x, p.y, p.z, 9)
+			if p.z >= 18 and h < 6:
+				m.set_voxel(p, Color("5f7f3a") if h < 4 else Color("7a9a48"))  # 苔
+			elif absi(p.x - 8 - int(sin(p.z * 0.6) * 2.0)) == 0 and p.y > 14 and p.z > 4 and p.z < 18:
+				m.set_voxel(p, Color("3a342c"))  # ひび
+			elif h == 6:
+				m.set_voxel(p, rock.darkened(0.14))
+			elif h == 7:
+				m.set_voxel(p, rock.lightened(0.08))
+		_cache["boulder"] = VoxelShade.apply(m)
+	return _cache["boulder"]
+
+## 幻の橋の板（2026-11-26 独自の開発1）：マスいっぱいの、青白く光る石の板（厚さ SLAB_Z）。ふちに光る線。
+const SLAB_Z := 4
+static func phantom_slab() -> VoxelModel:
+	if not _cache.has("phantom_slab"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(32, 32, SLAB_Z)
+		var stone := Color("a8c8f0")
+		var glow := Color("e8f6ff")
+		for x in 32:
+			for y in 32:
+				var edge := x <= 1 or y <= 1 or x >= 30 or y >= 30
+				for z in SLAB_Z:
+					var c := glow if (edge and z == SLAB_Z - 1) else stone.darkened(0.08 * (SLAB_Z - 1 - z))
+					if not edge and z == SLAB_Z - 1 and VoxelDraw.hash3(x, y, 0, 11) == 0:
+						c = glow
+					m.set_voxel(Vector3i(x, y, z), c)
+		_cache["phantom_slab"] = m  # 光っているので影は付けない
+	return _cache["phantom_slab"]
+
+## 瞳の印（幻の橋のはじまりの床）：床に描いた目。目は +y を向く（turn で橋の向きへ）。
+static func eye_rune() -> VoxelModel:
+	if not _cache.has("eye_rune"):
+		var m := VoxelModel.new()
+		m.size = Vector3i(28, 28, 2)
+		var line := Color("8ad0ff")
+		var pupil := Color("fff0a0")
+		for x in 28:
+			for y in 28:
+				var dx := (x - 13.5) / 12.0
+				var dy := (y - 13.5) / 7.0
+				var lid := absf(dx) <= 1.0 and absf(dy) <= 1.0 - dx * dx
+				var inner := absf(dx) <= 0.84 and absf(dy) <= (1.0 - dx * dx) * 0.7
+				if lid and not inner:
+					m.set_voxel(Vector3i(x, y, 0), line)
+				var pd := Vector2(x - 13.5, y - 16.0).length()
+				if pd <= 3.2:
+					m.set_voxel(Vector3i(x, y, 1), pupil)
+				elif pd <= 4.2:
+					m.set_voxel(Vector3i(x, y, 0), line)
+		# 目の向く方（+y）の先に、三角の印
+		for i in 4:
+			VoxelDraw.fill(m, Vector3i(10 + i, 23 + i, 0), Vector3i(17 - i, 23 + i, 0), line)
+		_cache["eye_rune"] = m
+	return _cache["eye_rune"]

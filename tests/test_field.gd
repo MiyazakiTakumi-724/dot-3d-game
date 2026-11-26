@@ -1085,9 +1085,13 @@ func test_town_shops_and_smith():
 	assert_true(f.try_open_shop())
 	assert_true(f.shop_menu.is_open())
 	assert_eq(f.shop_menu.shop_id, "tool")
-	assert_false(f.shop_menu.choose(0))  # お金がない
+	var potion := 0
+	for i in Shop.STOCK["tool"].size():
+		if Shop.STOCK["tool"][i][0] == "potion":
+			potion = i
+	assert_false(f.shop_menu.choose(potion))  # お金がない
 	f.run.inventory.money = 15
-	assert_true(f.shop_menu.choose(0))
+	assert_true(f.shop_menu.choose(potion))
 	assert_eq(f.run.inventory.count("potion"), 1)
 	f.player.mover.place(Continent.START_CELL + Vector2i(0, 6))
 	f._process(0.016)

@@ -14,7 +14,7 @@ signal skill_learned(skill: String)
 ## 設定を変えた（保存してもらう）
 signal settings_changed
 
-enum Page { EQUIP, STATS, ITEMS, SETTINGS }
+enum Page { EQUIP, STATS, ITEMS, SETTINGS, JOURNAL }  ## JOURNAL：記録（2026-11-26）
 
 const PANEL_POS := Vector2(8, 6)
 const PANEL_SIZE := Vector2(304, 168)
@@ -56,12 +56,18 @@ func setup(r: RunState, s: GameSettings = null) -> void:
 	_page_buttons[Page.STATS] = _button(_panel, "ステータス", Vector2(42, 3), func(): show_page(Page.STATS))
 	_page_buttons[Page.ITEMS] = _button(_panel, "持ち物", Vector2(130, 3), func(): show_page(Page.ITEMS))
 	_page_buttons[Page.SETTINGS] = _button(_panel, "設定", Vector2(176, 3), func(): show_page(Page.SETTINGS))
+	_page_buttons[Page.JOURNAL] = _button(_panel, "記録", Vector2(206, 3), func(): show_page(Page.JOURNAL))
 	var hint := _label(_panel, "Tab：閉じる", Vector2(244, 6))
 	hint.modulate.a = 0.7
 	_build_equip_page()
 	_build_stats_page()
 	_build_items_page()
 	_build_settings_page()
+	_journal_root = _page_root()
+	journal = JournalPanel.new()
+	journal.position = Vector2(0, 22)
+	journal.setup(run)
+	_journal_root.add_child(journal)
 	tip = ItemTip.new()
 	tip.stats = run.stats
 	add_child(tip)
@@ -122,6 +128,9 @@ func _build_stats_page() -> void:
 
 var _settings_root: Control
 var settings_panel: SettingsPanel
+## 記録のページ（記憶のかけら・魔物の図鑑・装飾品）
+var _journal_root: Control
+var journal: JournalPanel
 var _items_root: Control
 var _items_box: GridContainer
 var _items_hint: Label
@@ -301,6 +310,7 @@ func refresh() -> void:
 	_stats_root.visible = page == Page.STATS
 	_settings_root.visible = page == Page.SETTINGS
 	_items_root.visible = page == Page.ITEMS
+	_journal_root.visible = page == Page.JOURNAL
 	var pts := run.stats.points
 	_page_buttons[Page.STATS].text = "ステータス" + ("（%d）" % pts if pts > 0 else "")
 	for p in _page_buttons:
@@ -314,6 +324,8 @@ func refresh() -> void:
 			_refresh_items()
 		Page.SETTINGS:
 			settings_panel.refresh()
+		Page.JOURNAL:
+			journal.refresh()
 
 ## 主人公の姿に出す物：[手に持つ物, 防具]。鉄球・剣・弓・杖の枠を選んでいるときは、その枠の品物を持たせる。
 func portrait_look() -> Array:

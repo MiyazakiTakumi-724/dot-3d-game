@@ -50,6 +50,10 @@ const OTHER := {
 	"seal_mt": ["seal", "8d8f94", "e0e8f0"], "seal_gr": ["seal", "5a9a4a", "e0f0a0"], "seal_cs": ["seal", "7a6a9a", "f0d060"],
 	"seal_lv": ["seal", "a03a1a", "ffb03a"], "keepsake": ["heart", "d05a6a", "ffe0a0"],
 	"hook": ["hook", "9aa0aa", "c8a060"],
+	# 装飾品（2026-11-26）
+	"charm_cape": ["feather", "d06a5a", "f0e0c0"], "charm_gloves": ["ore", "8a7a6a", "d0b080"], "charm_hawk": ["eye", "f0d080", "6a4a1a"],
+	"charm_ring": ["coin", "b8c0f0", "6a70b0"], "charm_quiver": ["arrow", "c08a4a", "5a3a1a"], "charm_eye": ["eye", "8ad0ff", "2a2a60"],
+	"charm_boots": ["boot", "8a5a3a", "c8a070"],
 	"dark_shard": ["shard", "3a2a4a", "b08ae0"], "mist_moss": ["leaf", "6a9a8a", "c0e0d0"], "dark_crest": ["crest", "2a2430", "b08ae0"],
 	# 道具
 	"potion": ["flask", "e04a5a", "ffd0d8"], "potion_m": ["flask", "c02a5a", "ffb0c8"], "potion_l": ["flask_big", "a01a4a", "ffa0c0"],
@@ -167,6 +171,14 @@ static func _armor(img: Image, a: Color, b: Color) -> void:
 
 static func _shape(img: Image, kind: String, a: Color, b: Color) -> void:
 	match kind:
+		"boot":
+			# 長靴：筒（主な色）と、つま先と底（差し色）
+			_rect(img, 5, 2, 9, 11, a)
+			_rect(img, 5, 9, 13, 12, a)
+			_rect(img, 5, 13, 13, 13, b)
+			_rect(img, 5, 3, 9, 3, b)
+			_px(img, 6, 5, a.lightened(0.25))
+			_px(img, 6, 7, a.lightened(0.25))
 		"hook":
 			# 縄（差し色）がとぐろを巻き、先に鉄の爪（主な色）
 			for i in 7:

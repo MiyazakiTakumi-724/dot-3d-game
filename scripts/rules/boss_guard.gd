@@ -16,7 +16,7 @@ const REGEN_RATE := 0.2
 ## 構えている間のダメージの倍率（ない武器は1）
 const GUARD_MULT := {"arrow": 0.35, "magic": 0.6}
 ## 構えを削る割合（ダメージに掛ける）
-const BREAK_RATE := {"sword": 1.5, "ball": 1.5, "bomb": 2.0, "magic": 0.5, "arrow": 0.15}
+const BREAK_RATE := {"sword": 1.5, "ball": 1.5, "bomb": 2.0, "magic": 0.5, "arrow": 0.15, "boulder": 3.0}  # 転がる岩（2026-11-26）は大きく崩す
 ## 弱点の武器が構えを削る倍率
 const WEAK_BREAK := 2.0
 ## ボスの弱点の武器【提案】
