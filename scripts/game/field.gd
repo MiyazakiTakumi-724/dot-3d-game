@@ -118,6 +118,14 @@ var _flash_time := 0.0
 var rng := RandomNumberGenerator.new()
 ## 魔法の弾の照準（狙う高さに浮かぶ輪）。地面の影は aim_marker
 var aim_reticle: StackSprite
+## セーブの枠（1〜3。0 はセーブしない：テストと画面の確認）。2026-11-26 独自の開発1
+var save_slot := 0
+## タイトル画面を出している間（うしろで町をカメラが回る）
+var in_title := false
+var title_menu: TitleMenu
+var pause_menu: PauseMenu
+const TITLE_TURN := 0.12  ## タイトル画面でカメラが回る速さ（1秒あたりのラジアン）
+var _ui_layer: CanvasLayer
 var _shots: Array = []  # 飛んでいる矢 [Arrow, StackSprite, ダメージ]
 const STUCK_ARROW_SECONDS := 0.8  ## 落ちた矢を地面に刺さったまま見せる時間
 var _arrow_blink := 0.0
@@ -127,14 +135,18 @@ const WARM_BUDGET_MS := 10.0  ## 1フレームでモデル作りに使う時間
 
 func _ready() -> void:
 	world = Continent.build()
+	if _real_run():
+		settings.load_file()  # 保存した設定（2026-11-26 独自の開発1）。テストと画面の確認では読まない
+		InventoryMenu.apply_window(settings.fullscreen)
 	Sfx.attach(self)  # 効果音を鳴らす所（2026-11-26）
 	Sfx.level = settings.sfx_level
-	if DisplayServer.get_name() != "headless":
+	if DisplayServer.get_name() != "headless" and not _real_run():
 		var mode := DisplayServer.window_get_mode()
 		settings.fullscreen = mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
 	var camp_info: Dictionary = Continent.load_map(world.area(Continent.START_AREA))[1]
 	run = RunState.new(Continent.START_AREA, camp_info["checkpoint"])
 	camera = StackCamera.new()
+	camera.shake_enabled = settings.shake
 	add_child(camera)
 	Terrain.add_background(self)
 	atmosphere = Atmosphere.new()
@@ -179,6 +191,7 @@ func _ready() -> void:
 	menu.close_requested.connect(close_inventory)
 	menu.stats_changed.connect(apply_stats)
 	menu.skill_learned.connect(_on_skill_learned)
+	menu.settings_changed.connect(_on_settings_changed)
 	add_child(menu)
 	shop_menu = ShopMenu.new()
 	shop_menu.setup(run)
@@ -198,11 +211,24 @@ func _ready() -> void:
 	map_view = WorldMapView.new()
 	map_view.setup(world, run)
 	map_layer.add_child(map_view)
+	pause_menu = PauseMenu.new()
+	pause_menu.setup(settings)
+	pause_menu.settings_changed.connect(_on_settings_changed)
+	pause_menu.to_title.connect(_pause_to_title)
+	pause_menu.quit_game.connect(_pause_quit)
+	add_child(pause_menu)
+	title_menu = TitleMenu.new()
+	title_menu.setup(settings)
+	title_menu.settings_changed.connect(_on_settings_changed)
+	title_menu.start_new.connect(start_new_game)
+	title_menu.load_slot.connect(load_game)
+	title_menu.quit_game.connect(func(): get_tree().quit())
+	add_child(title_menu)
 	StackCamera.apply_pixel_scale(self)
 	warm_hero_looks()
 	_maybe_screenshot()
-	if get_tree().current_scene == self and not _screenshot_mode():
-		show_prologue()
+	if _real_run():
+		show_title()
 
 ## エリアを作り直す。今のエリアの地形・敵・弾・印を片付け、id のエリアを cell から始める。
 ## 地面の見た目ごとの足音（2026-11-26）
@@ -310,6 +336,7 @@ func enter_area(id: String, cell: Vector2i) -> void:
 	aim_marker.sort_map = map
 	_title_time = TITLE_SECONDS
 	_queue_warm()
+	autosave()
 
 ## となりのエリアのモデルを作る順番に並べる（warm は後ろから取る）。エリアが多いので、遠いエリアは入るときに作る。
 func _queue_warm() -> void:
@@ -395,6 +422,7 @@ func _on_boss_part_died(b: Boss) -> void:
 	elif not Story.boss_beat(g).is_empty():
 		_story_queue.append([2.0, g, Story.boss_beat(g), false])
 	apply_stats()
+	autosave()
 
 ## ボスが手下を呼ぶ（廃城の主の亡霊・女王蜂の蜂・ブライトの影）。手下は倒しても落とし物も経験値もなく、戻ってもこない。
 func spawn_minion(kind: EnemyKind.Kind, at: Vector2) -> Enemy:
@@ -943,6 +971,11 @@ func _update_switch(delta: float) -> void:
 			_area_root.process_mode = Node.PROCESS_MODE_INHERIT
 
 func _process(delta: float) -> void:
+	_update_time_scale()
+	if in_title:
+		camera.angle = wrapf(camera.angle + TITLE_TURN * delta, -PI, PI)
+	else:
+		run.play_time += delta / maxf(Engine.time_scale, 0.01)
 	roster.tick(delta)
 	sword.update(delta)
 	bow.update(delta * float(run.inventory.equipment.trait_of(Equipment.Slot.BOW, "charge", 1.0)), player.moving)
@@ -985,7 +1018,7 @@ func _process(delta: float) -> void:
 			shop_menu.close()
 		if travel_menu.is_open() and not near_campfire():
 			travel_menu.close()
-		if area_state.result == AreaState.Result.PLAYING:
+		if area_state.result == AreaState.Result.PLAYING and not in_title:
 			if player.hp <= 0 or player.mover.fell:
 				kill_player(player.mover.fell)
 			else:
@@ -1059,6 +1092,7 @@ func _play_step() -> void:
 		run.set_checkpoint(area.id, _campfire_cell)
 		notice("たき火で休んだ\n死んだら、ここから やり直す", 2.5)
 		Sfx.play("rest")
+		autosave()
 	if run.is_near_checkpoint(area.id, c) and player.hp < player.max_hp:
 		player.set_hp(player.max_hp)
 	for e in enemies:
@@ -1093,6 +1127,15 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if in_title:
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+		if map_view.visible:
+			toggle_map()
+		elif not is_switching():
+			pause_menu.open(run.play_time)
+		get_viewport().set_input_as_handled()
+		return
 	if area_state.result != AreaState.Result.PLAYING or is_switching():
 		return
 	if event is InputEventMouseButton and event.pressed and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
@@ -2260,6 +2303,7 @@ func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 2  # 画面全体の空気（Atmosphere、レイヤー1）より上
 	add_child(layer)
+	_ui_layer = layer
 	_status = UiText.label()
 	_status.position = Vector2(4, 2)
 	_status.visible = false  # 文字の表示はテスト用に残し、画面には Hud（バーと箱）を出す
@@ -2576,6 +2620,21 @@ func _maybe_screenshot() -> void:
 			if place != null:
 				player.mover.place(place)
 				try_talk()
+		elif a.begins_with("--title"):
+			show_title()  # タイトル画面（--title=load・new・settings でその欄。2026-11-26 独自の開発1）
+			match a.trim_prefix("--title="):
+				"load":
+					title_menu.show_mode(TitleMenu.Mode.LOAD)
+					title_menu.show_slots(TitleMenu.Mode.LOAD)
+				"new":
+					title_menu.show_slots(TitleMenu.Mode.NEW)
+				"settings":
+					title_menu.show_mode(TitleMenu.Mode.SETTINGS)
+		elif a.begins_with("--pause"):
+			pause_menu.visible = true  # 画面の確認では木を止めない（止めると撮れない）
+			pause_menu._info.text = "遊んだ時間 1:23"
+			if a == "--pause=settings":
+				pause_menu.show_settings(true)
 	if place != null:
 		player.mover.place(place)
 		player.mover.pos += offset
@@ -2813,3 +2872,125 @@ func _reachable_cells(info: Dictionary) -> Dictionary:
 
 func _walkable(c: Vector2i) -> bool:
 	return map.in_bounds(c) and not map.is_wall(c) and not map.is_water(c) and not map.is_pit(c) and not map.is_void(c)
+
+
+# ---------------------------------------------------------------- セーブ・タイトル・止める画面（2026-11-26 独自の開発1）
+
+## 本当に遊んでいるか（テストと画面の確認ではない）。設定の読み込みとタイトル画面はこのときだけ。
+func _real_run() -> bool:
+	return is_inside_tree() and get_tree().current_scene == self and not _screenshot_mode()
+
+## 一覧に出す場所の名前。
+func place_name() -> String:
+	if area == null:
+		return ""
+	return area.title if area.region == "はじまりの地" else "%s　%s" % [area.region, area.title]
+
+## セーブの枠を選んで遊んでいれば、今の冒険を書く。
+func autosave() -> bool:
+	if save_slot <= 0 or in_title or run == null:
+		return false
+	return SaveGame.write(save_slot, run, place_name())
+
+func _on_settings_changed() -> void:
+	camera.shake_enabled = settings.shake
+	if _real_run():
+		settings.save_file()
+
+## 設定「カメラを回す間ゆっくり」：回している間だけ時間をゆっくりにする。
+func _update_time_scale() -> void:
+	var slow := settings.slow_turn and camera != null and camera.turning and not in_title \
+			and not get_tree().paused and area_state.result == AreaState.Result.PLAYING
+	Engine.time_scale = GameSettings.SLOW_TURN_SCALE if slow else 1.0
+
+## タイトル画面を出す。うしろは はじまりの町で、カメラがゆっくり回る。
+func show_title() -> void:
+	in_title = true
+	save_slot = 0
+	get_tree().paused = false
+	for m in [menu, shop_menu, travel_menu]:
+		if m.is_open():
+			m.close()
+	map_view.visible = false
+	if area == null or area.id != Continent.START_AREA:
+		enter_area(Continent.START_AREA, Continent.START_CELL)
+	player.visible = false
+	player.controllable = false
+	ball.visible = false
+	hud.visible = false
+	_message.visible = false
+	title_menu.open()
+
+## タイトルから遊びに入る（新しく始める・つづきから）。
+func _leave_title() -> void:
+	in_title = false
+	title_menu.close()
+	player.visible = true
+	ball.visible = true
+	hud.visible = true
+	_message.visible = true
+	camera.angle = 0.0
+	_fade.color.a = 1.0
+	var tw := create_tween()
+	tw.tween_property(_fade, "color:a", 0.0, 0.6)
+
+## 冒険の状態の外（field が持つもの）を、始めた直後の形に戻す。
+func _reset_session() -> void:
+	area_state = AreaState.new()
+	roster = EnemyRoster.new()
+	buffs.clear()
+	hotbar.selected = Hotbar.Item.IRON_BALL
+	ball.rules_ball.return_to_hand()
+	player.clear_invulnerable()
+	player.anim.revive()
+	player.lift_px = 0.0
+	player.modulate.a = 1.0
+	_story_queue.clear()
+
+## はじめから：枠 slot に新しい冒険を書いて、はじまりの言葉を出す。
+func start_new_game(slot: int) -> void:
+	var camp_info: Dictionary = Continent.load_map(world.area(Continent.START_AREA))[1]
+	run.load_dict(RunState.new(Continent.START_AREA, camp_info["checkpoint"]).to_dict())
+	_reset_session()
+	save_slot = slot
+	_leave_title()
+	enter_area(Continent.START_AREA, Continent.START_CELL)
+	_after_load()
+	show_prologue()
+
+## つづきから：枠 slot を読み、最後に休んだたき火から始める。
+func load_game(slot: int) -> bool:
+	if not SaveGame.read(slot, run):
+		return false
+	_reset_session()
+	save_slot = slot
+	_leave_title()
+	enter_area(run.checkpoint_area, run.respawn_cell())
+	_after_load()
+	if run.grave != null:
+		_grave_hint_time = GRAVE_HINT_SECONDS
+	return true
+
+func _after_load() -> void:
+	_sync_ball_rank()
+	apply_stats()
+	player.set_hp(player.max_hp)
+	mana.set_max(run.stats.max_mana())
+	mana.value = mana.max_value
+	player.controllable = true
+	warm_hero_looks()
+	menu.refresh()
+
+func _pause_to_title() -> void:
+	autosave()
+	pause_menu.visible = false
+	get_tree().paused = false
+	show_title()
+
+func _pause_quit() -> void:
+	autosave()
+	get_tree().quit()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		autosave()  # ウィンドウを閉じたときも書く

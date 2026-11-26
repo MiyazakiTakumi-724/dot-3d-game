@@ -114,3 +114,24 @@ func restore(taken: Array) -> void:
 		gain(id)
 		if c != "" and has(c):
 			_equipped[s] = c  # gain で好みが変わらないように
+
+## セーブ（2026-11-26 独自の開発1）。
+func to_dict() -> Dictionary:
+	var eq := {}
+	for s in _equipped:
+		eq[str(int(s))] = _equipped[s]
+	return {"owned": _owned.duplicate(), "equipped": eq}
+
+## ロード：中身だけを入れ替える。知らない品物（版が変わって消えたもの）は捨てる。
+func load_dict(d: Dictionary) -> void:
+	_owned.clear()
+	_equipped = {}
+	for id in d.get("owned", []):
+		if ItemCatalog.exists(str(id)) and not _owned.has(str(id)):
+			_owned.append(str(id))
+	var eq: Dictionary = d.get("equipped", {})
+	for k in eq:
+		if ItemCatalog.exists(str(eq[k])):
+			_equipped[int(k)] = str(eq[k])
+	if _owned.is_empty():
+		gain("ball_1")

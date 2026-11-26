@@ -35,6 +35,13 @@ const SEALS_PER_DOOR := 3
 var _bonfires := {}
 var _bonfire_order: Array[String] = []
 
+## 遊んだ時間（秒）。セーブの一覧に出す（2026-11-26 独自の開発1）
+var play_time := 0.0
+## ストーリーの進み具合（記憶のかけら・頼みごと・話した人など。名前 → 値。2026-11-26 独自の開発1）
+var flags := {}
+## 倒した敵の数（EnemyKind.Kind → 数）。図鑑に出す（2026-11-26 独自の開発1）
+var kills := {}
+
 func _init(cp_area: String, checkpoint: Vector2i) -> void:
 	checkpoint_area = cp_area
 	checkpoint_cell = checkpoint
@@ -96,6 +103,7 @@ func break_grave() -> void:
 
 ## 敵を倒したときの経験値。上がったレベルの数を返す（落とし物は Loot で決める）。
 func on_enemy_killed(kind: EnemyKind.Kind, level: int) -> int:
+	kills[kind] = int(kills.get(kind, 0)) + 1
 	return stats.add_exp(EnemyKind.exp_reward(kind, level))
 
 ## ボスを倒した。経験値をもらい、世界の敵のレベルが上がる。上がったレベルの数を返す。
@@ -193,3 +201,80 @@ static func can_reach_pickup(pos: Vector2, h: int, cell: Vector2i, cell_h: int) 
 
 func is_near_checkpoint(area_id: String, cell: Vector2i) -> bool:
 	return area_id == checkpoint_area and absi(cell.x - checkpoint_cell.x) <= 1 and absi(cell.y - checkpoint_cell.y) <= 1
+
+
+# ---------------------------------------------------------------- セーブとロード（2026-11-26 独自の開発1）
+
+const SAVE_VERSION := 1
+
+static func _cells_to(d: Dictionary) -> Dictionary:
+	var out := {}
+	for k in d:
+		var c: Vector2i = d[k]
+		out[k] = [c.x, c.y]
+	return out
+
+## 冒険の状態を JSON にできる形にする。
+func to_dict() -> Dictionary:
+	var kill_out := {}
+	for k in kills:
+		kill_out[str(int(k))] = kills[k]
+	return {
+		"version": SAVE_VERSION,
+		"inventory": inventory.to_dict(),
+		"stats": stats.to_dict(),
+		"bosses": _bosses.keys(),
+		"bosses_defeated": bosses_defeated,
+		"grave": grave.to_dict() if grave != null else null,
+		"checkpoint_area": checkpoint_area,
+		"checkpoint_cell": [checkpoint_cell.x, checkpoint_cell.y],
+		"picked": _picked.keys(),
+		"doors": _open_doors.keys(),
+		"gimmicks": _open_gimmicks.keys(),
+		"visited": _visited.keys(),
+		"bonfires": _cells_to(_bonfires),
+		"bonfire_order": _bonfire_order.duplicate(),
+		"cleared": cleared,
+		"play_time": play_time,
+		"flags": flags.duplicate(true),
+		"kills": kill_out,
+	}
+
+static func _keys_set(a) -> Dictionary:
+	var out := {}
+	if a is Array:
+		for k in a:
+			out[str(k)] = true
+	return out
+
+## ロード：中身だけを入れ替える（画面が持っている stats・inventory の参照はそのまま）。
+func load_dict(d: Dictionary) -> void:
+	inventory.load_dict(d.get("inventory", {}))
+	stats.load_dict(d.get("stats", {}))
+	_bosses = _keys_set(d.get("bosses", []))
+	bosses_defeated = int(d.get("bosses_defeated", _bosses.size()))
+	var g = d.get("grave", null)
+	grave = Gravestone.from_dict(g) if g is Dictionary else null
+	checkpoint_area = str(d.get("checkpoint_area", checkpoint_area))
+	var cc: Array = d.get("checkpoint_cell", [checkpoint_cell.x, checkpoint_cell.y])
+	checkpoint_cell = Vector2i(int(cc[0]), int(cc[1]))
+	_picked = _keys_set(d.get("picked", []))
+	_open_doors = _keys_set(d.get("doors", []))
+	_open_gimmicks = _keys_set(d.get("gimmicks", []))
+	_visited = _keys_set(d.get("visited", []))
+	_bonfires = {}
+	var bf: Dictionary = d.get("bonfires", {})
+	for k in bf:
+		_bonfires[str(k)] = Vector2i(int(bf[k][0]), int(bf[k][1]))
+	_bonfire_order.clear()
+	for k in d.get("bonfire_order", []):
+		if _bonfires.has(str(k)):
+			_bonfire_order.append(str(k))
+	_remember_bonfire(checkpoint_area, checkpoint_cell)
+	cleared = bool(d.get("cleared", false))
+	play_time = float(d.get("play_time", 0.0))
+	flags = (d.get("flags", {}) as Dictionary).duplicate(true)
+	kills = {}
+	var kd: Dictionary = d.get("kills", {})
+	for k in kd:
+		kills[int(k)] = int(kd[k])

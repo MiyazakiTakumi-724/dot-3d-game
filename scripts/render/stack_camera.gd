@@ -28,18 +28,31 @@ const SHAKE_TIME := 0.18
 var shake_offset := Vector2.ZERO
 var _shake_t := 0.0
 var _shake_amp := 0.0
+## 画面のゆれを使うか（設定。2026-11-26 独自の開発1）
+var shake_enabled := true
+## 今カメラを回しているか（Q/E を押している・右ドラッグした直後）。設定「カメラを回す間ゆっくり」に使う
+var turning := false
+var _drag_left := 0.0
+## 右ドラッグを止めても「回している」とみなす時間（本当の秒）
+const DRAG_HOLD := 0.15
 
 func _process(delta: float) -> void:
+	# 時間がゆっくりになっても、カメラは同じ速さで回る（本当の秒で数える）
+	var real := delta / maxf(Engine.time_scale, 0.01)
 	var turn := 0.0
 	if Input.is_physical_key_pressed(KEY_Q):
 		turn -= 1.0
 	if Input.is_physical_key_pressed(KEY_E):
 		turn += 1.0
-	angle = wrapf(angle + turn * TURN_SPEED * delta, -PI, PI)
+	angle = wrapf(angle + turn * TURN_SPEED * real, -PI, PI)
+	_drag_left = maxf(0.0, _drag_left - real)
+	turning = turn != 0.0 or _drag_left > 0.0
 	_update_shake(delta)
 
 ## 画面を amp（ゲームの座標のpx）だけ、SHAKE_TIME の間ゆらす。だんだん弱くなる。
 func shake(amp: float) -> void:
+	if not shake_enabled:
+		return
 	_shake_amp = maxf(amp, _shake_amp if _shake_t > 0.0 else 0.0)
 	_shake_t = SHAKE_TIME
 
@@ -55,6 +68,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			angle = wrapf(angle + event.relative.x / PIXEL_SCALE * MOUSE_SENSITIVITY, -PI, PI)
+			if event.relative.x != 0.0:
+				_drag_left = DRAG_HOLD
 
 ## world を真ん中に、高さ height_px をなめらかに追いかける（段を登ったときに画面が跳ねないように）。
 func follow(world: Vector2, height_px: float, delta: float) -> void:

@@ -81,3 +81,20 @@ func take_arrow(bow_skills: int) -> int:
 	if not take(Arrow.ID[k]):
 		return -1
 	return k
+
+## セーブ（2026-11-26 独自の開発1）。
+func to_dict() -> Dictionary:
+	return {"money": money, "counts": counts.duplicate(), "equipment": equipment.to_dict(),
+		"arrow_kind": int(arrow_kind), "tool_id": tool_id}
+
+## ロード：中身だけを入れ替える。知らない品物は捨てる。
+func load_dict(d: Dictionary) -> void:
+	money = int(d.get("money", 0))
+	counts = {}
+	var c: Dictionary = d.get("counts", {})
+	for id in c:
+		if ItemCatalog.is_counted(str(id)) and int(c[id]) > 0:
+			counts[str(id)] = int(c[id])
+	equipment.load_dict(d.get("equipment", {}))
+	arrow_kind = int(d.get("arrow_kind", 0)) as Arrow.Kind
+	tool_id = str(d.get("tool_id", "potion"))

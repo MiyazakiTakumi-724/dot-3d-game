@@ -11,6 +11,8 @@ signal close_requested
 signal stats_changed
 ## 技能を覚えた（技能の名前）
 signal skill_learned(skill: String)
+## 設定を変えた（保存してもらう）
+signal settings_changed
 
 enum Page { EQUIP, STATS, ITEMS, SETTINGS }
 
@@ -119,12 +121,7 @@ func _build_stats_page() -> void:
 		_stat_rows[stat] = [pts, plus, effect, skill]
 
 var _settings_root: Control
-var _difficulty_buttons := {}
-var _flash_buttons := {}
-var _sfx_buttons := {}
-var _screen_buttons := {}
-var _settings_main: Control
-var _controls_box: Control
+var settings_panel: SettingsPanel
 var _items_root: Control
 var _items_box: GridContainer
 var _items_hint: Label
@@ -186,59 +183,24 @@ func _refresh_items() -> void:
 
 func _build_settings_page() -> void:
 	_settings_root = _page_root()
-	_settings_main = Control.new()
-	_settings_main.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_settings_root.add_child(_settings_main)
-	_label(_settings_main, "難易度", Vector2(6, 28))
-	_difficulty_buttons[false] = _button(_settings_main, "", Vector2(64, 25), func(): set_easy(false))
-	_difficulty_buttons[true] = _button(_settings_main, "", Vector2(124, 25), func(): set_easy(true))
-	var note := _label(_settings_main, "簡単：敵から受けるダメージだけが半分", Vector2(6, 43))
-	note.modulate.a = 0.7
-	_label(_settings_main, "画面の光", Vector2(6, 62))
-	_flash_buttons[false] = _button(_settings_main, "", Vector2(64, 59), func(): set_soft_flash(false))
-	_flash_buttons[true] = _button(_settings_main, "", Vector2(124, 59), func(): set_soft_flash(true))
-	var note2 := _label(_settings_main, "弱い：画面が白く光る演出を弱くする", Vector2(6, 77))
-	note2.modulate.a = 0.7
-	_label(_settings_main, "効果音", Vector2(6, 96))
-	for i in GameSettings.SFX_NAMES.size():
-		var lv := i
-		_sfx_buttons[i] = _button(_settings_main, "", Vector2(64 + i * 44, 93), func(): set_sfx_level(lv))
-	_label(_settings_main, "画面", Vector2(6, 118))
-	_screen_buttons[false] = _button(_settings_main, "", Vector2(64, 115), func(): set_fullscreen(false))
-	_screen_buttons[true] = _button(_settings_main, "", Vector2(150, 115), func(): set_fullscreen(true))
-	_button(_settings_main, "操作の一覧を見る", Vector2(6, 141), func(): show_controls(true))
-	# 操作の一覧（遊ぶ画面には出さず、ここで見る。2026-11-26）
-	_controls_box = Control.new()
-	_controls_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_controls_box.visible = false
-	_settings_root.add_child(_controls_box)
-	_label(_controls_box, "操作の一覧", Vector2(6, 25))
-	_button(_controls_box, "もどる", Vector2(250, 22), func(): show_controls(false))
-	var y := 42.0
-	for row in GameSettings.CONTROLS:
-		var k := _label(_controls_box, row[0], Vector2(8, y))
-		k.modulate = Color(1.0, 0.9, 0.55)
-		_label(_controls_box, row[1], Vector2(100, y))
-		y += 12.0
+	# 設定の欄は止める画面・タイトル画面と同じもの（2026-11-26 独自の開発1）
+	settings_panel = SettingsPanel.new()
+	settings_panel.setup(settings)
+	settings_panel.changed.connect(func(): settings_changed.emit())
+	_settings_root.add_child(settings_panel)
 
 ## 設定のページで、操作の一覧を出す（false で設定に戻る）。
 func show_controls(on: bool) -> void:
-	_controls_box.visible = on
-	_settings_main.visible = not on
+	settings_panel.show_controls(on)
 
 func controls_shown() -> bool:
-	return _controls_box.visible
+	return settings_panel.controls_shown()
 
 func set_sfx_level(v: int) -> void:
-	settings.sfx_level = v
-	Sfx.level = v
-	Sfx.play("ui_click")
-	refresh()
+	settings_panel.set_value("sfx_level", v)
 
 func set_fullscreen(v: bool) -> void:
-	settings.fullscreen = v
-	apply_window(v)
-	refresh()
+	settings_panel.set_value("fullscreen", v)
 
 ## 全画面とウィンドウ（1920×1080）を切りかえる。画面のない所（テスト）では何もしない。
 static func apply_window(full: bool) -> void:
@@ -251,12 +213,10 @@ static func apply_window(full: bool) -> void:
 		DisplayServer.window_set_size(Vector2i(1920, 1080))
 
 func set_soft_flash(v: bool) -> void:
-	settings.soft_flash = v
-	refresh()
+	settings_panel.set_value("soft_flash", v)
 
 func set_easy(v: bool) -> void:
-	settings.easy_mode = v
-	refresh()
+	settings_panel.set_value("easy_mode", v)
 
 func _page_root() -> Control:
 	var c := Control.new()
@@ -279,7 +239,7 @@ func close() -> void:
 func show_page(p: Page) -> void:
 	page = p
 	tip.hide_tip()
-	show_controls(false)
+	settings_panel.show_controls(false)
 	refresh()
 
 func select_slot(slot: Equipment.Slot) -> void:
@@ -353,16 +313,7 @@ func refresh() -> void:
 		Page.ITEMS:
 			_refresh_items()
 		Page.SETTINGS:
-			for easy in _difficulty_buttons:
-				var on: bool = settings.easy_mode == easy
-				_difficulty_buttons[easy].text = ("● " if on else "○ ") + ("簡単" if easy else "普通")
-			for soft in _flash_buttons:
-				var on: bool = settings.soft_flash == soft
-				_flash_buttons[soft].text = ("● " if on else "○ ") + ("弱い" if soft else "ふつう")
-			for lv in _sfx_buttons:
-				_sfx_buttons[lv].text = ("● " if settings.sfx_level == lv else "○ ") + GameSettings.SFX_NAMES[lv]
-			for full in _screen_buttons:
-				_screen_buttons[full].text = ("● " if settings.fullscreen == full else "○ ") + ("全画面" if full else "ウィンドウ")
+			settings_panel.refresh()
 
 ## 主人公の姿に出す物：[手に持つ物, 防具]。鉄球・剣・弓・杖の枠を選んでいるときは、その枠の品物を持たせる。
 func portrait_look() -> Array:

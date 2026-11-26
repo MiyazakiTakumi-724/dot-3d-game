@@ -99,3 +99,20 @@ const MANA_BONUS := 10
 
 func move_speed_mult() -> float:
 	return 1.0 + points_in(Stat.MOVE) * SPEED_PER_POINT
+
+## セーブ（2026-11-26 独自の開発1）：JSON にできる形にする。
+func to_dict() -> Dictionary:
+	var alloc := {}
+	for s in _alloc:
+		alloc[str(int(s))] = _alloc[s]
+	return {"level": level, "exp": exp, "points": points, "alloc": alloc}
+
+## ロード：中身だけを入れ替える（画面が持っている参照はそのまま）。
+func load_dict(d: Dictionary) -> void:
+	level = int(d.get("level", 1))
+	exp = int(d.get("exp", 0))
+	points = int(d.get("points", 0))
+	_alloc = {}
+	var alloc: Dictionary = d.get("alloc", {})
+	for k in alloc:
+		_alloc[int(k)] = int(alloc[k])
