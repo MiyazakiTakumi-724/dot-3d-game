@@ -67,6 +67,13 @@ const SHOOTER_FLEE := 40.0
 const SHIELD_TURN := 1.6
 ## 擬態箱が目を覚ます距離
 const MIMIC_WAKE := 22.0
+## 狼（2026-11-26、霧の谷）：まわりを回る間合い（px）、遠吠えで速くなる時間と倍率、遠吠えが届く広さ
+const WOLF_RING := 40.0
+const WOLF_FRENZY := 6.0
+const WOLF_FRENZY_SPEED := 1.3
+const WOLF_CALL := 160.0
+## 黒騎士：向き直る速さ（ラジアン/秒）
+const KNIGHT_TURN := 2.2
 
 var walker: EnemyWalker
 var kind: EnemyKind.Kind = EnemyKind.Kind.WEAK
@@ -135,6 +142,9 @@ var _was_faded := false
 var small := false
 ## 使った技の名前（テスト用）
 var moves_used: Array = []
+## 狼：遠吠えのあと速い残り時間（秒）と、もう遠吠えしたか
+var frenzy := 0.0
+var _howled := false
 
 func setup(map: HeightMap, start_cell: Vector2i, start_dir: Vector2, p: Player, cam: StackCamera, enemy_kind: EnemyKind.Kind = EnemyKind.Kind.WEAK, first_shot_delay: float = SHOOT_INTERVAL, enemy_level := 1) -> void:
 	kind = enemy_kind
@@ -243,6 +253,7 @@ func _process(delta: float) -> void:
 	flipped = maxf(0.0, flipped - delta)
 	_skill_cd = maxf(0.0, _skill_cd - delta)
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
+	frenzy = maxf(0.0, frenzy - delta)
 	_track(delta)
 	var alive_target := target.hp > 0
 	if kind == EnemyKind.Kind.GHOST:
@@ -335,6 +346,12 @@ func _update_kind(delta: float, alive_target: bool) -> void:
 				walker.step(delta)
 			elif not melee.is_winding_up():
 				_walk(delta, alive_target)
+		EnemyKind.Kind.WOLF:
+			_update_wolf(delta, alive_target)
+		EnemyKind.Kind.DARK_KNIGHT:
+			face = Vector2.from_angle(rotate_toward(face.angle(), _to_target().angle(), KNIGHT_TURN * delta))
+			if not melee.is_winding_up():
+				_walk(delta, alive_target)
 		EnemyKind.Kind.SHIELD:
 			var behind := face.dot(_to_target().normalized()) < -0.3
 			face = Vector2.from_angle(rotate_toward(face.angle(), _to_target().angle(), SHIELD_TURN * (1.8 if behind else 1.0) * delta))
@@ -342,6 +359,33 @@ func _update_kind(delta: float, alive_target: bool) -> void:
 				_walk(delta, alive_target)
 		_:
 			_walk(delta, alive_target)
+
+## 狼：見つけたら間合い（WOLF_RING）を保ってまわりを回り、跳びかかる時を待つ。噛んだら少し離れる。
+func _update_wolf(delta: float, alive_target: bool) -> void:
+	walker.speed_mult = EnemyKind.speed_mult(kind) * (WOLF_FRENZY_SPEED if frenzy > 0.0 else 1.0)
+	var to := _to_target()
+	var d := to.length()
+	if _retreat > 0.0:
+		_retreat -= delta
+		walker.dir = -to.normalized()
+	elif alive_target and d < walker.chase_range and d > 0.1:
+		if int(_bob / 3.0) != int((_bob - delta) / 3.0):
+			_orbit = -_orbit  # ときどき回る向きを変える
+		var keep := clampf((d - WOLF_RING) / 20.0, -0.8, 0.8)
+		walker.dir = (to.normalized().orthogonal() * _orbit + to.normalized() * keep).normalized()
+	walker.step(delta)
+
+## 遠吠え：自分と、近くの狼が少しの間速くなる（群れで襲う）。
+func _howl() -> void:
+	frenzy = WOLF_FRENZY
+	Sfx.play("howl", walker.pos, -6.0)
+	var list = field.get("enemies") if field != null else null
+	if list == null:
+		return
+	for e in list:
+		if is_instance_valid(e) and e != self and e.kind == EnemyKind.Kind.WOLF and e.walker.pos.distance_to(walker.pos) < WOLF_CALL:
+			e.frenzy = WOLF_FRENZY
+			e._howled = true
 
 ## ためている間は体を明るく光らせる（よけるための合図）。毒は緑、やけどは赤、遅いと青。
 func _tint() -> void:
@@ -672,7 +716,7 @@ func _start_act(name_: String, wind: float, time: float, speed: float, dir: Vect
 	_act_hit = false
 	_act_lift = lift
 	walker.dir = _act_dir
-	if kind in [EnemyKind.Kind.SHIELD, EnemyKind.Kind.SPEAR]:
+	if kind in [EnemyKind.Kind.SHIELD, EnemyKind.Kind.SPEAR, EnemyKind.Kind.DARK_KNIGHT]:
 		face = _act_dir
 	_note(name_)
 
@@ -719,6 +763,9 @@ func _after_act(was: String, bumped: bool) -> void:
 		"lunge", "combo":
 			if kind == EnemyKind.Kind.MELEE and randf() < 0.5:
 				_retreat = 0.35
+		"leap":
+			if kind == EnemyKind.Kind.WOLF:
+				_retreat = 0.5  # 噛んだら離れて、また回る
 		"shadow_step":
 			lunge_phase = 1
 			_lunge_time = POUNCE_WINDUP * 0.5
@@ -863,12 +910,38 @@ func _think(_delta: float) -> bool:
 				for a in [-0.35, 0.0, 0.35]:
 					_shoot_at(walker.pos + to.rotated(a), 60.0)  # 金貨を吐く
 				_note("coins")
+		EnemyKind.Kind.WOLF:
+			if not _howled and d < walker.chase_range:
+				_howled = true
+				_howl()
+				_start_act("howl", 0.45, 0.05, 0.0, to)
+				return true
+			if _skill_cd <= 0.0 and same and d > 22.0 and d < 64.0 and _retreat <= 0.0:
+				_skill_cd = randf_range(1.6, 2.4)
+				_start_act("leap", 0.3, 0.32, 3.8, _lead(0.4) - walker.pos, 13.0, 7.0)
+				return true
+		EnemyKind.Kind.DARK_KNIGHT:
+			if _skill_cd <= 0.0 and same and d < 18.0:
+				_skill_cd = 2.6
+				_start_act("spin", 0.5, 0.05, 0.0, to, 24.0)  # 回転斬り（しゃがんでも当たる。離れてよける）
+				return true
+			if _skill_cd <= 0.0 and same and d > 40.0 and d < 84.0:
+				_skill_cd = 3.0
+				_start_act("charge", 0.55, 0.45, 3.4, _lead(0.3) - walker.pos, 15.0)
+				return true
+			if _skill_cd <= 0.0 and d >= 84.0 and d < 170.0:
+				_skill_cd = 3.2
+				_hit_flash = 0.2
+				var aim := _lead(d / 70.0) - walker.pos
+				for a in [-0.3, 0.0, 0.3]:
+					_shoot_at(walker.pos + aim.rotated(a), 70.0)  # 剣の衝撃波（離れて弓で撃つ相手に）
+				_note("wave")
 	return false
 
 func _draw() -> void:
 	if camera == null:
 		return
-	var dir := face if kind in [EnemyKind.Kind.SHIELD, EnemyKind.Kind.SPEAR] else walker.dir
+	var dir := face if kind in [EnemyKind.Kind.SHIELD, EnemyKind.Kind.SPEAR, EnemyKind.Kind.DARK_KNIGHT] else walker.dir
 	var face_angle := dir.angle() - PI / 2
 	if kind == EnemyKind.Kind.SHADOW:
 		# 影の敵は体が見えない（地面の影だけ）。当たった直後と、ためている間だけ姿が出る

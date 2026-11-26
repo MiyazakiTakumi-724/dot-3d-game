@@ -13,8 +13,10 @@ extends RefCounted
 ## MAGE 魔術師：ときどき消えて別の所に現れ、3方向に遅い弾を撃つ。BEETLE 甲虫：かたい殻（剣・矢・魔法は1だけ）。
 ## 鉄球でひっくり返すと、その間はふつうに入る。WASP 蜂：小さく速く飛ぶ。剣と鉄球は当たらない。
 ## MIMIC 擬態箱：宝箱のふりをしていて、近づくと噛みつく。よい物を落とす。
+## 2026-11-26（4回目の直し、霧の谷）：WOLF 狼：すばやく、まわりを回ってから跳びかかる。見つけると遠吠えして群れが速くなる。
+## DARK_KNIGHT 黒騎士：重い鎧。正面からの矢を防ぐ。離れると剣の衝撃波、中くらいの間合いで突進、近いと回転斬り。
 
-enum Kind { WEAK, MELEE, SHOOTER, SHIELD, SHADOW, FLYER, CHARGER, BOMBER, GHOST, SPEAR, LOBBER, MAGE, BEETLE, WASP, MIMIC }
+enum Kind { WEAK, MELEE, SHOOTER, SHIELD, SHADOW, FLYER, CHARGER, BOMBER, GHOST, SPEAR, LOBBER, MAGE, BEETLE, WASP, MIMIC, WOLF, DARK_KNIGHT }
 
 ## [名前, 体力, 攻撃力, 経験値, 登れる段, 撃つ, 体当たり, ためて叩く, 速さの倍率, 寄ってくる距離（px、0は寄らない）]
 const DATA := {
@@ -33,6 +35,8 @@ const DATA := {
 	Kind.BEETLE: ["甲虫", 30, 7, 10, 1, false, true, false, 0.8, 48.0],
 	Kind.WASP: ["蜂", 9, 4, 4, 9, false, true, false, 1.6, 104.0],
 	Kind.MIMIC: ["擬態箱", 40, 10, 16, 1, false, false, true, 1.25, 72.0],
+	Kind.WOLF: ["狼", 24, 7, 9, 1, false, true, false, 1.35, 112.0],
+	Kind.DARK_KNIGHT: ["黒騎士", 64, 11, 22, 1, false, false, true, 0.85, 88.0],
 }
 ## 亡霊が、しゃがんで歩くプレイヤーに気づく距離（px）
 const GHOST_QUIET_RANGE := 24.0
@@ -104,6 +108,8 @@ static func hit_rule(k: Kind, source: String, facing: Vector2, at: Vector2, from
 		return "pass"
 	if k == Kind.SHIELD and source in ["sword", "arrow", "magic"] and blocks(k, facing, at, from):
 		return "block"
+	if k == Kind.DARK_KNIGHT and source == "arrow" and from != at and facing.normalized().dot((from - at).normalized()) > 0.5:
+		return "block"  # 黒騎士は正面からの矢を剣ではじく
 	if k == Kind.BEETLE and not state.get("flipped", false) and source in ["sword", "arrow", "magic"]:
 		return "armor"
 	if state.get("stunned", false):
@@ -129,6 +135,8 @@ const AFFINITY := {
 	Kind.BEETLE: {"ball": WEAK_MULT, "bomb": WEAK_MULT},
 	Kind.WASP: {"magic": WEAK_MULT},
 	Kind.MIMIC: {"magic": WEAK_MULT, "bomb": WEAK_MULT, "arrow": RESIST_MULT},
+	Kind.WOLF: {"sword": WEAK_MULT, "arrow": RESIST_MULT},
+	Kind.DARK_KNIGHT: {"magic": WEAK_MULT, "ball": WEAK_MULT, "arrow": RESIST_MULT},
 }
 
 static func affinity(k: Kind, source: String) -> float:

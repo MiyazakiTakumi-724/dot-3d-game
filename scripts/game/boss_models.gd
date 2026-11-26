@@ -104,18 +104,20 @@ static func _build(g: String, variant: String) -> VoxelModel:
 			VoxelDraw.fill(m, Vector3i(15, 33, 13), Vector3i(24, 33, 15), Color("2a0a08"))  # 口
 			for x in range(16, 24, 2):
 				m.set_voxel(Vector3i(x, 33, 15), Color("ffb03a"))
-		"廃城の主":
+		"廃城の主", "闇の王":
+			# 闇の王（霧の谷、2026-11-26）は同じ形で、黒い鎧と紫の光
+			var king := g == "闇の王"
 			m.size = Vector3i(36, 30, 52)
-			var steel := Color("6a6e80")
-			var dark := Color("3a3648")
-			var cape := Color("7a2a3a")
+			var steel := Color("6a6e80") if not king else Color("34303f")
+			var dark := Color("3a3648") if not king else Color("1e1a26")
+			var cape := Color("7a2a3a") if not king else Color("3a1a40")
 			VoxelDraw.fill(m, Vector3i(11, 11, 0), Vector3i(15, 17, 14), dark)  # 足
 			VoxelDraw.fill(m, Vector3i(20, 11, 0), Vector3i(24, 17, 14), dark)
 			VoxelDraw.fill(m, Vector3i(10, 12, 0), Vector3i(16, 19, 2), steel)  # 靴
 			VoxelDraw.fill(m, Vector3i(19, 12, 0), Vector3i(25, 19, 2), steel)
 			VoxelDraw.ellipsoid(m, Vector3(17.5, 14.5, 24.0), Vector3(10.0, 7.0, 11.0), steel)  # 胴
 			VoxelDraw.fill(m, Vector3i(10, 21, 18), Vector3i(25, 21, 30), steel.lightened(0.12))  # 胸の板
-			VoxelDraw.fill(m, Vector3i(16, 22, 20), Vector3i(19, 22, 28), Color("c8b070"))  # 紋章
+			VoxelDraw.fill(m, Vector3i(16, 22, 20), Vector3i(19, 22, 28), Color("c8b070") if not king else Color("b080ff"))  # 紋章
 			VoxelDraw.fill(m, Vector3i(7, 5, 6), Vector3i(28, 8, 34), cape)  # 背のマント
 			for x in range(7, 29, 3):
 				VoxelDraw.fill(m, Vector3i(x, 5, 4), Vector3i(x, 7, 5), cape.darkened(0.25))
@@ -123,8 +125,8 @@ static func _build(g: String, variant: String) -> VoxelModel:
 			VoxelDraw.ellipsoid(m, Vector3(27.0, 14.5, 32.0), Vector3(5.0, 5.0, 4.0), steel.lightened(0.1))
 			VoxelDraw.ellipsoid(m, Vector3(17.5, 15.0, 41.0), Vector3(6.0, 6.0, 6.5), steel.lightened(0.05))  # かぶと
 			VoxelDraw.fill(m, Vector3i(13, 21, 40), Vector3i(22, 21, 41), Color("1a1020"))  # 目のすき間
-			m.set_voxel(Vector3i(15, 21, 40), Color("ff4a4a"))
-			m.set_voxel(Vector3i(20, 21, 40), Color("ff4a4a"))
+			m.set_voxel(Vector3i(15, 21, 40), Color("ff4a4a") if not king else Color("d090ff"))
+			m.set_voxel(Vector3i(20, 21, 40), Color("ff4a4a") if not king else Color("d090ff"))
 			VoxelDraw.rod(m, Vector3(17.5, 13, 47), Vector3(17.5, 6, 51), cape.lightened(0.2), 2)  # かぶとの飾り
 			VoxelDraw.fill(m, Vector3i(29, 16, 14), Vector3i(31, 19, 28), steel)  # 腕
 			VoxelDraw.rod(m, Vector3(30, 20, 12), Vector3(30, 27, 46), Color("d0d4dc"), 2)  # 大剣

@@ -81,6 +81,9 @@ func test_some_affinities() -> void:
 	assert_gt(EnemyKind.affinity(EnemyKind.Kind.SHIELD, "ball"), 1.0, "盾持ちは鉄球に弱い")
 	assert_gt(EnemyKind.affinity(EnemyKind.Kind.GHOST, "magic"), 1.0, "亡霊は魔法に弱い")
 	assert_eq(EnemyKind.affinity(EnemyKind.Kind.CHARGER, "sword"), 1.0)
+	assert_gt(EnemyKind.affinity(EnemyKind.Kind.WOLF, "sword"), 1.0, "狼は剣に弱い")
+	assert_lt(EnemyKind.affinity(EnemyKind.Kind.WOLF, "arrow"), 1.0, "すばやい狼に矢は効きにくい")
+	assert_gt(EnemyKind.affinity(EnemyKind.Kind.DARK_KNIGHT, "magic"), 1.0, "黒騎士は魔法に弱い")
 
 func test_drawing_bow_slows_walking() -> void:
 	assert_lt(Bow.DRAW_MOVE, 0.6, "弓を引いている間は歩くのが遅い")

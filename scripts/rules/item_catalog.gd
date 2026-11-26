@@ -40,6 +40,7 @@ const ITEMS := {
 	"sword_frost": {"slot": Equipment.Slot.SWORD, "rank": 4, "name": "霜の剣", "traits": {"slow": 1, "rate": 1.2}, "src": ["craft", "drop"]},
 	"sword_star": {"slot": Equipment.Slot.SWORD, "rank": 5, "name": "星の剣", "traits": {"atk": 5, "rate": 1.2, "reach": 1.3}, "src": ["craft"]},
 	"sword_king": {"slot": Equipment.Slot.SWORD, "rank": 5, "name": "王の剣", "traits": {"drain": 1, "burn": 1, "atk": 3}, "src": ["craft"]},
+	"sword_dusk": {"slot": Equipment.Slot.SWORD, "rank": 5, "name": "宵闇の剣", "traits": {"drain": 1, "slow": 1, "atk": 4}, "src": ["craft"]},
 	# ---- 弓
 	"bow_1": {"slot": Equipment.Slot.BOW, "rank": 1, "name": "弓", "src": ["shop", "craft", "drop"]},
 	"bow_short": {"slot": Equipment.Slot.BOW, "rank": 2, "name": "短弓", "traits": {"charge": 1.5}, "src": ["shop", "craft"]},
@@ -93,6 +94,8 @@ const MATERIALS := {
 	"obsidian": {"name": "黒曜石", "where": "溶岩"},
 	"fire_stone": {"name": "火の石", "where": "溶岩"},
 	"star_shard": {"name": "星のかけら", "where": "神秘の塔"},
+	"mist_moss": {"name": "霧のこけ", "where": "霧の谷"},
+	"dark_shard": {"name": "闇のかけら", "where": "霧の谷"},
 	# 強い敵だけが落とす素材（ランク4・5を作るのに要る。地方は問わない）
 	"power_crystal": {"name": "力の結晶", "where": "Lv6以上の敵（ランク4を作るのに要る）"},
 	"ancient_crystal": {"name": "いにしえの結晶", "where": "Lv10以上の敵（ランク5を作るのに要る）"},
@@ -108,6 +111,7 @@ const MATERIALS := {
 	"bright_eye": {"name": "ブライトの瞳", "where": "ブライト"},
 	"queen_sting": {"name": "女王の針", "where": "女王蜂"},
 	"king_crown": {"name": "王の宝冠", "where": "宝箱の王"},
+	"dark_crest": {"name": "闇の王の紋章", "where": "闇の王"},
 }
 
 ## 大事な物（地方の印）。ボスの間の前の門を開ける鍵で、死んでも墓石に入らない

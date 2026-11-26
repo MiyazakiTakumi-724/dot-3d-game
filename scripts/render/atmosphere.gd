@@ -3,7 +3,8 @@ extends CanvasLayer
 ## 画面全体の空気（2026-11-26 の3回目の直し。添付の映像のように、影と光でリアルに見せる）。
 ## - 雲の影（ワールドに貼りついて流れる）と、画面のふちの暗さ（atmosphere.gdshader をかけ算で重ねる）
 ## - 地方ごとの暗さと明かり：溶岩・廃城・塔は暗く、たき火・炎・溶岩・主人公のまわりが明るい（field.gd が set_lights で渡す）
-## - 地方ごとの舞うもの（草原の綿毛・山の雪・溶岩の火の粉・廃城のほこり・塔のきらめき）
+## - 地方ごとの舞うもの（草原の綿毛・山の雪・溶岩の火の粉・廃城のほこり・塔のきらめき・霧の谷の霧のすじ）
+## - 霧（2026-11-26、霧の谷）：ワールドに貼りついてゆっくり流れる白いもや（glow.gdshader にたす）
 ## 世界（レイヤー0）より上、画面の文字（UI のレイヤー2）より下に描く。
 
 const SHADER := preload("res://scripts/render/atmosphere.gdshader")
@@ -17,6 +18,7 @@ const THEMES := {
 	"castle": {"clouds": 0.14, "ambient": 0.8, "tint": Color(0.86, 0.9, 1.0), "particles": "dust"},
 	"lava": {"clouds": 0.0, "ambient": 0.66, "tint": Color(0.95, 0.72, 0.74), "particles": "embers"},
 	"tower": {"clouds": 0.0, "ambient": 0.76, "tint": Color(0.84, 0.82, 1.0), "particles": "sparkles"},
+	"mist": {"clouds": 0.1, "ambient": 0.74, "tint": Color(0.8, 0.88, 0.96), "particles": "mist", "fog": 0.2},
 }
 ## 舞うものの数
 const PARTICLES := 46
@@ -68,6 +70,7 @@ func set_theme(t: String) -> void:
 	_mat.set_shader_parameter("ambient", c["ambient"])
 	var tint: Color = c["tint"]
 	_mat.set_shader_parameter("tint", Vector3(tint.r, tint.g, tint.b))
+	_glow_mat.set_shader_parameter("fog", float(c.get("fog", 0.0)))
 	_motes.start(c["particles"])
 
 ## 暗い地方か（明かりが意味を持つ）。
@@ -105,6 +108,9 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("focus", camera.focus)
 	_mat.set_shader_parameter("angle", camera.angle)
 	_mat.set_shader_parameter("time", _time)
+	_glow_mat.set_shader_parameter("focus", camera.focus)
+	_glow_mat.set_shader_parameter("angle", camera.angle)
+	_glow_mat.set_shader_parameter("time", _time)
 
 ## 舞うもの。ワールドの点として持ち、カメラに合わせて画面に描く（カメラを回すと一緒に回る）。
 class Motes extends Node2D:
@@ -142,6 +148,9 @@ class Motes extends Node2D:
 				"pollen", "dust":
 					p[1] += sin(_t * 0.8 + p[3]) * 3.0 * delta
 					p[0] += Vector2(5.0, -1.5) * delta * p[2]
+				"mist":
+					p[1] += sin(_t * 0.4 + p[3]) * 1.5 * delta
+					p[0] += Vector2(7.0, 1.0) * delta * p[2]
 				_:
 					p[0] += Vector2(0.0, -2.0) * delta
 			var rel: Vector2 = p[0] - camera.focus
@@ -175,4 +184,12 @@ class Motes extends Node2D:
 				"sparkles":
 					var tw := 0.5 + 0.5 * sin(_t * 4.0 + p[3] * 3.0)
 					c = Color(0.75, 0.9, 1.0, tw)
-			draw_rect(Rect2(s, Vector2(size, size)), c)
+				"mist":
+					# 霧のすじ：横に長い、うすい白
+					var a: float = 0.1 + 0.06 * sin(_t * 0.7 + p[3])
+					var len: float = 6.0 + 8.0 * p[2]
+					draw_rect(Rect2(s - Vector2(len * 0.5, 0.0), Vector2(len, w * 2.0)), Color(0.9, 0.94, 1.0, a))
+					draw_rect(Rect2(s - Vector2(len * 0.3, w * 2.0), Vector2(len * 0.6, w * 2.0)), Color(0.9, 0.94, 1.0, a * 0.7))
+					size = 0.0  # 点は描かない
+			if size > 0.0:
+				draw_rect(Rect2(s, Vector2(size, size)), c)

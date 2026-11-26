@@ -15,7 +15,7 @@ const CELLS_PER_LEVEL := 0.55
 const HEIGHT_RANGE := 16.0
 ## 物の高さ（段）と、マスの中で影を落とす丸の半径（マス）。SQUARE はマスいっぱいの四角い物
 const OCCLUDERS := {
-	"tree": [4.5, 0.42], "pine": [5.5, 0.34], "bush": [1.6, 0.42], "rock": [1.8, 0.45],
+	"tree": [4.5, 0.42], "pine": [5.5, 0.34], "bush": [1.6, 0.42], "rock": [1.8, 0.45], "deadtree": [4.4, 0.18],
 	"stonewall": [2.5, 0.5], "column": [4.0, 0.3], "house": [4.0, 0.5], "well": [1.5, 0.4], "npc": [2.2, 0.3],
 }
 const SQUARE := ["stonewall", "house"]
@@ -40,7 +40,7 @@ static func occluder_height(map: HeightMap, deco: Dictionary, q: Vector2) -> flo
 	return h
 
 ## 地面の模様の種類（shadow.gdshader の S_*）。Terrain.surface_at の名前から決める。
-const SURFACE_IDS := {"grass": 1, "alpine": 2, "snow": 3, "ash": 4, "stone": 5, "water": 7, "lava": 8}
+const SURFACE_IDS := {"grass": 1, "alpine": 2, "snow": 3, "ash": 4, "stone": 5, "moss": 6, "water": 7, "lava": 8}
 ## マスの印（shadow.gdshader の F_*）。1 = 土の道
 const FLAG_PATH := 1
 

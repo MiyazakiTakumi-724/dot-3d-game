@@ -46,7 +46,7 @@ var _bonfire_node: StackSprite
 ## 暗い地方の石の壁や柱の上のかがり火（2026-11-26 の4回目の直し）：[スプライト, マス, 高さのpx]
 var _braziers: Array = []
 ## かがり火を置く地方と、置く物の上の高さ（px）
-const BRAZIER_THEMES := ["castle", "tower"]
+const BRAZIER_THEMES := ["castle", "tower", "mist"]
 const BRAZIER_ON := {"stonewall": 20.0, "column": 32.0}
 const MAX_BRAZIERS := 10
 var _bonfire_frame := 0
@@ -206,10 +206,10 @@ func _ready() -> void:
 
 ## エリアを作り直す。今のエリアの地形・敵・弾・印を片付け、id のエリアを cell から始める。
 ## 地面の見た目ごとの足音（2026-11-26）
-const STEP_SOUNDS := {"grass": "step_grass", "mountain": "step_gravel", "lava": "step_gravel", "castle": "step_stone", "tower": "step_stone", "town": "step_stone"}
+const STEP_SOUNDS := {"grass": "step_grass", "mountain": "step_gravel", "lava": "step_gravel", "castle": "step_stone", "tower": "step_stone", "town": "step_stone", "mist": "step_grass"}
 
 ## 土の道を描く地方（町と塔は石畳）
-const TRAIL_THEMES := ["grass", "mountain", "lava", "castle"]
+const TRAIL_THEMES := ["grass", "mountain", "lava", "castle", "mist"]
 
 func enter_area(id: String, cell: Vector2i) -> void:
 	for e in enemies:
@@ -2459,7 +2459,7 @@ func ui_message() -> String:
 		return "地面の矢印の先へ歩くと、となりのエリアへ行ける"
 	return ""
 
-## 確認用：エリアの敵を消し、15種類の敵をプレイヤーのまわりに並べて止める（`--zoo`）。
+## 確認用：エリアの敵を消し、すべての種類（17種類）の敵をプレイヤーのまわりに並べて止める（`--zoo`）。
 func _show_zoo() -> void:
 	for e in enemies:
 		e.queue_free()

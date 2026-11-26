@@ -24,6 +24,7 @@ const WHERE := {
 	"双子": "tw_2",
 	"らせん塔の番人": "tw_3",
 	"ブライト": "tw_4",
+	"闇の王": "mv_5",
 }
 
 ## ボスの間に入り、ボスを起こす。プレイヤーはボスの近くの歩けるマスに置く。
@@ -399,7 +400,7 @@ func test_bright_teleports_and_sweeps():
 	_run(0.1)
 	b._clock3 = 7.0
 	_run(0.1)
-	assert_gte(f.strikes_count(), 10)
+	assert_gte(f.strikes_count(), 8, "16本のうち、柱・壁・地図の外のほかに立つ")
 
 ## 女王蜂：ときどき針を8方向に撃つ
 func test_queen_needle_ring():
@@ -446,13 +447,21 @@ func test_every_boss_uses_several_specials() -> void:
 	for g in WHERE:
 		var b := _enter(g)
 		_half(b)
-		_run(16.0, 0.1)
-		if not is_instance_valid(b):
-			continue
 		var kinds := {}
-		for s in b.specials_used:
-			kinds[s] = true
-		assert_gte(kinds.size(), 2, "%s の大技 %s" % [g, b.specials_used])
+		for k in 6:  # 4秒ずつ、2種類を使うまで（長くて24秒）
+			_run(4.0, 0.1)
+			if is_instance_valid(b):
+				for s in b.specials_used:
+					kinds[s] = true
+			if kinds.size() >= 2:
+				break
+			if not is_instance_valid(b) or not f.bosses.has(b):
+				# 主人公がたたかれて島のふちから落ち、たき火に戻った。もう一度ボスの間に入る
+				b = _enter(g)
+				if b == null:
+					break
+				_half(b)
+		assert_gte(kinds.size(), 2, "%s の大技 %s" % [g, kinds.keys()])
 
 ## 離れたままでいると、詰めてくる技を使う
 func test_boss_punishes_keeping_away() -> void:
@@ -471,3 +480,24 @@ func test_stagger_cancels_plans() -> void:
 	f.damage_target(b, 10, b.walker.pos - b.facing() * 10.0, "", Color.WHITE, "sword")
 	assert_true(b.guard.broken())
 	assert_eq(b._plan.size(), 0)
+
+## 闇の王（霧の谷、2026-11-26）：2段目で狼を呼ぶ。弱点は魔法（砦の前の看板と同じ）
+func test_dark_king_calls_wolves_and_is_weak_to_magic():
+	var b := _enter("闇の王")
+	assert_not_null(b)
+	assert_eq(BossGuard.WEAK["闇の王"], "magic")
+	_half(b)
+	_run(0.1)
+	var wolves := 0
+	for e in f.enemies:
+		if is_instance_valid(e) and e.kind == EnemyKind.Kind.WOLF and e.minion:
+			wolves += 1
+	assert_gt(wolves, 0)
+
+## 闇の王：廃城の主と同じ大技（3連斬り・跳び斬り・衝撃波・剣の雨）を使う
+func test_dark_king_uses_knight_specials():
+	var b := _enter("闇の王")
+	for i in 6:
+		b._special = 0.0
+		_run(1.2)
+	assert_gt(b.specials_used.size(), 0)

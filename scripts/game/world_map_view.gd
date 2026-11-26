@@ -14,7 +14,7 @@ extends Control
 const BOX := Rect2(10, 14, 300, 142)  ## 地図を描く所（ゲームの座標）
 const COLORS := {
 	"grass": Color("5f9a42"), "town": Color("c9a66b"), "mountain": Color("9a9aa0"),
-	"castle": Color("8a8478"), "lava": Color("8a3a2a"), "tower": Color("d8d4e8"),
+	"castle": Color("8a8478"), "lava": Color("8a3a2a"), "tower": Color("d8d4e8"), "mist": Color("4f6a5e"),
 }
 const PATH_COLOR := Color("ffe27a")
 const GATE_CLOSED_COLOR := Color("e0402a")

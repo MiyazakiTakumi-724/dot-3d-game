@@ -32,8 +32,7 @@ const WEAK := {
 	"双子": "sword",
 	"らせん塔の番人": "ball",
 	"ブライト": "magic",
-	"土の巨人": "ball",
-	"闇の王": "sword",
+	"闇の王": "magic",
 }
 ## 弱点の名前（画面に出す）
 const SOURCE_NAMES := {"sword": "剣", "arrow": "弓", "magic": "魔法", "ball": "鉄球", "bomb": "爆弾"}

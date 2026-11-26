@@ -230,6 +230,47 @@ static func _build(k: EnemyKind.Kind, awake: bool) -> VoxelModel:
 		EnemyKind.Kind.MIMIC:
 			m = Props.chest().copy() if not awake else _mimic_open()
 			return m
+		EnemyKind.Kind.WOLF:
+			# 狼（霧の谷）：灰色の毛、長い体、とがった耳、光る目、ふさふさの尾
+			m.size = Vector3i(16, 30, 17)
+			var fur := Color("6a6e78")
+			for x in [3, 11]:
+				for y in [7, 18]:
+					VoxelDraw.fill(m, Vector3i(x, y, 0), Vector3i(x + 1, y + 1, 5), fur.darkened(0.3))  # 足
+			VoxelDraw.ellipsoid(m, Vector3(7.5, 13.0, 8.0), Vector3(5.0, 9.0, 3.8), fur)  # 胴
+			VoxelDraw.ellipsoid(m, Vector3(7.5, 11.0, 10.5), Vector3(4.0, 6.0, 2.5), fur.darkened(0.15))  # 背の濃い毛
+			VoxelDraw.ellipsoid(m, Vector3(7.5, 23.0, 10.5), Vector3(3.8, 3.8, 3.4), fur.lightened(0.08))  # 頭
+			VoxelDraw.fill(m, Vector3i(6, 26, 8), Vector3i(9, 29, 10), fur.lightened(0.18))  # 鼻先
+			m.set_voxel(Vector3i(7, 29, 10), Color("1a1418"))
+			m.set_voxel(Vector3i(8, 29, 10), Color("1a1418"))
+			VoxelDraw.fill(m, Vector3i(6, 28, 7), Vector3i(9, 28, 7), Color("e8e4dc"))  # きば
+			VoxelDraw.fill(m, Vector3i(4, 21, 13), Vector3i(5, 22, 16), fur.darkened(0.25))  # 耳
+			VoxelDraw.fill(m, Vector3i(10, 21, 13), Vector3i(11, 22, 16), fur.darkened(0.25))
+			_eyes(m, 26, 11, [4, 10], Color("ffd84a"), Color("ff7a1a"))
+			VoxelDraw.rod(m, Vector3(7.5, 4, 9), Vector3(7.5, 0, 12), fur.lightened(0.1), 2)  # 尾
+		EnemyKind.Kind.DARK_KNIGHT:
+			# 黒騎士（霧の谷）：黒い鎧とかぶと、紫に光る目、ぼろぼろのマント、大きな剣
+			m.size = Vector3i(24, 22, 28)
+			var armor := Color("3a3848")
+			var trim := Color("6a6480")
+			VoxelDraw.fill(m, Vector3i(8, 8, 0), Vector3i(10, 11, 7), armor.darkened(0.2))  # 足
+			VoxelDraw.fill(m, Vector3i(13, 8, 0), Vector3i(15, 11, 7), armor.darkened(0.2))
+			VoxelDraw.fill(m, Vector3i(7, 4, 5), Vector3i(16, 6, 20), Color("4a2030"))  # マント
+			for x in range(7, 17, 3):
+				VoxelDraw.fill(m, Vector3i(x, 4, 3), Vector3i(x, 5, 4), Color("4a2030").darkened(0.3))  # マントのすそ
+			VoxelDraw.ellipsoid(m, Vector3(11.5, 10.0, 13.0), Vector3(6.5, 4.5, 6.0), armor)  # 胴
+			VoxelDraw.fill(m, Vector3i(8, 14, 10), Vector3i(15, 14, 17), trim)  # 胸の板
+			VoxelDraw.fill(m, Vector3i(11, 15, 12), Vector3i(12, 15, 15), Color("9a6ad0"))  # 紋章
+			VoxelDraw.ellipsoid(m, Vector3(5.0, 10.0, 18.0), Vector3(3.0, 3.0, 2.5), trim)  # 肩当て
+			VoxelDraw.ellipsoid(m, Vector3(18.0, 10.0, 18.0), Vector3(3.0, 3.0, 2.5), trim)
+			VoxelDraw.ellipsoid(m, Vector3(11.5, 10.5, 22.5), Vector3(4.5, 4.5, 4.0), armor.lightened(0.05))  # かぶと
+			VoxelDraw.fill(m, Vector3i(8, 15, 22), Vector3i(15, 15, 22), Color("120e18"))  # 目のすき間
+			m.set_voxel(Vector3i(9, 15, 22), Color("d090ff"))
+			m.set_voxel(Vector3i(14, 15, 22), Color("d090ff"))
+			VoxelDraw.fill(m, Vector3i(11, 7, 26), Vector3i(12, 12, 27), Color("8a2a4a"))  # かぶとの飾り
+			VoxelDraw.fill(m, Vector3i(19, 12, 8), Vector3i(20, 14, 16), armor)  # 腕
+			VoxelDraw.rod(m, Vector3(20, 14, 9), Vector3(21, 20, 26), Color("9aa0b8"), 1)  # 大剣
+			VoxelDraw.fill(m, Vector3i(18, 15, 11), Vector3i(23, 16, 11), trim)  # つば
 		_:
 			m = VoxelModel.box(Vector3i(16, 16, 16), Color("c0392b"))
 	return m

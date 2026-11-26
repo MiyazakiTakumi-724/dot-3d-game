@@ -68,6 +68,7 @@ const LIST := [
 	["ball_meteor", 1, {"star_shard": 5, "lava_heart": 1, "flame_tail": 1, "ancient_crystal": 3}, 800],
 	["sword_star", 1, {"star_shard": 5, "giant_core": 1, "old_steel": 8, "ancient_crystal": 3}, 800],
 	["sword_king", 1, {"star_shard": 5, "crest": 1, "lava_heart": 1, "ancient_crystal": 3}, 800],
+	["sword_dusk", 1, {"star_shard": 3, "dark_crest": 1, "dark_shard": 6, "ancient_crystal": 3}, 800],  # 闇の王の紋章（2026-11-26）
 	["bow_star", 1, {"star_shard": 5, "serpent_fang": 1, "wood": 10, "ancient_crystal": 3}, 800],
 	["bow_sun", 1, {"star_shard": 5, "twin_mirror": 1, "queen_sting": 1, "fire_stone": 6, "ancient_crystal": 3}, 800],
 	["staff_star", 1, {"star_shard": 5, "bright_eye": 1, "fire_stone": 6, "ancient_crystal": 3}, 800],

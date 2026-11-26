@@ -23,6 +23,7 @@ const int S_ALPINE = 2;
 const int S_SNOW = 3;
 const int S_ASH = 4;
 const int S_STONE = 5;
+const int S_MOSS = 6;
 const int S_WATER = 7;
 const int S_LAVA = 8;
 const int F_PATH = 1;
@@ -175,6 +176,8 @@ vec4 path_detail(vec2 wp, vec2 local, vec2 cell, int surf) {
 		base = vec3(0.77, 0.8, 0.88);
 	} else if (surf == S_ASH) {
 		base = vec3(0.24, 0.2, 0.21);
+	} else if (surf == S_MOSS) {
+		base = vec3(0.42, 0.38, 0.34);
 	}
 	vec3 c = base * (0.93 + 0.14 * vnoise(wp / 21.0));
 	float n = hash(floor(wp / 2.0));
@@ -263,6 +266,16 @@ vec4 surface_detail(int surf, int flags, vec2 cell, vec2 local, vec2 wp) {
 		float c = abs(vnoise(wp / 15.0 + vec2(cell.x * 0.0, 3.0)) - 0.5);
 		if (c < 0.022) {
 			d = over(d, vec4(1.0, 0.42 + 0.2 * sin(TIME * 2.0 + wp.x * 0.05), 0.12, 0.62));
+		}
+	} else if (surf == S_MOSS) {
+		// 霧の谷の苔：草の線を短く、ところどころ濃いしみと白い小さな花
+		d = grass_detail(wp, 0.3);
+		float n = vnoise(wp / 22.0 + vec2(5.0, 9.0));
+		if (n > 0.62) {
+			d = over(d, vec4(0.1, 0.16, 0.14, 0.22));
+		}
+		if (hash(floor(wp / 2.0) + vec2(3.0, 8.0)) > 0.993) {
+			d = over(d, vec4(0.85, 0.9, 0.95, 0.85));
 		}
 	} else if (surf == S_STONE) {
 		d = tile_detail(local, cell, wp);

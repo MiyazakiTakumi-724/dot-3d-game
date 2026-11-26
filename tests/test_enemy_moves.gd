@@ -185,3 +185,40 @@ func test_every_kind_but_boar_has_moves() -> void:
 				break
 			_used(e, "__none__", 4.0, d)
 		assert_true(is_instance_valid(e) and e.moves_used.size() > 0, "%s の技" % EnemyKind.name_of(k))
+
+# ---- 霧の谷の敵（2026-11-26）
+
+func test_wolf_leaps_at_you() -> void:
+	var e := _setup(EnemyKind.Kind.WOLF, 50.0)
+	assert_true(_used(e, "leap", 3.0, 50.0), "狼は跳びかかる")
+
+func test_wolf_howls_and_speeds_up() -> void:
+	var e := _setup(EnemyKind.Kind.WOLF, 90.0)
+	assert_true(_used(e, "howl", 2.0, 90.0), "見つけると遠吠え")
+	assert_gt(e.frenzy, 0.0, "遠吠えのあとは速い")
+
+func test_wolf_circles_before_biting() -> void:
+	var e := _setup(EnemyKind.Kind.WOLF, 40.0)
+	e._skill_cd = 99.0
+	e._howled = true
+	var start: Vector2 = e.walker.pos - f.player.mover.pos
+	_run(e, 0.6)
+	var now: Vector2 = e.walker.pos - f.player.mover.pos
+	assert_gt(absf(start.angle_to(now)), 0.15, "まわりを回る")
+
+func test_dark_knight_waves_charges_and_spins() -> void:
+	var e := _setup(EnemyKind.Kind.DARK_KNIGHT, 120.0)
+	var shots := []
+	e.shot.connect(func(b): shots.append(b))
+	assert_true(_used(e, "wave", 5.0, 120.0), "離れると剣の衝撃波")
+	assert_gte(shots.size(), 3)
+	var e2 := _setup(EnemyKind.Kind.DARK_KNIGHT, 60.0)
+	assert_true(_used(e2, "charge", 4.0, 60.0), "中くらいの間合いで突進")
+	var e3 := _setup(EnemyKind.Kind.DARK_KNIGHT, 14.0)
+	assert_true(_used(e3, "spin", 3.0, 14.0), "近いと回転斬り")
+
+func test_dark_knight_blocks_arrows_from_the_front() -> void:
+	var e := _setup(EnemyKind.Kind.DARK_KNIGHT, 40.0)
+	assert_eq(e.hit_rule("arrow", f.player.mover.pos), "block")
+	assert_eq(e.hit_rule("magic", f.player.mover.pos), "")
+	assert_eq(e.hit_rule("arrow", e.walker.pos + Vector2(40, 0)), "", "背中からは入る")

@@ -16,6 +16,7 @@ const REGION_MATERIALS := {
 	"廃城": ["old_steel", "silver", "scrap", "bone"],
 	"溶岩": ["obsidian", "fire_stone", "bone", "scrap"],
 	"神秘の塔": ["star_shard", "silver", "old_steel", "snow"],
+	"霧の谷": ["mist_moss", "dark_shard", "bone", "hide"],
 }
 ## 地方ごとに落ちる装備のランク
 const REGION_GEAR_RANKS := {
@@ -25,12 +26,13 @@ const REGION_GEAR_RANKS := {
 	"廃城": [2, 3],
 	"溶岩": [2, 3],
 	"神秘の塔": [3, 4],
+	"霧の谷": [3, 4],
 }
 ## 強い敵だけが落とす素材（2026-11-25 夜の2回目の直し。装備のレベル制限の代わり）：[id, この敵のレベルから, 落とす割合]。
 ## ランク4を作るには力の結晶、ランク5にはいにしえの結晶が要る。敵のレベルは倒したボスの数で上がる（RunState.enemy_level）【提案】
 const LEVEL_MATERIALS := [["power_crystal", 6, 0.2], ["ancient_crystal", 10, 0.12]]
 ## 地方ごとの敵の基本のレベル（倒したボスの数が足される）
-const REGION_LEVEL := {"はじまりの地": 1, "山岳": 2, "草原": 2, "廃城": 3, "溶岩": 3, "神秘の塔": 5}
+const REGION_LEVEL := {"はじまりの地": 1, "山岳": 2, "草原": 2, "廃城": 3, "溶岩": 3, "神秘の塔": 5, "霧の谷": 4}
 
 ## 敵1体の落とし物 [[id, 数], ...]。loot_mult は特色（狩人の弓）で素材が落ちやすくなる倍率。
 static func roll(region: String, level: int, rng: RandomNumberGenerator, loot_mult := 1.0) -> Array:

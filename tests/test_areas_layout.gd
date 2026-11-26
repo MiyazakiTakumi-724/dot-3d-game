@@ -48,7 +48,7 @@ func test_continent_has_no_problems():
 	assert_eq(world.problems(), [])
 
 func test_all_areas():
-	assert_eq(world.ids().size(), 45)  # 30 ＋ 寄り道（各地方3）・草原と廃城の隠しボス・塔の回廊（2026-11-25 夜）
+	assert_eq(world.ids().size(), 51)  # 30 ＋ 寄り道（各地方3）・草原と廃城の隠しボス・塔の回廊（2026-11-25 夜）＋霧の谷6（2026-11-26）
 	for id in ["town", "rocks", "hills", "forest", "mt_5", "gr_5", "cs_5", "lv_5", "tw_4"]:
 		assert_not_null(world.area(id), id)
 	assert_null(world.area("camp"), "野営地は町に作り替えた")
@@ -197,14 +197,14 @@ func test_town_has_bonfire_shops_and_no_enemies():
 	assert_eq(shops, ["tool", "weapon", "smith"])
 	assert_eq(info.get("merchants", []).size(), 3)
 
-## 旅の商人は4つの地方の休憩所に1人ずつ
+## 旅の商人は4つの地方と霧の谷の休憩所に1人ずつ
 func test_travelling_merchants():
 	var shops := {}
 	for id in world.ids():
 		for m in world.area(id).merchants:
 			assert_true(Shop.NAMES.has(m[1]), m[1])
 			shops[m[1]] = id
-	for r in ["山岳", "草原", "廃城", "溶岩"]:
+	for r in ["山岳", "草原", "廃城", "溶岩", "霧の谷"]:
 		assert_true(shops.has(r), r)
 		assert_eq(world.area(shops[r]).region, r)
 
@@ -244,7 +244,7 @@ func _reachable_areas(use_all: bool) -> Dictionary:
 ## 本道：武器の仕掛け（弓・炎・剣）を開けなくても、すべての地方のボスの間まで行ける（好きな順で回れるので）
 func test_main_path_reaches_every_boss_without_weapon_gimmicks():
 	var seen := _reachable_areas(false)
-	for id in ["mt_5", "gr_5", "cs_5", "lv_5", "tw_2", "tw_3", "tw_4"]:
+	for id in ["mt_5", "gr_5", "cs_5", "lv_5", "tw_2", "tw_3", "tw_4", "mv_5"]:
 		assert_true(seen.has(id), id)
 	for id in ["mt_x", "lv_x", "gr_x", "cs_x"]:
 		assert_false(seen.has(id), "隠しボスは仕掛けの先 " + id)
@@ -267,11 +267,11 @@ func test_regions_have_bonfire_boss_and_shortcut():
 		for ex in a.exits:
 			if ex.door_id != "" and ex.opens_here:
 				gates[ex.door_id] = true
-	for r in ["山岳", "草原", "廃城", "溶岩", "神秘の塔"]:
+	for r in ["山岳", "草原", "廃城", "溶岩", "神秘の塔", "霧の谷"]:
 		assert_eq(fires.get(r, 0), 1, r)
 		assert_gt(bosses.get(r, 0), 0, r)
 	assert_eq(bosses["神秘の塔"], 4, "双子（2体）・番人・ブライト")
-	for d in ["forest_gate", "mt_gate", "gr_gate", "cs_gate", "lv_gate", RunState.SEAL_DOOR]:
+	for d in ["forest_gate", "mt_gate", "gr_gate", "cs_gate", "lv_gate", "mv_gate", RunState.SEAL_DOOR, Story.MIST_DOOR, Story.KEEP_DOOR]:
 		assert_true(gates.has(d), d)
 	for d in RunState.BOSS_DOORS:
 		assert_true(gates.has(d), d)
@@ -310,9 +310,9 @@ func test_bonfire_areas_are_small_and_safe():
 				var c := Vector2i(x, y)
 				if not m.is_wall(c) and not m.is_water(c) and not m.is_pit(c):
 					walk += 1
-		assert_lte(walk, 175, "%s 歩けるマス %d" % [id, walk])  # 2026-11-26 にエリアを広げたので、出口への道が少し長い
+		assert_lte(walk, 185, "%s 歩けるマス %d" % [id, walk])  # 2026-11-26 にエリアを広げたので、出口への道が少し長い。霧の谷の村跡は広場が広い
 		assert_lte(walk * 2, m.size.x * m.size.y, "%s 半分より多く歩ける" % id)
-	assert_eq(n, 5, "4つの地方と神秘の塔の休憩所")
+	assert_eq(n, 6, "4つの地方と神秘の塔と霧の谷の休憩所")
 
 func test_bonfire_has_room_to_respawn():
 	for id in world.ids():
@@ -344,3 +344,29 @@ func test_gimmick_rewards_locked_until_opened():
 				locked += 1
 				assert_true(opened.has(p[0]), "%s %s" % [id, p[0]])
 	assert_gt(locked, 8)
+
+## 霧の谷（2026-11-26）：沼の小道の南の霧の門の先。村跡（たき火）に村のお守りがあり、闇の砦の門の鍵になる
+func test_mist_valley():
+	var mv := []
+	for id in world.ids():
+		if world.area(id).region == "霧の谷":
+			mv.append(id)
+			assert_eq(world.area(id).theme, "mist", id)
+	assert_eq(mv.size(), 6)
+	assert_not_null(_exit_to("gr_6", "mv_1", true), "沼の小道から霧の門")
+	assert_eq(_exit_to("gr_6", "mv_1", true).door_id, Story.MIST_DOOR)
+	assert_eq(_exit_to("mv_4", "mv_5", true).door_id, Story.KEEP_DOOR)
+	var keep := false
+	var reach := Reach.reachable(maps["mv_2"], rules, _hub("mv_2"))
+	for p in world.area("mv_2").pickups:
+		if p[1] == Story.KEEPSAKE:
+			keep = true
+			assert_true(reach.has(p[0]), "お守りはたき火から取りに行ける")
+	assert_true(keep)
+	assert_eq(world.area("mv_5").bosses[0][1], Story.DARK_KING)
+	for k in [EnemyKind.Kind.WOLF, EnemyKind.Kind.DARK_KNIGHT]:
+		var found := false
+		for id in mv:
+			for e in world.area(id).enemies:
+				found = found or e[2] == k
+		assert_true(found, EnemyKind.name_of(k))

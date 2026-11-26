@@ -11,7 +11,8 @@ extends RefCounted
 ## L ＝溶岩（水と同じく入れない）、W ＝崩れた石の壁、I ＝石の柱、H ＝家（つながったマスで1軒）、O ＝井戸、
 ## M ＝商人、K ＝ボスの像、Q ＝弓の的、X ＝ひびの入った岩、Y ＝茨、V ＝つた（商人から下はステージ側が小物を置く。
 ## X・Y・V は Gimmick が通れなくする）。2026-11-26：E ＝鉄格子、N ＝もろい壁、U ＝押し板（歩ける）、J ＝レバー、Z ＝魔法の水晶。
-## 地面の色は、deco["theme"]（エリアの地方：grass・mountain・lava・castle・tower・town）と高さで決まる。
+## 2026-11-26（4回目の直し、霧の谷）：k ＝枯れ木（通れない）。
+## 地面の色は、deco["theme"]（エリアの地方：grass・mountain・lava・castle・tower・town・mist）と高さで決まる。
 ##
 ## 描き方：各マスを「柱」として描く。柱の上は地面の面、下は隣の一番低い床まで（column_bottom）。
 ## 隣が低くないマスは上の面だけになるので、描く枚数が少なくて済む。島のふちの柱は0より下へ伸びて、
@@ -87,6 +88,9 @@ static func _put_object(ch: String, cell: Vector2i, map: HeightMap, info: Dictio
 		"B":
 			map.set_wall(cell, true)
 			info["deco"][cell] = "bush"
+		"k":
+			map.set_wall(cell, true)
+			info["deco"][cell] = "deadtree"
 		"F":
 			info["deco"][cell] = "flower"
 		"~":
@@ -218,7 +222,7 @@ static func add_tufts(s: StackSprite, map: HeightMap, deco: Dictionary, cell: Ve
 	if (kind != "" and kind != "flower") or map.is_wall(cell):
 		return
 	var surf := surface_at(map, deco, cell)
-	if surf != "grass" and surf != "alpine":
+	if surf != "grass" and surf != "alpine" and surf != "moss":
 		return
 	var paths: Dictionary = deco.get("paths", {})
 	if paths.has(cell):
@@ -314,14 +318,14 @@ static func _cell_keys(map: HeightMap, cell: Vector2i, deco: Dictionary) -> Arra
 	else:
 		var surf := surface_at(map, deco, cell)
 		out.append("ground/%d/%d/%d/%d/%d/%s" % [h, h - bottom, v, int(kind == "flower"), bottom, surf])
-	if kind in ["rock", "tree", "pine", "bush", "tallgrass", "stonewall", "column", "well"]:
+	if kind in ["rock", "tree", "pine", "bush", "tallgrass", "stonewall", "column", "well", "deadtree"]:
 		out.append("%s/%d" % [kind, v])
 	elif kind == "house":
 		out.append("house/%s" % _house_shape(deco, cell))
 	return out
 
 ## 地面の上の面の種類。地方（theme）と高さと、石畳の印（paving）で決まる。
-## grass 草、alpine 山の草（黄色がかる）、snow 雪、ash 溶岩の地方の黒い土、stone 石畳。
+## grass 草、alpine 山の草（黄色がかる）、snow 雪、ash 溶岩の地方の黒い土、stone 石畳、moss 霧の谷の暗い苔。
 static func surface(theme: String, h: int, kind: String = "") -> String:
 	if kind == "paving" or theme == "tower":
 		return "stone"
@@ -330,6 +334,8 @@ static func surface(theme: String, h: int, kind: String = "") -> String:
 			return "snow" if h >= 6 else "alpine"
 		"lava":
 			return "ash"
+		"mist":
+			return "moss"
 	return "grass"
 
 ## そのマスの上の面の模様の名前（ShadowMap.SURFACE_IDS）。水 water・溶岩 lava。描かないマス・壁・橋は ""。
@@ -477,6 +483,8 @@ static func _make(key: String) -> VoxelModel:
 			return rock_model(int(p[1]))
 		"tree":
 			return tree_model(int(p[1]))
+		"deadtree":
+			return deadtree_model(int(p[1]))
 		"pine":
 			return pine_model(int(p[1]))
 		"bush":
@@ -500,6 +508,8 @@ static func top_color(h: int, surf: String = "grass") -> Color:
 			return Color("4a3f3c").lerp(Color("807068"), t)
 		"stone":
 			return Color("9a958c").lerp(Color("cfc9bd"), t)
+		"moss":
+			return Color("3f5f4a").lerp(Color("8aa48a"), t)  # 霧の谷：青みのある暗い苔
 	return Color("5aa23a").lerp(Color("c4e48a"), t)
 
 ## 隣が低い辺のビット（1＝北、2＝東、4＝南、8＝西）。マップの外・島の外・奈落も低いとみなす。
@@ -612,7 +622,7 @@ static func _cliff_color(grass: Color, vf: int, from_top: int, along: int, face:
 	var c: Color
 	if from_top <= 3 or (from_top <= 6 and _hash3(along, v, face, 3) != 0 and surf != "stone"):
 		c = grass.darkened(0.05 * from_top)  # 崖のふちに草（雪）が少し垂れる
-	elif vf >= 0 and surf != "grass":
+	elif vf >= 0 and surf != "grass" and surf != "moss":
 		c = _rock_side(surf, vf, from_top, along, face)
 	elif vf >= 0:
 		c = DIRT_COLORS[(vf / 6) % 2]
@@ -640,6 +650,10 @@ static func _rock_side(surf: String, vf: int, from_top: int, along: int, face: i
 			c = Color("3a3236") if (vf / 5) % 2 == 0 else Color("443a3c")
 			if _hash3(along / 2, vf / 2, face, 23) == 0:
 				c = Color("c2492b")  # 赤く光る割れ目
+		"moss":
+			c = Color("4a4e52") if (vf / 6) % 2 == 0 else Color("43474c")
+			if _hash3(along / 2, vf / 3, face, 11) == 0:
+				c = Color("4f6a52")  # 岩に生えた苔
 		"stone":
 			var row := vf / 8
 			var brick := (along + (row % 2) * 8) % 16 == 0 or vf % 8 == 0
@@ -848,6 +862,29 @@ static func tree_model(v: int) -> VoxelModel:
 		clumps.append([c + Vector3(off.x, off.y, -1.0 + (i % 3) * 1.5), 4.4])
 	_clumps(m, clumps, leaf, 8)
 	return m
+
+## 枯れ木（霧の谷、2026-11-26）：葉のない灰色の幹と、ねじれた枝。v で枝の向きと高さを変える。
+static func deadtree_model(v: int) -> VoxelModel:
+	var m := VoxelModel.new()
+	m.size = Vector3i(TEX + 8, TEX + 8, 36)
+	var bark := Color("5e544c")
+	var o := 4.0  # 枝がマスの外へ少しはみ出せるように、まわりに余白
+	_trunk(m, Vector2(8 + o / FINE, 8 + o / FINE), 1.5, 24 + v * 2, bark)
+	var c := Vector3(16 + o, 16 + o, 0)
+	for i in 4:
+		var a := TAU * i / 4.0 + v * 0.9 + 0.35 * (i % 2)
+		var dir := Vector2.from_angle(a)
+		var z0 := 11.0 + i * 4.0 + v
+		var from := c + Vector3(0, 0, z0)
+		var to := from + Vector3(dir.x * 10.0, dir.y * 10.0, 6.0 + (i % 2) * 3.0)
+		VoxelDraw.rod(m, from, to, bark.darkened(0.05), 2)
+		var twig := dir.rotated(0.8 if i % 2 == 0 else -0.8)
+		VoxelDraw.rod(m, to, to + Vector3(twig.x * 5.0, twig.y * 5.0, 4.0), bark.lightened(0.08), 1)
+	VoxelDraw.rod(m, c + Vector3(0, 0, 24 + v * 2), c + Vector3(2, -1, 33), bark.lightened(0.05), 1)  # てっぺん
+	for p in m.voxels().keys():
+		if p.z < 4 and _hash3(p.x / 2, p.y / 2, p.z, 3) == 0:
+			m.set_voxel(p, Color("4f6a52"))  # 根元の苔
+	return VoxelShade.apply(m)
 
 ## とがった木：段々に細くなる葉の傘を4つ重ねる。傘ごとに上が明るく、下が暗い。
 static func pine_model(v: int) -> VoxelModel:

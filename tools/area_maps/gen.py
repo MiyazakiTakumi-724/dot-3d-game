@@ -16,7 +16,7 @@ import heapq
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, '..', '..', 'scripts', 'areas')
-WALLS = set('TPBRWIHOMKQXYVENJZ')  # 通れない物（X・Y・V・E・N は仕掛けで、開けるまで通れない。J レバー・Z 水晶）
+WALLS = set('TPBRWIHOMKQXYVENJZk')  # 通れない物（X・Y・V・E・N は仕掛けで、開けるまで通れない。J レバー・Z 水晶。k 枯れ木は 2026-11-26）
 BLOCK = WALLS | set('~_L')    # 通れないマス（水・奈落・溶岩を含む）
 CLIMB, DROP = 1, 3
 SPEED_CELLS = 60.0 / 16.0    # プレイヤーの速さ（マス/秒）
@@ -77,12 +77,20 @@ AREAS = {
     'lv_7': A('硫黄の谷', 'lava', (38, 36), (16, 16)),
     'lv_8': A('灰の丘', 'lava', (38, 52), (16, 14)),
     'tw_5': A('塔の回廊', 'tower', (-14, 38), (18, 14)),
+    # 霧の谷（2026-11-26 の4回目の直し）。草原の沼の小道の南。主人公の村の跡（灯りの村跡）と、闇の王の砦。
+    # 霧の門は地方のぬしを2体倒すと開く。砦の門は村の跡の「村のお守り」で開く。
+    'mv_1': A('霧の入口', 'mist', (54, 30), (22, 16)),
+    'mv_2': A('灯りの村跡', 'mist', (56, 46), (16, 16)),
+    'mv_3': A('霧の森', 'mist', (72, 46), (16, 16)),
+    'mv_4': A('沈んだ街道', 'mist', (56, 62), (32, 14)),
+    'mv_5': A('闇の砦', 'mist', (64, 76), (24, 20)),
+    'mv_6': A('霧の湖', 'mist', (76, 30), (16, 16)),
 }
 REGION = {}
 for k in AREAS:
-    REGION[k] = {'mt': '山岳', 'gr': '草原', 'cs': '廃城', 'lv': '溶岩', 'tw': '神秘の塔'}.get(k[:2], 'はじまりの地')
+    REGION[k] = {'mt': '山岳', 'gr': '草原', 'cs': '廃城', 'lv': '溶岩', 'tw': '神秘の塔', 'mv': '霧の谷'}.get(k[:2], 'はじまりの地')
 # 地方ごとの敵の基本のレベル（scripts/rules/loot.gd の REGION_LEVEL と同じ）
-REGION_LEVEL = {'はじまりの地': 1, '山岳': 2, '草原': 2, '廃城': 3, '溶岩': 3, '神秘の塔': 5}
+REGION_LEVEL = {'はじまりの地': 1, '山岳': 2, '草原': 2, '廃城': 3, '溶岩': 3, '神秘の塔': 5, '霧の谷': 4}
 
 # つながり：(エリアa, エリアb, 大陸の上のマスの範囲 g0〜g1, 門の id, 門を開けられる側)。
 # 2つのエリアは辺を接していて、範囲はその辺に沿った大陸の座標（東西の辺なら y、南北の辺なら x）。
@@ -145,6 +153,15 @@ LINKS = [
     ('tw_2', 'tw_3', -26, -24, '', None),
     ('tw_3', 'tw_4', -26, -24, '', None),
     ('tw_1', 'tw_5', -8, -6, '', None),
+    # 霧の谷（2026-11-26）
+    ('gr_6', 'mv_1', 60, 62, 'mist_gate', 'gr_6'),   # 霧の門（地方のぬしを2体倒すと、沼の小道の側から開けられる）
+    ('mv_1', 'mv_2', 62, 64, '', None),
+    ('mv_1', 'mv_6', 36, 38, '', None),
+    ('mv_2', 'mv_3', 52, 54, '', None),
+    ('mv_6', 'mv_3', 82, 84, '', None),
+    ('mv_3', 'mv_4', 78, 80, '', None),
+    ('mv_4', 'mv_2', 62, 64, 'mv_gate', 'mv_4'),
+    ('mv_4', 'mv_5', 74, 77, 'mv_boss', 'mv_4'),     # 闇の砦の門（村のお守りで開く）
 ]
 
 def _link_exits(a, b, g0, g1, door, opener):
@@ -437,7 +454,7 @@ def flatten_exits(g):
                 g.O[y][x] = '.'
         # 出口の両どなりのマスは木（地方によって岩・柱）で縁取る（どこが出口かを分かりやすく）
         along = (1, 0) if e[1] in ('NORTH', 'SOUTH') else (0, 1)
-        border = {'mountain': 'R', 'lava': 'R', 'castle': 'I', 'tower': 'I'}.get(getattr(g, 'theme', 'grass'), 'P')
+        border = {'mountain': 'R', 'lava': 'R', 'castle': 'I', 'tower': 'I', 'mist': 'k'}.get(getattr(g, 'theme', 'grass'), 'P')
         for x, y in ((cells[0][0] - along[0], cells[0][1] - along[1]), (cells[-1][0] + along[0], cells[-1][1] + along[1])):
             if g.inside(x, y) and (x, y) not in g.reserved and g.H[y][x] >= 0:
                 g.O[y][x] = border
@@ -508,12 +525,13 @@ THEME_DECO = {
     'castle':   ([('T', 1), ('B', 2), ('F', 2), ('I', 1)], 0.07),
     'tower':    ([('I', 1)], 0.015),
     'town':     ([('T', 2), ('F', 3), ('B', 1)], 0.08),
+    'mist':     ([('k', 4), ('P', 2), ('R', 2), ('B', 1)], 0.12),   # 霧の谷：枯れ木・暗い針葉樹・岩
 }
-WALL_CH = {'mountain': 'R', 'grass': 'T', 'lava': 'R', 'castle': 'W', 'tower': 'W', 'town': 'T'}
+WALL_CH = {'mountain': 'R', 'grass': 'T', 'lava': 'R', 'castle': 'W', 'tower': 'W', 'town': 'T', 'mist': 'k'}
 # ボスの像の色
 BOSS_TINT = {'岩転がしの巨人': '8d8f94', '草むらの大蛇': '6f9a5a', '満ち引きする溶岩': '7a4a3a', '廃城の主': '8a7f9a',
              '双子（左）': 'c9c3b6', '双子（右）': 'c9c3b6', 'らせん塔の番人': 'b8b2a4', 'ブライト': 'e8e2f0',
-             '岩窟のぬし': '6a6c73', '溶岩洞のぬし': '9a3a2a', '女王蜂': 'f0c030', '宝箱の王': 'e8b83a'}
+             '岩窟のぬし': '6a6c73', '溶岩洞のぬし': '9a3a2a', '女王蜂': 'f0c030', '宝箱の王': 'e8b83a', '闇の王': '3a3448'}
 
 
 # 2026-11-26（3回目の直し）：高低差をもっと。ノイズの起伏を1.5倍、高台の崖を2段から3段に。
@@ -802,6 +820,7 @@ LOOT = {
     '廃城': [('old_steel', 2), ('silver', 1), ('money', 40), ('potion_m', 1), ('scrap', 3), ('ether', 1)],
     '溶岩': [('obsidian', 2), ('fire_stone', 2), ('money', 40), ('potion_m', 1), ('bomb', 2)],
     '神秘の塔': [('star_shard', 1), ('silver', 2), ('money', 60), ('potion_m', 1), ('ether', 1)],
+    '霧の谷': [('mist_moss', 2), ('dark_shard', 1), ('money', 50), ('potion_m', 1), ('ether', 1), ('arrow', 10)],
 }
 
 # 地方ごとの敵の種類（EnemyKind.Kind の名前）
@@ -812,6 +831,7 @@ REGION_ENEMIES = {
     '廃城': ['SHIELD', 'GHOST', 'SPEAR', 'MAGE', 'MIMIC', 'SHOOTER'],
     '溶岩': ['BOMBER', 'FLYER', 'SHIELD', 'BEETLE', 'MIMIC', 'SHOOTER'],
     '神秘の塔': ['SHADOW', 'GHOST', 'MAGE', 'SPEAR', 'FLYER', 'SHIELD'],
+    '霧の谷': ['WOLF', 'DARK_KNIGHT', 'GHOST', 'WOLF', 'SHADOW', 'LOBBER'],   # 2026-11-26：狼と黒騎士
 }
 FLAT_KINDS = {'CHARGER'}   # 段差を登らない敵（4×4の平地を作る）。2026-11-25 夜からイノシシだけ
 DIR_NAMES = ['RIGHT', 'DOWN', 'LEFT', 'UP']
@@ -871,6 +891,8 @@ def dress(g, seed):
         grass_patches(g, seed + 5)
     if g.theme == 'castle':
         ruins(g, max(1, g.w * g.h // 200), seed + 6)
+    if g.theme == 'mist':
+        grass_patches(g, seed + 5, threshold=0.66)   # 霧の谷の背の高い草
     scatter_theme(g, seed + 7)
     flatten_exits(g)
 
@@ -1400,6 +1422,79 @@ def make_tw_5():
     loot(g, 743, 3)
     return g
 
+# ---------------------------------------------------------------- 霧の谷（2026-11-26 の4回目の直し）
+# 主人公の村（灯りの村）があった谷。霧が濃く、枯れ木と暗い針葉樹。狼と黒騎士が出る。奥の砦に闇の王。
+def make_mv_1():
+    def _pre(g):
+        river(g, [(0, 11), (6, 10), (12, 12), (17, 11), (21, 12)], '~', 0.7, gaps=(9, 30), bridge='=')
+        pocket(g, 'CRACK', 16, 2, 18, 4, 'S', ('mist_moss', 3))
+    return area('mv_1', 801, 1.5, 2.8, mesa_n=2, pre=_pre, enemies=5, loot_n=3)
+
+def make_mv_2():
+    """灯りの村跡（休憩所）：たき火の広場が村の真ん中。焼けた家の壁の残りと、村のお守り（闇の砦の門の鍵）。"""
+    cx, cy, rx, ry = 8, 8, 4, 3
+    def _pre(g):
+        plaza(g, cx, cy, rx=rx, ry=ry)
+        merchant(g, 10, 5, '霧の谷')
+        for x, y in [(4, 5), (12, 5), (4, 11), (12, 11)]:
+            g.O[y][x] = 'W'   # 焼けた家の壁の残り
+            protect(g, [(x, y)])
+        pickup(g, 5, 10, 'keepsake', 1)
+    g = region_field('mv_2', 811, 2.0, 1.2, mesa_n=0, fine=1.0, pre=_pre)
+    g.keep_pad = True
+    carve_rest(g, cx, cy, rx, ry, keep_cells=[(x, y) for x in range(cx - rx - 1, cx + rx + 2) for y in range(cy - ry - 1, cy + ry + 2)])
+    dress(g, 811)
+    clear_void(g)
+    loot(g, 813, 1)
+    return g
+
+def make_mv_3():
+    def _pre(g):
+        pocket(g, 'VINES', 11, 10, 13, 12, 'W', ('dark_shard', 2))
+    def _after(g):
+        scatter(g, [('k', 3), ('P', 4)], 0.10, 823)   # 森は木が多い
+    return area('mv_3', 821, 2.0, 2.6, mesa_n=2, pre=_pre, after=_after, enemies=5, loot_n=3)
+
+def make_mv_4():
+    def _pre(g):
+        pocket(g, 'BRITTLE', 27, 2, 29, 4, 'S', ('potion_l', 1))
+        river(g, [(0, 9), (8, 8), (15, 10), (24, 9), (31, 10)], '~', 0.8, gaps=(12, 34, 52), bridge='=')
+    def _after(g):
+        ruins(g, 2, 836)   # 沈んだ街道ぞいの崩れた建物
+    return area('mv_4', 831, 1.5, 2.4, mesa_n=3, pre=_pre, after=_after, enemies=6, loot_n=4)
+
+def make_mv_5():
+    """闇の砦：石の壁に囲まれた中庭。両側の城壁の上は高い通り道（階段で上がる）。"""
+    g = field('mv_5', 841, 2.0, 0.5, fine=0.4)
+    g.open_flat = True
+    flatten(g, 1, 1, 22, 18, 2)
+    for x in range(1, 23):
+        for y in range(1, 19):
+            edge = x in (1, 22) or y in (1, 18)
+            if edge and not (y == 1 and 9 <= x <= 14):
+                g.O[y][x] = 'W'
+            elif x in (2, 3, 20, 21):
+                g.H[y][x] = 5   # 城壁の上の通り道
+                g.O[y][x] = 's'
+            else:
+                g.O[y][x] = 's'
+    for y in (5, 9, 13):
+        for x in (7, 16):
+            g.O[y][x] = 'I'
+    stair(g, [(6, 16), (5, 16), (4, 16), (3, 16)])
+    stair(g, [(17, 16), (18, 16), (19, 16), (20, 16)])
+    boss(g, 12, 10, '闇の王')
+    flatten_exits(g); loot(g, 842, 2, [('dark_shard', 2), ('potion_m', 2)]); return g
+
+def make_mv_6():
+    def _pre(g):
+        pocket(g, 'CRYSTAL', 11, 2, 13, 4, 'S', ('mist_moss', 4))
+        for x, y in g.cells():
+            if math.hypot((x - 9) / 3.2, (y - 10) / 2.4) < 1.0 and (x, y) not in g.reserved:
+                g.O[y][x] = '~'   # 霧の湖
+                g.reserved.add((x, y))
+    return area('mv_6', 861, 1.5, 2.2, mesa_n=1, pre=_pre, enemies=4, loot_n=3)
+
 EDGE = {'NORTH': 'ExitDef.Edge.NORTH', 'EAST': 'ExitDef.Edge.EAST', 'SOUTH': 'ExitDef.Edge.SOUTH', 'WEST': 'ExitDef.Edge.WEST'}
 DIRS = {'RIGHT': 'Vector2.RIGHT', 'DOWN': 'Vector2.DOWN', 'LEFT': 'Vector2.LEFT', 'UP': 'Vector2.UP'}
 
@@ -1510,7 +1605,7 @@ def check_unlocked(g, hub):
 # カメラを回すと見える。たどり着けるマスのうち、出口から離れていて、北側は開けている所を選ぶ。
 HIDDEN = {'town': ('potion', 2), 'rocks': ('money', 30), 'hills': ('hide', 3), 'forest': ('potion', 2)}
 HIDDEN_BY_THEME = {'mountain': ('iron_ore', 3), 'grass': ('potion', 2), 'castle': ('money', 40), 'lava': ('fire_stone', 3),
-                   'tower': ('star_shard', 1), 'town': ('money', 30)}
+                   'tower': ('star_shard', 1), 'town': ('money', 30), 'mist': ('dark_shard', 2)}
 
 def hidden_spots(g, hub):
     reach = bfs(g, hub)
@@ -1525,7 +1620,7 @@ def hidden_spots(g, hub):
         h = g.H[y][x]
         front_h, front_o = g.H[y + 1][x], g.O[y + 1][x]
         cliff = front_h >= h + 2
-        tree = front_o in 'TPWHR' and front_h >= h
+        tree = front_o in 'TPWHRk' and front_h >= h
         back_open = g.O[y - 1][x] not in WALLS and g.H[y - 1][x] <= h + 1
         if (cliff or tree) and back_open:
             out.append((x, y))
@@ -1557,7 +1652,8 @@ def preview(g, path):
            '~': (70, 170, 200), '=': (150, 110, 70), '_': (0, 0, 0), 'C': (255, 140, 30), 'F': None,
            'L': (230, 80, 30), 'W': (120, 115, 110), 'I': (200, 195, 180), 'H': (180, 80, 60), 'O': (90, 120, 160),
            'M': (255, 220, 0), 'K': (255, 0, 255), 'Q': (255, 60, 60), 'X': (60, 40, 30), 'Y': (120, 40, 100), 'V': (0, 200, 60),
-           'E': (90, 95, 110), 'N': (140, 100, 80), 'U': (255, 210, 120), 'J': (230, 70, 60), 'Z': (120, 200, 255)}
+           'E': (90, 95, 110), 'N': (140, 100, 80), 'U': (255, 210, 120), 'J': (230, 70, 60), 'Z': (120, 200, 255),
+           'k': (90, 80, 70)}
     for x, y in g.cells():
         hv = g.H[y][x]
         c = (60 + hv * 22, 110 + hv * 15, 50 + hv * 10) if hv >= 0 else (10, 10, 20)
@@ -1591,6 +1687,7 @@ MAKERS = {
     'cs_6': make_cs_6, 'cs_7': make_cs_7, 'cs_8': make_cs_8, 'cs_x': make_cs_x,
     'lv_6': make_lv_6, 'lv_7': make_lv_7, 'lv_8': make_lv_8,
     'tw_5': make_tw_5,
+    'mv_1': make_mv_1, 'mv_2': make_mv_2, 'mv_3': make_mv_3, 'mv_4': make_mv_4, 'mv_5': make_mv_5, 'mv_6': make_mv_6,
 }
 
 # ---------------------------------------------------------------- エリアを少し広く、形を四角でなく（2026-11-26 の3回目の直し）
@@ -1753,6 +1850,9 @@ def recarve_rest(g, hub):
     まっすぐの道が段差で切れるときは、行き来できるままの所だけを外側から1マスずつ削る。"""
     keep = [(x + i, y + j) for x, y, *_ in g.merchants for i in (-1, 0, 1) for j in (-1, 0, 1, 2)]
     keep += list(g.must_extra) + [(x, y) for x, y, *_ in g.pickups]
+    if getattr(g, 'keep_pad', False):
+        # 広場をまるごと残す（霧の谷の村跡。広場の四すみに焼けた家の壁）
+        keep += [(x, y) for a, b, c, d in g.pads for x in range(a, c + 1) for y in range(b, d + 1)]
     saved_H = [row[:] for row in g.H]
     saved_O = [row[:] for row in g.O]
     must = []

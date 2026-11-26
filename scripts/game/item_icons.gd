@@ -18,7 +18,7 @@ const GEAR_COLORS := {
 	"sword_1": ["b8bec8", "7a5a3a"], "sword_light": ["d8e0ea", "4a7ab0"], "sword_bronze": ["c8904a", "6a4a2a"],
 	"sword_poison": ["8fd06a", "4a3a5a"], "sword_long": ["c8d0da", "5a4a3a"], "sword_drain": ["c04a5a", "3a2a3a"],
 	"sword_giant": ["9a9ca4", "f0c040"], "sword_flame": ["ff8a3a", "7a2a1a"], "sword_frost": ["a8e0ff", "3a5a8a"],
-	"sword_star": ["fff0a0", "4a4aa0"], "sword_king": ["f0d060", "a02a3a"],
+	"sword_star": ["fff0a0", "4a4aa0"], "sword_king": ["f0d060", "a02a3a"], "sword_dusk": ["6a5a8a", "c8a8ff"],
 	"bow_1": ["8a5a2a", "e8e0d0"], "bow_short": ["a06a3a", "e8e0d0"], "bow_long": ["6a4a2a", "e8e0d0"],
 	"bow_hunter": ["5a7a3a", "e8e0d0"], "bow_poison": ["4a6a3a", "9fe06a"], "bow_heavy": ["4a3a3a", "c0c0c0"],
 	"bow_serpent": ["4a8a4a", "f0e040"], "bow_twin": ["c8c0b0", "4a6aff"], "bow_wind": ["8ac0a0", "e8fff0"],

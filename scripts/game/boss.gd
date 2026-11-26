@@ -162,6 +162,8 @@ func setup(f: Node, name_: String, cell: Vector2i, map: HeightMap, cam: StackCam
 			walker.speed_mult = 0.0
 		"廃城の主":
 			walker.speed_mult = 1.1
+		"闇の王":
+			walker.speed_mult = 1.25
 		"岩窟のぬし":
 			walker.speed_mult = 0.6
 		"溶岩洞のぬし":
@@ -329,6 +331,8 @@ func _check_phase() -> void:
 		match group:
 			"廃城の主":
 				_call_minions(EnemyKind.Kind.GHOST, 2)
+			"闇の王":
+				_call_minions(EnemyKind.Kind.WOLF, 2)
 			"宝箱の王":
 				_shuffle = minf(_shuffle, 0.5)
 
@@ -380,7 +384,7 @@ func _dispatch(delta: float, p: Player) -> void:
 		"岩転がしの巨人": _giant(delta, p)
 		"草むらの大蛇": _snake(delta, p)
 		"満ち引きする溶岩": _lava(delta, p)
-		"廃城の主": _knight(delta, p)
+		"廃城の主", "闇の王": _knight(delta, p)
 		"岩窟のぬし": _golem(delta, p)
 		"溶岩洞のぬし": _salamander(delta, p)
 		"双子": _twin(delta, p)
@@ -677,7 +681,7 @@ func _knight(delta: float, p: Player) -> void:
 			_dash_time = 0.7
 		if _summon >= 14.0:
 			_summon = 0.0
-			_call_minions(EnemyKind.Kind.GHOST, 2)
+			_call_minions(EnemyKind.Kind.GHOST if group == "廃城の主" else EnemyKind.Kind.WOLF, 2)
 
 func _golem(delta: float, p: Player) -> void:
 	if _wind_kind == "rolling" and _dash_time > 0.0:
@@ -1282,7 +1286,7 @@ func _blink_near(p: Player) -> void:
 ## ボスごとの大技。
 func _special_move(p: Player) -> void:
 	match group:
-		"岩転がしの巨人", "土の巨人": _sp_giant(p)
+		"岩転がしの巨人": _sp_giant(p)
 		"草むらの大蛇": _sp_snake(p)
 		"満ち引きする溶岩": _sp_lava(p)
 		"廃城の主", "闇の王": _sp_knight(p)
@@ -1298,7 +1302,7 @@ func _special_move(p: Player) -> void:
 func _punish_far(p: Player) -> void:
 	specials_used.append("punish")
 	match group:
-		"岩転がしの巨人", "土の巨人":
+		"岩転がしの巨人":
 			_telegraph(0.5, _rain_around.bind(p, 8, 40.0, Props.crack_rock()))
 			_later(1.0, _quake_at.bind(p))
 		"草むらの大蛇":
@@ -1422,10 +1426,13 @@ func _lava_wave(p: Player) -> void:
 	field.boss_roll(far, Vector2(-1, 0) if horizontal else Vector2(0, -1), attack, Props.flame(2))
 
 # 廃城の主（闇の王）：3連斬り・跳び斬り・5方向の衝撃波・2段目は亡霊の剣が十字に降る。離れていると跳び斬り
+# 闇の王はさらに：闇の弾の輪を2回・主人公のそばへ消えて現れて斬る
 func _sp_knight(p: Player) -> void:
 	var opts := ["combo", "leap_slash", "wave5"]
 	if phase == 2:
 		opts.append("swords")
+	if group == "闇の王":
+		opts.append_array(["dark_ring", "blink_slash"])
 	match _choose(opts):
 		"combo":
 			_telegraph(0.45, _sweep.bind(34.0, true))
@@ -1441,6 +1448,12 @@ func _sp_knight(p: Player) -> void:
 			for k in 4:
 				_strike(c + Vector2.from_angle(k * PI / 2.0 + PI / 4.0) * 22.0, 0.9, 9.0, Props.pillar())
 			_strike(c, 1.3, 10.0, Props.pillar())
+		"dark_ring":
+			_telegraph(0.5, _ring.bind(12, 60.0, randf() * TAU))
+			_later(1.0, _ring.bind(12, 60.0, randf() * TAU))
+		"blink_slash":
+			_telegraph(0.35, _blink_near.bind(p))
+			_later(0.75, _sweep.bind(34.0, true))
 
 func _thrust(p: Player) -> void:
 	_strike_line(walker.pos, p.mover.pos - walker.pos, 4, 14.0, 0.25, 0.06, 8.0, Props.rain_ring(8.0))
