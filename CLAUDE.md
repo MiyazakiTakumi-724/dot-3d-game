@@ -93,8 +93,10 @@ M キーで全体マップ（`scripts/game/world_map_view.gd`、行ったエリ�
 - カメラ：幻の橋（`PhantomBridge`。field.gd の `_plan_phantom` が地図から決め、なければ低い地面に柱を立てる。瞳の印の向きから見ると橋がある）。
 - ストーリー：`Story.FRAGMENTS`（記憶のかけら12）と `PHANTOM_REWARDS`（幻の橋の向こうの宝）、ガルドの場面（`GARDE_BEAT`）と本当の終わり（`TRUE_ENDING`）。
 - 装飾品（`Charms`、ItemCatalog.KEYS の charm_*）と、インベントリの「記録」のページ（`JournalPanel`）。
+- 2026-11-27 の直し（同じ設計の文書の8章）：話している間はカメラを回せない（`StackCamera.locked`）、仕掛けのヒントの看板は世界に1つずつ（`field.hint_flag`）、
+  町の人と旅人が歩きまわる（`Wanderer`、field.gd の `_step_people`）、村人の言葉を自然な話し方に（`Story.PEOPLE` の chat と `Story.next_words`）。
 
-テストはGUTで664件、すべて通る（1分45秒ほど）。
+テストはGUTで682件、すべて通る（1分45秒ほど）。
 
 ゲームシステム（design.md 7・11・17章）を試作3の上に入れた（2026-11-24）：レベル・経験値・振り分けポイントと技能、17章のダメージ式（体力は数値、敵にもレベル）、
 インベントリ画面（装備・ステータス・設定）、剣・弓と矢・杖と魔法（マナ）、防具、簡単モード。（試すために野営地の宝箱に置いていた武器は、町のお店と鍛冶屋に替えた。）
@@ -116,7 +118,7 @@ WASD・矢印：移動／左クリック：手に持つアイテムを使う（�
 - `run_tests.sh` は、`godot` コマンドにPATHが通っている前提。Windowsでは Godot の実行ファイルに置き換えるか、エディタのGUTパネルから実行する。
 - ゲームの実行は、Godotエディタで `project.godot` を開いてF5を押す。
 - 画面の確認（画像は640×360）：`godot --path . res://scenes/field.tscn -- --screenshot=out.png --area=hills --player=x,y --angle=0.5`（`--inventory`・`--inventory=stats` で持ち物の画面、`--inventory=staff` で試しの杖を持って杖の欄、`--gear` で試しの武器と防具を持ち `--hold=2` で手に持つ物を選ぶ、`--exp=30` で経験値を足す。`--inventory=items` で持ち物のページ、`--shop=weapon`（tool・smith・山岳…）でお店の画面（商人のそばに `--player` で立つ）、`--boss` でボスを起こす、`--zoo` ですべての種類（17種）の敵をプレイヤーのまわりに並べる、`--tip=N` で持ち物のページのN番目の説明を出す。`--fps` で平均FPSも出す。`--talk=<人の id>` で話す画面、`--prologue`・`--ending` ではじまり・終わりの言葉（画面の確認ではふだん、はじまりの言葉は出さない）。`--map` で全体マップ。`--title`（`=load`・`=new`・`=settings`）でタイトル画面、`--pause`（`=settings`）で止める画面、
-`--inventory=journal`（`journal_beasts`・`journal_charms`）で記録のページ、`--phantom`（`=off`・`=near`・`=chest`）で幻の橋の印の後ろに立つ。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
+`--inventory=journal`（`journal_beasts`・`journal_charms`）で記録のページ、`--phantom`（`=off`・`=near`・`=chest`）で幻の橋の印の後ろに立つ。`--walk=秒` で町の人をその秒だけ歩かせてから写す。`--offset=dx,dy` でプレイヤーをマスの中心からずらし、`--ball=dx,dy` で鉄球をそばの地面に置く）。
 
 ## 構成
 
@@ -171,6 +173,7 @@ scripts/rules/   ゲームのルール。RefCounted で描画に依存しない�
   boulder.gd         転がる岩（push・update の合図 drop/crash/fall/sink・damage_to。spots は置く所、細い道はふさがない）
   phantom_bridge.gd  幻の橋（view_angle の向きから見ると solid。find は地図の行けない高い所へ、plan は柱を立てる所）
   charms.gd          装飾品7つの効き目の数
+  wanderer.gd        町の人が歩きまわる（家のまわりのマスを1マスずつ。occupied はふさぐマス、hold で立ち止まる）
 scripts/render/  描画まわり
   shadow_map.gd      地面に落ちる影（2026-11-26）。エリアの物のてっぺんの高さの絵（1マス8×8）と、地面の柱の材質（shadow.gdshader が日の方へたどる）。日は SUN
   atmosphere.gd      画面全体の空気（2026-11-26、CanvasLayer 1）。atmosphere.gdshader をかけ算で重ねる：雲の影・ふちの暗さ・地方の暗さと明かり（set_lights、16まで）。

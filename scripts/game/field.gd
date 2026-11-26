@@ -1049,6 +1049,7 @@ func _process(delta: float) -> void:
 		Sfx.warm_step(2.0)  # 効果音を少しずつ作っておく
 	Sfx.listener = player.mover.pos
 	_step_story_queue(delta)
+	camera.locked = dialogue != null and dialogue.is_open()  # 読んでいる・話している間はカメラを回さない
 	if is_switching():
 		_update_switch(delta)
 	elif dialogue != null and dialogue.is_open():
@@ -1062,6 +1063,7 @@ func _process(delta: float) -> void:
 		_step_rollers(delta)
 		_step_boulders(delta)
 		_step_phantom(delta)
+		_step_people(delta)
 		_step_pits(delta)
 		_step_shots(delta)
 		_step_bolts(delta)
@@ -2698,6 +2700,9 @@ func _maybe_screenshot() -> void:
 			show_prologue()
 		elif a == "--ending":
 			_open_dialogue("", Story.ending(Story.flags(run)), true)
+		elif a.begins_with("--walk="):  # 町の人を その秒だけ 歩かせてから写す（2026-11-27）
+			for i in int(float(a.trim_prefix("--walk=")) / 0.05):
+				_step_people(0.05)
 		elif a.begins_with("--talk="):
 			var who := a.trim_prefix("--talk=")
 			for pp in _people:
@@ -2776,6 +2781,7 @@ func _open_dialogue(name_: String, pages: Array, full := false) -> void:
 		travel_menu.close()
 	bow.cancel()
 	dialogue.open(name_, pages, full)
+	camera.locked = true
 	player.controllable = false
 	_freeze_actors(true)
 
@@ -2823,12 +2829,25 @@ func try_talk() -> bool:
 	if p.is_empty():
 		return false
 	var who: Dictionary = p["person"]
-	var pages := Story.lines(who, Story.flags(run))
+	var f := Story.flags(run)
+	var id: String = who["id"]
+	var heard = run.flags.get(Story.heard_flag(id))
+	var n := int(run.flags.get(Story.chat_flag(id), 0))
+	var pages := Story.next_words(who, f, heard, n)
 	if pages.is_empty():
 		return false
+	if who.has("chat"):  # 話した中身を覚える（次に話しかけると、世間話の続き）
+		var key := Story.talk_key(who, f)
+		if heard == null or String(heard) != key:
+			run.flags[Story.heard_flag(id)] = key
+		else:
+			run.flags[Story.chat_flag(id)] = n + 1
+	if p.has("walker"):
+		(p["walker"] as Wanderer).hold(Wanderer.TALK_PAUSE)  # 話したあとは少し立ち止まる
 	if p["node"] != null and is_instance_valid(p["node"]) and not Story.is_object(who["look"]):
-		var d: Vector2 = player.mover.pos - HeightMap.cell_center(p["cell"])
+		var d: Vector2 = player.mover.pos - p["node"].world_pos
 		p["node"].turn = d.angle() - PI / 2  # こちらを向く
+		p["node"].queue_redraw()
 	_open_dialogue(who["name"], pages)
 	return true
 
@@ -2849,9 +2868,13 @@ func _place_story(info: Dictionary) -> void:
 	for g in area.gimmicks:
 		if run.is_gimmick_open(g.id) or kinds.has(g.kind) or g.cells.is_empty():
 			continue
+		# 同じヒントの看板は、世界に1つだけ（2026-11-27 ユーザーの指示）。はじめに置いたエリアを覚えて、ほかのエリアには置かない
+		var owner: String = run.flags.get(hint_flag(g.kind), "")
+		if owner != "" and owner != area.id:
+			continue
 		kinds[g.kind] = true
 		people.append({"id": "hint_%d" % g.kind, "name": "看板", "look": "sign", "anchor": "gimmick", "at": g.cells[0],
-			"talk": [["", [Story.gimmick_hint(g.kind)]]]})
+			"hint_kind": g.kind, "talk": [["", [Story.gimmick_hint(g.kind)]]]})
 	if people.is_empty():
 		return
 	var reach := _reachable_cells(info)
@@ -2866,13 +2889,94 @@ func _place_story(info: Dictionary) -> void:
 			for dx in range(-1, 2):
 				used[c + Vector2i(dx, dy)] = true
 		map.set_blocker(c, HeightMap.Blocker.NPC)
+		if p.has("hint_kind"):
+			run.flags[hint_flag(p["hint_kind"])] = area.id
 		var node := _marker(c, person_model(p["look"]), 1)
 		if p["look"] == "spirit":
 			node.modulate.a = 0.7
 		var to_anchor := HeightMap.cell_center(anchor) - HeightMap.cell_center(c)
 		if p["look"] != "sign" and to_anchor.length() > 1.0:
 			node.turn = to_anchor.angle() - PI / 2
-		_people.append({"cell": c, "person": p, "node": node})
+		var entry := {"cell": c, "person": p, "node": node}
+		if walks(p["look"]):
+			entry["walker"] = Wanderer.make(c, _wander_cells(c, reach, avoid), hash([area.id, p["id"]]))
+		_people.append(entry)
+
+## 仕掛けのヒントの看板を置いたエリアを覚える flags のキー。
+static func hint_flag(kind: int) -> String:
+	return "hint_sign:%d" % kind
+
+## 歩きまわる人か（2026-11-27）。看板・墓と、村長のまぼろし（たき火のそばで待っている）は動かない。
+static func walks(look: String) -> bool:
+	return not Story.is_object(look) and look != "spirit"
+
+## 人が歩いてよいマス：家から WANDER_RADIUS マスの中で、まわり8マスも同じ高さの平らな所（人がいても道は切れない）。
+const WANDER_RADIUS := 4
+
+func _wander_cells(home: Vector2i, reach: Dictionary, avoid: Dictionary) -> Dictionary:
+	var out := {home: true}
+	var h := map.get_height(home)
+	for dy in range(-WANDER_RADIUS, WANDER_RADIUS + 1):
+		for dx in range(-WANDER_RADIUS, WANDER_RADIUS + 1):
+			var c := home + Vector2i(dx, dy)
+			if avoid.has(c) or not reach.has(c):
+				continue
+			var flat := true
+			for ny in range(-1, 2):
+				for nx in range(-1, 2):
+					var n: Vector2i = c + Vector2i(nx, ny)
+					if not reach.has(n) or map.get_height(n) != h or map.is_water(n):
+						flat = false
+			if flat:
+				out[c] = true
+	return out
+
+## 人を歩かせる（話している間は止まっている。2026-11-27）。歩いている間は、出たマスと向かうマスをふさぐ。
+func _step_people(delta: float) -> void:
+	for p in _people:
+		var w: Wanderer = p.get("walker")
+		if w == null:
+			continue
+		var before := w.occupied()
+		var was_moving := w.moving
+		w.update(delta, _person_can_step.bind(w))
+		var after := w.occupied()
+		for c in before:
+			if not after.has(c) and map.get_blocker(c) == HeightMap.Blocker.NPC:
+				map.set_blocker(c, HeightMap.Blocker.NONE)
+		for c in after:
+			map.set_blocker(c, HeightMap.Blocker.NPC)
+		p["cell"] = HeightMap.world_to_cell(w.pos)
+		var node: StackSprite = p["node"]
+		if node == null or not is_instance_valid(node):
+			continue
+		node.world_pos = w.pos
+		node.lift_px = w.lift()
+		if w.moving and (not was_moving or w.cell != w.from_cell):
+			var t := w.facing.angle() - PI / 2
+			if node.turn != t:
+				node.turn = t
+				node.queue_redraw()
+
+## 人が c へ歩きだしてよいか：だれもいない（主人公・敵・鉄球・ほかの人のそば）で、ふさがっていない。
+func _person_can_step(c: Vector2i, w: Wanderer) -> bool:
+	if map.is_wall(c):
+		return false
+	var center := HeightMap.cell_center(c)
+	if player.mover.cell() == c or player.mover.pos.distance_to(center) < 16.0:
+		return false
+	if ball.rules_ball.state != IronBall.State.HELD and ball.rules_ball.cell() == c:
+		return false
+	for e in enemies:
+		if is_instance_valid(e) and e.walker.alive and e.walker.pos.distance_to(center) < 16.0:
+			return false
+	var mine := w.occupied()
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var n: Vector2i = c + Vector2i(dx, dy)
+			if not mine.has(n) and map.get_blocker(n) == HeightMap.Blocker.NPC:
+				return false  # ほかの人・看板・墓のとなりには行かない
+	return true
 
 func _story_anchor(p: Dictionary, info: Dictionary) -> Vector2i:
 	var a: String = p.get("anchor", "center")

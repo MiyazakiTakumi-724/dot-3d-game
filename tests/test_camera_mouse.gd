@@ -22,3 +22,24 @@ func test_move_without_button_does_nothing():
 	var c: StackCamera = autofree(StackCamera.new())
 	_drag(c, 50, 0)
 	assert_eq(c.angle, 0.0)
+
+## 看板を読む・人と話している間は回さない（2026-11-27）
+func test_locked_camera_ignores_drag_and_keys():
+	var c: StackCamera = autofree(StackCamera.new())
+	c.locked = true
+	_drag(c, 50, MOUSE_BUTTON_MASK_RIGHT)
+	assert_eq(c.angle, 0.0)
+	var k := InputEventKey.new()
+	k.physical_keycode = KEY_E
+	k.pressed = true
+	Input.parse_input_event(k)
+	Input.flush_buffered_events()
+	c._process(0.5)
+	assert_eq(c.angle, 0.0, "E を押していても回らない")
+	c.locked = false
+	c._process(0.5)
+	assert_gt(c.angle, 0.0, "読み終えたら回せる")
+	k = k.duplicate()
+	k.pressed = false
+	Input.parse_input_event(k)
+	Input.flush_buffered_events()

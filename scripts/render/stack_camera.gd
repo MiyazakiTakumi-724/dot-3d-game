@@ -35,15 +35,18 @@ var turning := false
 var _drag_left := 0.0
 ## 右ドラッグを止めても「回している」とみなす時間（本当の秒）
 const DRAG_HOLD := 0.15
+## 回せないようにする（看板を読む・人と話している間。2026-11-27 ユーザーの指示）。field.gd が毎フレーム決める
+var locked := false
 
 func _process(delta: float) -> void:
 	# 時間がゆっくりになっても、カメラは同じ速さで回る（本当の秒で数える）
 	var real := delta / maxf(Engine.time_scale, 0.01)
 	var turn := 0.0
-	if Input.is_physical_key_pressed(KEY_Q):
-		turn -= 1.0
-	if Input.is_physical_key_pressed(KEY_E):
-		turn += 1.0
+	if not locked:
+		if Input.is_physical_key_pressed(KEY_Q):
+			turn -= 1.0
+		if Input.is_physical_key_pressed(KEY_E):
+			turn += 1.0
 	angle = wrapf(angle + turn * TURN_SPEED * real, -PI, PI)
 	_drag_left = maxf(0.0, _drag_left - real)
 	turning = turn != 0.0 or _drag_left > 0.0
@@ -65,6 +68,8 @@ func _update_shake(delta: float) -> void:
 	shake_offset = (Vector2(randf_range(-a, a), randf_range(-a, a)) * PIXEL_SCALE).round() / PIXEL_SCALE
 
 func _unhandled_input(event: InputEvent) -> void:
+	if locked:
+		return
 	if event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
 			angle = wrapf(angle + event.relative.x / PIXEL_SCALE * MOUSE_SENSITIVITY, -PI, PI)
