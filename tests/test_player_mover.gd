@@ -181,3 +181,48 @@ func test_slow_climb_resets_when_letting_go():
 	for i in 4:
 		p.move(Vector2(1, 0), 0.1)
 	assert_eq(p.height, 0)
+
+## 体の広さ（2026-11-27）：壁や登れない崖に、体のふちがめり込まない
+func test_body_stops_before_wall():
+	map.set_wall(Vector2i(2, 2), true)
+	var m := _mover_at(Vector2i(1, 2))
+	for i in 20:
+		m.move(Vector2(1, 0))
+	assert_lte(m.pos.x, 32.0 - PlayerMover.BODY_R + 0.01, "壁の手前で止まる")
+	assert_gt(m.pos.x, 32.0 - PlayerMover.BODY_R - 1.01)
+
+func test_body_stops_before_high_cliff():
+	map.set_height(Vector2i(2, 4), 2)
+	var m := _mover_at(Vector2i(1, 4))
+	for i in 20:
+		m.move(Vector2(1, 0))
+	assert_lte(m.pos.x, 32.0 - PlayerMover.BODY_R + 0.01)
+
+func test_body_still_climbs_one_step_and_drops():
+	map.set_height(Vector2i(2, 5), 1)
+	var m := _mover_at(Vector2i(1, 5))
+	for i in 20:
+		m.move(Vector2(1, 0))
+	assert_eq(m.height, 1, "1段は登れる")
+	var d := _mover_at(Vector2i(3, 0))
+	for i in 20:
+		d.move(Vector2(0, 1))
+	assert_eq(d.height, 0, "飛び降りは止めない")
+
+func test_body_slides_along_wall():
+	map.set_wall(Vector2i(2, 2), true)
+	map.set_wall(Vector2i(2, 3), true)
+	var m := _mover_at(Vector2i(1, 2))
+	for i in 12:
+		m.move(Vector2(1, 1).normalized())
+	assert_gt(m.pos.y, 40.0, "斜めに当たると壁沿いに滑る")
+	assert_lte(m.pos.x, 32.0 - PlayerMover.BODY_R + 0.01)
+
+func test_slow_climb_still_works_with_body():
+	for x in range(2, 6):
+		map.set_height(Vector2i(x, 6), 2)
+	var m := _mover_at(Vector2i(1, 6))
+	m.slow_climb = true
+	for i in 40:
+		m.move(Vector2(1, 0), 0.05)
+	assert_eq(m.height, 2)

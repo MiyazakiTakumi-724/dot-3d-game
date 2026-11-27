@@ -91,8 +91,15 @@ func front_cell() -> Vector2i:
 func cell() -> Vector2i:
 	return HeightMap.world_to_cell(pos)
 
+## 体の広さ（2026-11-27）。中心の1点だけで当たりを見ると、壁や崖に2〜3pxめり込んで見えるので、
+## 中心からこの距離の8点も、入れないマス（壁・水・登れない高さ）に入らないようにする。
+const BODY_R := 3.5
+const _PROBES := [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1),
+	Vector2(0.7, 0.7), Vector2(-0.7, 0.7), Vector2(0.7, -0.7), Vector2(-0.7, -0.7)]
+
 func _try(new_pos: Vector2) -> bool:
 	var to := HeightMap.world_to_cell(new_pos)
+	var new_h := height
 	if to != cell():
 		if not map.in_bounds(to):
 			if to.x < 0 or to.x >= map.size.x:
@@ -112,10 +119,34 @@ func _try(new_pos: Vector2) -> bool:
 			if slow_climb and to_h - height == rules.max_climb + 1:
 				_climb_pushed = true
 			return false
-		if to_h < height:
-			last_drop = height - to_h
+		new_h = to_h
+	if _body_blocked(new_pos, to, new_h):
+		return false
+	if to != cell():
+		if new_h < height:
+			last_drop = height - new_h
 			since_drop = 0.0
-		height = to_h
+		height = new_h
 		last_safe_cell = to
 	pos = new_pos
 	return true
+
+## 体のふち（中心から BODY_R）が、入れないマスへ新しく入るか。もう入っている所（置き直した直後など）は止めない。
+func _body_blocked(new_pos: Vector2, center: Vector2i, h: int) -> bool:
+	for d in _PROBES:
+		var o: Vector2 = d * BODY_R
+		var c := HeightMap.world_to_cell(new_pos + o)
+		if c == center or not map.in_bounds(c):
+			continue
+		if HeightMap.world_to_cell(pos + o) == c:
+			continue
+		if map.is_wall(c) or map.is_water(c):
+			return true
+		if map.is_pit(c):
+			continue
+		var ch := map.get_height(c)
+		if ch > h and not rules.can_step(h, ch):
+			if slow_climb and ch - h == rules.max_climb + 1:
+				_climb_pushed = true
+			return true
+	return false
