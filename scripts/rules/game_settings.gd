@@ -8,6 +8,8 @@ var easy_mode := false
 var soft_flash := false
 ## 効果音の大きさ（0 なし・1 小・2 中・3 大。2026-11-26）
 var sfx_level := 2
+## 曲の大きさ（0 なし・1 小・2 中・3 大。2026-11-27）
+var bgm_level := 2
 ## 全画面か（false ならウィンドウ。F11 でも切りかえる。2026-11-26）
 var fullscreen := true
 ## 画面のゆれ（鉄球が落ちた・爆発など）。弱い人のために切れる（2026-11-26 独自の開発1）
@@ -45,13 +47,14 @@ func flash_strength() -> float:
 # ---------------------------------------------------------------- 保存（2026-11-26 独自の開発1）
 
 func to_dict() -> Dictionary:
-	return {"easy_mode": easy_mode, "soft_flash": soft_flash, "sfx_level": sfx_level,
+	return {"easy_mode": easy_mode, "soft_flash": soft_flash, "sfx_level": sfx_level, "bgm_level": bgm_level,
 		"fullscreen": fullscreen, "shake": shake, "slow_turn": slow_turn}
 
 func load_dict(d: Dictionary) -> void:
 	easy_mode = bool(d.get("easy_mode", easy_mode))
 	soft_flash = bool(d.get("soft_flash", soft_flash))
 	sfx_level = clampi(int(d.get("sfx_level", sfx_level)), 0, SFX_NAMES.size() - 1)
+	bgm_level = clampi(int(d.get("bgm_level", bgm_level)), 0, SFX_NAMES.size() - 1)
 	fullscreen = bool(d.get("fullscreen", fullscreen))
 	shake = bool(d.get("shake", shake))
 	slow_turn = bool(d.get("slow_turn", slow_turn))

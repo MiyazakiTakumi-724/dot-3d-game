@@ -104,6 +104,8 @@ var shop_menu: ShopMenu
 var travel_menu: TravelMenu
 ## 話す・読む画面（2026-11-26、ストーリー）
 var dialogue: DialogueBox
+## 曲（2026-11-27）。テスト（headless）と画面の確認では鳴らさない（null）
+var bgm: Bgm = null
 ## エリアの人・看板・墓 {cell, person, node}
 var _people: Array = []
 ## ボスを倒したあとに出す言葉 [残り秒, 名前, ページ, full]
@@ -146,6 +148,11 @@ func _ready() -> void:
 		InventoryMenu.apply_window(settings.fullscreen)
 	Sfx.attach(self)  # 効果音を鳴らす所（2026-11-26）
 	Sfx.level = settings.sfx_level
+	Bgm.level = settings.bgm_level
+	if DisplayServer.get_name() != "headless" and not _screenshot_mode():
+		bgm = Bgm.new()
+		add_child(bgm)
+		bgm.warm(Bgm.THEME_TRACKS.values() + ["boss", "last"])
 	if DisplayServer.get_name() != "headless" and not _real_run():
 		var mode := DisplayServer.window_get_mode()
 		settings.fullscreen = mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
@@ -1038,6 +1045,8 @@ func _update_switch(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_update_time_scale()
+	if bgm != null:
+		bgm.play(music_track())
 	if in_title:
 		camera.angle = wrapf(camera.angle + TITLE_TURN * delta, -PI, PI)
 	else:
@@ -2787,6 +2796,14 @@ func _maybe_screenshot() -> void:
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(path)
 	get_tree().quit()
+
+## 今鳴らす曲（2026-11-27）：タイトル・ボスと戦っている間・地方の見た目で決まる。
+func music_track() -> String:
+	var fighting := ""
+	for b in bosses:
+		if is_instance_valid(b) and b.active and b.walker.alive:
+			fighting = b.group
+	return Bgm.track_for(area.theme if area != null else "town", fighting, in_title)
 
 # ---------------------------------------------------------------- ストーリー（2026-11-26 の4回目の直し）
 

@@ -2,13 +2,13 @@ class_name SettingsPanel
 extends Control
 ## 設定の欄（2026-11-26 独自の開発1）。インベントリ画面の「設定」・止める画面・タイトル画面で同じものを使う。
 ## 変えるとすぐに効き、changed を出す（field.gd が settings.json に保存する）。
-## 行：難易度・画面の光・画面のゆれ・カメラを回す間・効果音・画面。下の行に、カーソルを合わせた行の説明を出す。
+## 行：難易度・画面の光・画面のゆれ・カメラを回す間・効果音・曲・画面。下の行に、カーソルを合わせた行の説明を出す。
 
 signal changed
 
 const SIZE := Vector2(304, 168)
-const ROW_Y := 25.0
-const ROW_H := 19.0
+const ROW_Y := 23.0
+const ROW_H := 17.0
 const BUTTON_X := 92.0
 
 var settings: GameSettings
@@ -24,6 +24,7 @@ const ROWS := [
 	["shake", "画面のゆれ", [[true, "あり"], [false, "なし"]], "なし：鉄球や爆発で画面をゆらさない"],
 	["slow_turn", "カメラを回す間", [[false, "ふつう"], [true, "ゆっくり"]], "ゆっくり：カメラを回している間だけ、時間がゆっくり進む"],
 	["sfx_level", "効果音", [[0, "なし"], [1, "小"], [2, "中"], [3, "大"]], "効果音の大きさ"],
+	["bgm_level", "曲", [[0, "なし"], [1, "小"], [2, "中"], [3, "大"]], "曲（BGM）の大きさ"],
 	["fullscreen", "画面", [[false, "ウィンドウ"], [true, "全画面"]], "F11 でも切りかえられる"],
 ]
 
@@ -73,6 +74,8 @@ func set_value(key: String, v) -> void:
 		"sfx_level":
 			Sfx.level = v
 			Sfx.play("ui_click")
+		"bgm_level":
+			Bgm.level = v
 		"fullscreen":
 			InventoryMenu.apply_window(v)
 	refresh()
