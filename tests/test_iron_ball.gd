@@ -123,6 +123,41 @@ func test_reachable_ball_stays():
 	b.update(1.5, p, map, rules)
 	assert_eq(b.cell(), Vector2i(2, 1))
 
+## 台地に置いた鉄球は、階段を降りている途中でも、歩いて戻れるなら足元へ戻らない
+func test_ball_on_plateau_stays_while_walking_down_stairs():
+	for x in range(0, 3):
+		map.set_height(Vector2i(x, 1), 3)
+	map.set_height(Vector2i(3, 1), 2)
+	map.set_height(Vector2i(4, 1), 1)
+	var p := _player_at(Vector2i(2, 1), Vector2.LEFT)
+	var b := IronBall.new()
+	assert_true(b.drop_at(p, map, HeightMap.cell_center(Vector2i(1, 1))))
+	b.update(1.0, p, map, rules)  # 着地
+	p.pos = HeightMap.cell_center(Vector2i(4, 1))
+	p.height = 1
+	b.update(1.5, p, map, rules)
+	b.update(1.5, p, map, rules)
+	assert_eq(b.cell(), Vector2i(1, 1))
+	assert_eq(b.height, 3)
+
+## 歩いて行けない台地（まわりが壁）なら、低い所に立っていれば戻ってくる
+func test_ball_on_walled_plateau_returns():
+	for x in range(0, 3):
+		map.set_height(Vector2i(x, 1), 3)
+	map.set_height(Vector2i(3, 1), 2)
+	map.set_height(Vector2i(4, 1), 1)
+	var p := _player_at(Vector2i(2, 1), Vector2.LEFT)
+	var b := IronBall.new()
+	assert_true(b.drop_at(p, map, HeightMap.cell_center(Vector2i(1, 1))))
+	b.update(1.0, p, map, rules)
+	map.set_wall(Vector2i(3, 1), true)  # 階段がふさがった
+	p.pos = HeightMap.cell_center(Vector2i(4, 1))
+	p.height = 1
+	b.update(1.5, p, map, rules)
+	b.update(1.5, p, map, rules)
+	assert_eq(b.cell(), Vector2i(4, 1))
+	assert_eq(b.height, 1)
+
 func test_strong_damage_table():
 	assert_eq(IronBall.damage_for(0, true), 2)
 	assert_eq(IronBall.damage_for(1, true), 3)
