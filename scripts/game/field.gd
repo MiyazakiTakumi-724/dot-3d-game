@@ -108,6 +108,8 @@ var dialogue: DialogueBox
 var _people: Array = []
 ## ボスを倒したあとに出す言葉 [残り秒, 名前, ページ, full]
 var _story_queue: Array = []
+## 今の話が終わったらすること（"final_choice" 最後の選択・"bad_end" 悪い終わりのあと。2026-11-27）
+var _after_dialogue := ""
 ## このエリアのボス
 var bosses: Array[Boss] = []
 ## 投げた爆弾 [位置, 高さ, 残り秒, StackSprite]
@@ -212,6 +214,7 @@ func _ready() -> void:
 	dialogue = DialogueBox.new()
 	dialogue.setup()
 	dialogue.finished.connect(_on_dialogue_done)
+	dialogue.chose.connect(_on_dialogue_chose)
 	add_child(dialogue)
 	var map_layer := CanvasLayer.new()
 	map_layer.layer = 5
@@ -415,24 +418,34 @@ func _on_boss_part_died(b: Boss) -> void:
 			return
 	var cell := b.walker.cell()
 	_drop_loot(cell, BossKind.drops(g))
+	var seal_before := run.can_open_door(RunState.SEAL_DOOR)
 	var levels := run.on_boss_killed(g, BossKind.exp_reward(g))
 	camera.shake(4.0)
-	if run.cleared and g == "ブライト":
-		notice("ブライトを倒した！\n大陸に光が戻った ― おわり ―\n（このあとも遊べる）", 8.0)
+	var fl := Story.flags(run)
+	if g == Story.BRIGHT:
+		if Story.true_route(fl):
+			notice("ブライトを倒した！", 4.0)
+	elif not seal_before and run.can_open_door(RunState.SEAL_DOOR):
+		notice("%sを倒した！\n神秘の塔の封印が解けた（町の南西の門）" % g, 6.0)
+	elif g in RunState.REGION_BOSSES and run.mist_bosses_left() == 0 and RunState.REGION_BOSSES.size() - run.seal_bosses_left() == Story.MIST_BOSSES:
+		notice("%sを倒した！\n霧の谷の霧が 薄くなった（草原の 沼の小道の南）" % g, 6.0)
 	elif levels > 0:
 		notice("%sを倒した！\nレベル%d になった　Tab：ポイントを振る" % [g, run.stats.level], 5.0)
 	else:
 		notice("%sを倒した！" % g, 4.0)
-	if run.can_open_door(RunState.SEAL_DOOR) and g in RunState.REGION_BOSSES and run.seal_bosses_left() == 0:
-		notice("%sを倒した！\n神秘の塔の封印が解けた（町の南西の門）" % g, 6.0)
-	elif g in RunState.REGION_BOSSES and run.mist_bosses_left() == 0 and RunState.REGION_BOSSES.size() - run.seal_bosses_left() == Story.MIST_BOSSES:
-		notice("%sを倒した！\n霧の谷の霧が 薄くなった（草原の 沼の小道の南）" % g, 6.0)
-	# ストーリー：倒したあとの言葉（ブライトは終わりの言葉）
-	if g == "ブライト":
-		_story_queue.append([3.0, "", Story.ending(Story.flags(run)), true])
-	elif not Story.boss_beat(g).is_empty():
-		var beat := Story.boss_beat_for(g, Story.flags(run))
-		_story_queue.append([2.0, "ガルド" if beat == Story.GARDE_BEAT else g, beat, false])
+	# ストーリー：倒したあとの言葉（ブライトは終わりの言葉）と、ブライトの心の声（2026-11-27）
+	if g == Story.BRIGHT:
+		if Story.true_route(fl):
+			_story_queue.append([3.0, "", Story.TRUE_PRELUDE, true, "final_choice"])
+		else:
+			_story_queue.append([3.0, "", Story.BAD_ENDING, true, "bad_end"])
+	else:
+		if not Story.boss_beat(g).is_empty():
+			var beat := Story.boss_beat_for(g, fl)
+			_story_queue.append([2.0, "ガルド" if beat == Story.GARDE_BEAT else g, beat, false])
+		var voice := Story.bright_voice_after(g, run)
+		if not voice.is_empty():
+			_story_queue.append([0.6, Story.BRIGHT_SPEAKER, voice, false])
 	apply_stats()
 	autosave()
 
@@ -2539,7 +2552,13 @@ func door_hint(door_id: String) -> String:
 		return "霧が濃くて 進めない\n地方のぬしを あと%d体 倒すと 霧が薄くなる" % run.mist_bosses_left()
 	if door_id == Story.KEEP_DOOR:
 		return "闇の砦の門。紋章が 刻まれている\n村のお守りが 要りそうだ"
-	return "神秘の塔の封印の門\nあと%d体のボスを倒すと開く" % run.seal_bosses_left()
+	var left := run.seal_bosses_left()
+	var dark := run.is_boss_defeated(Story.DARK_KING)
+	if left > 0 and not dark:
+		return "神秘の塔の封印の門\n地方のぬしを あと%d体と、闇の王を倒すと開く" % left
+	if left > 0:
+		return "神秘の塔の封印の門\n地方のぬしを あと%d体 倒すと開く" % left
+	return "神秘の塔の封印の門\n霧の谷の 闇の王を倒すと開く"
 
 ## 画面の真ん中に出す言葉。なければ空。
 func ui_message() -> String:
@@ -2700,6 +2719,17 @@ func _maybe_screenshot() -> void:
 			show_prologue()
 		elif a == "--ending":
 			_open_dialogue("", Story.ending(Story.flags(run)), true)
+		elif a.begins_with("--ending="):  # bad・prelude・choice・break・sleep（2026-11-27）
+			match a.trim_prefix("--ending="):
+				"bad":
+					_open_dialogue("", Story.BAD_ENDING, true)
+				"prelude":
+					_open_dialogue("", Story.TRUE_PRELUDE, true)
+				"choice":
+					_open_dialogue("", ["…"], true)
+					dialogue.open_choice(Story.CHOICE_PROMPT, Story.CHOICES)
+				var other:
+					_open_dialogue("", Story.ending_after(other), true)
 		elif a.begins_with("--walk="):  # 町の人を その秒だけ 歩かせてから写す（2026-11-27）
 			for i in int(float(a.trim_prefix("--walk=")) / 0.05):
 				_step_people(0.05)
@@ -2786,9 +2816,31 @@ func _open_dialogue(name_: String, pages: Array, full := false) -> void:
 	_freeze_actors(true)
 
 func _on_dialogue_done() -> void:
+	var then := _after_dialogue
+	_after_dialogue = ""
+	match then:
+		"final_choice":
+			dialogue.open_choice(Story.CHOICE_PROMPT, Story.CHOICES)
+			return
+		"bad_end":
+			_after_bad_end()
 	_freeze_actors(false)
 	if not is_switching():
 		player.controllable = true
+
+## 最後の選択（2026-11-27）：目を壊す・瞳で眠らせる。選んだ終わりの言葉を出す。
+func _on_dialogue_chose(i: int) -> void:
+	var id: String = Story.CHOICE_IDS[clampi(i, 0, Story.CHOICE_IDS.size() - 1)]
+	run.flags[Story.ENDING_FLAG] = id
+	autosave()
+	_open_dialogue("", Story.ending_after(id), true)
+
+## 悪い終わりのあと：ブライトは倒れていないことにして、最後に休んだたき火から やり直す。
+func _after_bad_end() -> void:
+	run.flags[Story.BAD_END_FLAG] = true
+	run.undo_boss(Story.BRIGHT)
+	autosave()
+	_start_switch({"area": run.checkpoint_area, "cell": run.respawn_cell()})
 
 ## 話している間は、敵とボスを止める（地形はカメラに合わせて描きつづける）。
 func _freeze_actors(on: bool) -> void:
@@ -2809,6 +2861,7 @@ func _step_story_queue(delta: float) -> void:
 		return
 	var q = _story_queue.pop_front()
 	_open_dialogue(q[1], q[2], q[3])
+	_after_dialogue = q[4] if q.size() > 4 else ""
 
 ## そばにいる人・看板・墓（となり8マス）。なければ空。
 func person_here() -> Dictionary:
@@ -2863,7 +2916,8 @@ static func person_model(look: String) -> VoxelModel:
 ## エリアの人・看板・墓を置く（Story.PEOPLE と、仕掛けのヒントの看板）。歩いて行ける所で、まわり8マスが同じ高さの平らな所に置き、
 ## そのマスはふさぐ（道は切れない）。anchor の近くから探す。
 func _place_story(info: Dictionary) -> void:
-	var people: Array = Story.people(area.id).duplicate()
+	var fl := Story.flags(run)
+	var people: Array = Story.people(area.id).filter(func(p): return Story.present(p, fl))
 	var kinds := {}
 	for g in area.gimmicks:
 		if run.is_gimmick_open(g.id) or kinds.has(g.kind) or g.cells.is_empty():
@@ -3531,11 +3585,16 @@ func open_phantom_chest() -> bool:
 	Sfx.play("chest")
 	player.anim.play_pickup()
 	var reward := Story.phantom_reward(area.id)
-	if reward.begins_with("frag:"):
-		var n := int(reward.substr(5))
-		run.flags[Story.fragment_flag(n)] = true
-		var got := Story.fragment_count(run.flags)
-		_open_dialogue("記憶のかけら %d（%d / %d）" % [n, got, Story.FRAGMENTS.size()], [Story.fragment(n)])
+	if reward.begins_with("frag"):
+		# どこで拾っても、まだ読んでいない一番小さい番号のかけら（2026-11-27 ユーザーの決めたこと）
+		var n := Story.next_fragment(run.flags)
+		if n > 0:
+			run.flags[Story.fragment_flag(n)] = true
+			var got := Story.fragment_count(run.flags)
+			_open_dialogue("記憶のかけら %d（%d / %d）" % [n, got, Story.FRAGMENTS.size()], [Story.fragment(n)])
+			# 闇の王を先に倒していたら、12個目でガルドが自分を取り戻す
+			if got == Story.FRAGMENTS.size() and run.is_boss_defeated(Story.DARK_KING):
+				_story_queue.append([0.4, "ガルド", Story.GARDE_LATE, false])
 	elif reward != "":
 		run.inventory.add(reward, 1)
 		apply_stats()

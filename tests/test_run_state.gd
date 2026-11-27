@@ -210,7 +210,7 @@ func test_visited_areas():
 	assert_true(rs.has_visited("town"))
 	assert_eq(rs.visited_ids(), ["town"])
 
-## 封印は4つの地方のボスを倒すと開く（隠しボスは数えない）
+## 封印は4つの地方のボスと闇の王を倒すと開く（隠しボスは数えない。闇の王は 2026-11-27）
 func test_tower_seal_needs_four_region_bosses():
 	assert_false(rs.can_open_door(RunState.SEAL_DOOR))
 	assert_eq(rs.seal_bosses_left(), 4)
@@ -222,8 +222,20 @@ func test_tower_seal_needs_four_region_bosses():
 	assert_eq(rs.seal_bosses_left(), 1)
 	assert_eq(rs.bosses_defeated, 4)
 	rs.on_boss_killed("満ち引きする溶岩", 10)
+	assert_false(rs.can_open_door(RunState.SEAL_DOOR), "闇の王を倒すまでは開かない")
+	rs.on_boss_killed(Story.DARK_KING, 10)
 	assert_true(rs.can_open_door(RunState.SEAL_DOOR))
 	assert_true(rs.can_open_door("forest_gate"))
+
+## 悪い終わりのあとは、ブライトを倒したことを取り消す（2026-11-27）
+func test_undo_boss_after_bad_end():
+	rs.on_boss_killed("双子", 10)
+	rs.on_boss_killed("ブライト", 10)
+	assert_true(rs.cleared)
+	rs.undo_boss("ブライト")
+	assert_false(rs.cleared)
+	assert_false(rs.is_boss_defeated("ブライト"))
+	assert_eq(rs.bosses_defeated, 1, "敵のレベルも戻る")
 
 ## 倒したボスは戻らない。2回目は数えない。ブライトでゲームの終わり
 func test_bosses_are_remembered():

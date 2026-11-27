@@ -61,9 +61,9 @@ func test_beats_hints_and_ending() -> void:
 			assert_gt(Story.boss_beat(g).size(), 0, "%s を倒したあとの言葉" % g)
 	assert_eq(Story.GIMMICK_HINTS.size(), Gimmick.Kind.size())
 	assert_gt(Story.PROLOGUE.size(), 3)
-	var a := Story.ending({"dark_king": true})
-	var b := Story.ending({"dark_king": false})
-	assert_ne(a[2], b[2], "闇の王を倒したかで終わりの言葉が変わる")
+	var a := Story.ending({"all_frags": true})
+	var b := Story.ending({"all_frags": false})
+	assert_ne(a, b, "記憶のかけらを すべて集めたかで終わりの言葉が変わる（2026-11-27）")
 
 func test_people_areas_exist() -> void:
 	var w := Continent.build()
@@ -289,3 +289,92 @@ func test_field_remembers_what_was_heard() -> void:
 	assert_eq(heard[0], Story.lines(hana["person"], {}))
 	assert_eq(heard[1], hana["person"]["chat"][0])
 	assert_eq(heard[2], hana["person"]["chat"][1])
+
+# ---------------------------------------------------------------- 2026-11-27：ユーザーの決めたストーリーの直し
+
+func test_fragments_are_read_in_order_wherever_picked() -> void:
+	var fl := {}
+	assert_eq(Story.next_fragment(fl), 1)
+	fl[Story.fragment_flag(1)] = true
+	fl[Story.fragment_flag(2)] = true
+	assert_eq(Story.next_fragment(fl), 3)
+	for i in Story.FRAGMENTS.size():
+		fl[Story.fragment_flag(i + 1)] = true
+	assert_eq(Story.next_fragment(fl), 0, "すべて読んだ")
+
+func test_bright_speaks_after_each_story_boss_in_turn() -> void:
+	var r := _run()
+	r.on_boss_killed("廃城の主", 0)
+	assert_eq(Story.bright_voice_after("廃城の主", r), Story.BRIGHT_VOICE[0], "どの地方からでも1つ目")
+	r.on_boss_killed("岩窟のぬし", 0)
+	assert_eq(Story.bright_voice_after("岩窟のぬし", r), [], "隠しボスでは聞こえない")
+	r.on_boss_killed("岩転がしの巨人", 0)
+	assert_eq(Story.bright_voice_after("岩転がしの巨人", r), Story.BRIGHT_VOICE[1])
+	assert_eq(Story.BRIGHT_VOICE.size(), Story.STORY_BOSSES.size())
+	for b in Story.STORY_BOSSES:
+		assert_true(BossKind.DATA.has(b), b)
+
+func test_tower_waits_for_the_dark_king() -> void:
+	var r := _run()
+	for b in RunState.REGION_BOSSES:
+		r.on_boss_killed(b, 0)
+	assert_true(Story.flags(r)["regions"])
+	assert_false(Story.flags(r)["seal"])
+	r.on_boss_killed(Story.DARK_KING, 0)
+	assert_true(Story.flags(r)["seal"])
+
+func test_sena_moves_to_the_fort_and_the_tower() -> void:
+	var r := _run()
+	var town_sena: Dictionary = Story.people("town")[0]
+	var fort_sena: Dictionary = Story.people("mv_4")[0]
+	var tower_sena: Dictionary = Story.people("tw_1")[0]
+	assert_eq(fort_sena["id"], "sena_fort")
+	assert_eq(tower_sena["id"], "sena_tower")
+	assert_true(Story.present(town_sena, Story.flags(r)))
+	assert_false(Story.present(fort_sena, Story.flags(r)))
+	r.inventory.add(Story.KEEPSAKE)
+	assert_true(Story.present(fort_sena, Story.flags(r)), "お守りを持つと、砦の前で待っている")
+	assert_false(Story.present(town_sena, Story.flags(r)), "そのあいだ町にはいない")
+	var said := "".join(Story.lines(fort_sena, Story.flags(r)))
+	assert_string_contains(said, "お前まで 失いたくない")
+	for b in RunState.REGION_BOSSES:
+		r.on_boss_killed(b, 0)
+	r.on_boss_killed(Story.DARK_KING, 0)
+	assert_false(Story.present(fort_sena, Story.flags(r)))
+	assert_true(Story.present(tower_sena, Story.flags(r)), "封印が解けると、塔のふもとで止めに来る")
+	assert_false(Story.present(town_sena, Story.flags(r)))
+	r.on_boss_killed(Story.BRIGHT, 0)
+	assert_true(Story.present(town_sena, Story.flags(r)), "終わったら町へ戻る")
+
+func test_endings_depend_on_fragments() -> void:
+	assert_eq(Story.ending({"all_frags": false}), Story.BAD_ENDING)
+	assert_string_contains("".join(Story.BAD_ENDING), "やはり 人間は 愚かだ")
+	assert_eq(Story.ending({"all_frags": true}), Story.TRUE_PRELUDE)
+	assert_eq(Story.CHOICES.size(), 2)
+	assert_string_contains(Story.ending_after("break").back(), "ほんとうの おわり")
+	assert_string_contains(Story.ending_after("sleep").back(), "ほんとうの おわり")
+	assert_ne(Story.ending_after("break"), Story.ending_after("sleep"))
+
+func test_father_is_dan() -> void:
+	var said := ""
+	for p in Story.people("mv_2"):
+		said += "".join(Story.lines(p, {}))
+	assert_string_contains(said, "ダン")
+
+func test_full_screen_pages_fit() -> void:
+	var all: Array = Story.PROLOGUE + Story.BAD_ENDING + Story.TRUE_PRELUDE + Story.ENDING_BREAK + Story.ENDING_SLEEP
+	for b in Story.BRIGHT_VOICE:
+		all.append_array(b)
+	all.append_array(Story.GARDE_LATE)
+	for page in all:
+		var rows: PackedStringArray = String(page).split("\n")
+		assert_lte(rows.size(), 4, page)
+		for row in rows:
+			assert_lte(row.length(), 28, row)
+
+func test_inn_town_has_rumor_people() -> void:
+	var ppl: Array = Story.people(Story.INN_TOWN)
+	assert_gte(ppl.size(), 5)
+	var w := Continent.build()
+	assert_not_null(w.area(Story.INN_TOWN))
+	assert_eq(w.area(Story.INN_TOWN).theme, "town")

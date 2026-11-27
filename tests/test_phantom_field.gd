@@ -84,11 +84,9 @@ func test_fragments_change_the_dark_king_scene_and_the_ending():
 	var fl := Story.flags(f.run)
 	assert_true(fl["all_frags"])
 	assert_eq(Story.boss_beat_for(Story.DARK_KING, fl), Story.GARDE_BEAT)
-	fl["dark_king"] = true
-	var end := Story.ending(fl)
-	assert_string_contains(end.back(), "ほんとうの おわり")
+	assert_eq(Story.ending(fl), Story.TRUE_PRELUDE, "このあと最後の選択（2026-11-27）")
 	fl["all_frags"] = false
-	assert_string_contains(Story.ending(fl).back(), "――おわり――")
+	assert_eq(Story.ending(fl), Story.BAD_ENDING)
 
 func test_journal_lists_kills_fragments_and_charms():
 	var rows := JournalPanel.bestiary_rows(f.run)

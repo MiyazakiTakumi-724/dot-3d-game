@@ -21,7 +21,7 @@ var _open_doors := {}
 var _open_gimmicks := {}
 var _visited := {}
 
-## 神秘の塔の封印の門。地方のボスを SEAL_BOSSES 体倒すと開けられる（2026-11-25 の設計）
+## 神秘の塔の封印の門。地方のボスを SEAL_BOSSES 体と、闇の王を倒すと開けられる（2026-11-25 の設計。闇の王は 2026-11-27 ユーザーの決めたこと）
 const SEAL_DOOR := "tower_seal"
 const SEAL_BOSSES := 4
 ## ブライトを倒した（ゲームの終わり）
@@ -116,6 +116,15 @@ func on_boss_killed(boss_name: String, exp_reward: int) -> int:
 		cleared = true
 	return stats.add_exp(exp_reward)
 
+## 倒したことを取り消す（悪い終わりのあと、ブライトとはもう一度戦う。2026-11-27）。経験値はそのまま。
+func undo_boss(boss_name: String) -> void:
+	if not _bosses.has(boss_name):
+		return
+	_bosses.erase(boss_name)
+	bosses_defeated = maxi(0, bosses_defeated - 1)
+	if boss_name == "ブライト":
+		cleared = false
+
 func is_boss_defeated(boss_name: String) -> bool:
 	return _bosses.has(boss_name)
 
@@ -147,7 +156,7 @@ func is_door_open(id: String) -> bool:
 ## その門を今開けられるか。封印の門はボスを倒した数、ボスの間の前の門は地方の印の数で決まる。
 func can_open_door(id: String) -> bool:
 	if id == SEAL_DOOR:
-		return seal_bosses_left() == 0
+		return seal_bosses_left() == 0 and is_boss_defeated(Story.DARK_KING)
 	if id == Story.MIST_DOOR:
 		return mist_bosses_left() == 0
 	if id == Story.KEEP_DOOR:

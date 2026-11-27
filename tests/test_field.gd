@@ -1061,7 +1061,7 @@ func test_bomb_breaks_brittle_wall():
 	assert_true(f.run.is_gimmick_open(g.id))
 	assert_false(f.map.is_wall(g.cells[0]))
 
-func test_tower_seal_needs_four_bosses():
+func test_tower_seal_needs_four_bosses_and_the_dark_king():
 	f.enter_area("town", Vector2i(12, 13))
 	var ex := _exit("town", "tw_1", true)
 	assert_eq(ex.door_id, RunState.SEAL_DOOR)
@@ -1070,6 +1070,9 @@ func test_tower_seal_needs_four_bosses():
 	assert_false(f.try_open_door())
 	for b in RunState.REGION_BOSSES:
 		f.run.on_boss_killed(b, 1)
+	assert_false(f.try_open_door(), "闇の王を倒すまでは開かない（2026-11-27）")
+	assert_string_contains(f.door_hint(RunState.SEAL_DOOR), "闇の王")
+	f.run.on_boss_killed(Story.DARK_KING, 1)
 	assert_true(f.try_open_door())
 	assert_true(f.run.is_door_open(RunState.SEAL_DOOR))
 
@@ -1320,13 +1323,43 @@ func test_bright_flash_can_be_softened():
 	assert_gt(strong, 0.5)
 	assert_lt(f._flash.color.a, strong)
 
-## ブライトを倒すとゲームの終わり（そのあとも遊べる）
+## ブライトを倒すとゲームの終わり（そのあとも遊べる）。記憶のかけらを すべて集めていれば本当の終わり
 func test_bright_ends_the_game():
+	for i in Story.FRAGMENTS.size():
+		f.run.flags[Story.fragment_flag(i + 1)] = true
 	f.enter_area("tw_4", Vector2i(9, 1))
 	f.bosses[0].walker.take_damage(99999)
 	assert_true(f.run.cleared)
-	assert_string_contains(f.ui_message(), "おわり")
+	assert_string_contains(f.ui_message(), "ブライト")
 	assert_eq(f.area_state.result, AreaState.Result.PLAYING)
+	# 終わりの言葉のあと、目を壊すか眠らせるかを選ぶ（2026-11-27）
+	for i in 40:
+		f._process(0.1)
+	assert_true(f.dialogue.is_open())
+	assert_eq(f.dialogue.pages, Story.TRUE_PRELUDE)
+	f.dialogue.close()
+	assert_true(f.dialogue.is_choosing(), "選ぶ画面")
+	f.dialogue.choose(1)
+	assert_eq(f.run.flags.get(Story.ENDING_FLAG), "sleep")
+	assert_eq(f.dialogue.pages, Story.ENDING_SLEEP)
+	f.dialogue.close()
+	assert_true(f.run.cleared)
+	assert_true(f.player.controllable)
+
+## かけらを集めきらずにブライトを倒すと悪い終わり。たき火から やり直し、ブライトとはもう一度戦う（2026-11-27）
+func test_bright_without_all_fragments_is_a_bad_end():
+	f.enter_area("tw_4", Vector2i(9, 1))
+	f.bosses[0].walker.take_damage(99999)
+	for i in 40:
+		f._process(0.1)
+	assert_true(f.dialogue.is_open())
+	assert_eq(f.dialogue.pages, Story.BAD_ENDING)
+	f.dialogue.close()
+	assert_false(f.dialogue.is_choosing())
+	assert_false(f.run.cleared)
+	assert_false(f.run.is_boss_defeated(Story.BRIGHT))
+	assert_true(f.run.flags.get(Story.BAD_END_FLAG, false))
+	assert_true(f.is_switching(), "たき火へ戻る")
 
 func test_map_toggles_with_m():
 	assert_false(f.map_view.visible)

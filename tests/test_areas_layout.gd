@@ -48,7 +48,7 @@ func test_continent_has_no_problems():
 	assert_eq(world.problems(), [])
 
 func test_all_areas():
-	assert_eq(world.ids().size(), 51)  # 30 ＋ 寄り道（各地方3）・草原と廃城の隠しボス・塔の回廊（2026-11-25 夜）＋霧の谷6（2026-11-26）
+	assert_eq(world.ids().size(), 52)  # 30 ＋ 寄り道（各地方3）・草原と廃城の隠しボス・塔の回廊（2026-11-25 夜）＋霧の谷6（2026-11-26）＋霧見の宿場（2026-11-27）
 	for id in ["town", "rocks", "hills", "forest", "mt_5", "gr_5", "cs_5", "lv_5", "tw_4"]:
 		assert_not_null(world.area(id), id)
 	assert_null(world.area("camp"), "野営地は町に作り替えた")
@@ -261,7 +261,7 @@ func test_regions_have_bonfire_boss_and_shortcut():
 	for id in world.ids():
 		var a := world.area(id)
 		var info: Dictionary = Continent.load_map(a)[1]
-		if info.has("checkpoint"):
+		if info.has("checkpoint") and a.theme != "town":  # 町（はじまりの町・霧見の宿場）のたき火は数えない
 			fires[a.region] = fires.get(a.region, 0) + 1
 		bosses[a.region] = bosses.get(a.region, 0) + a.bosses.size()
 		for ex in a.exits:
@@ -299,7 +299,7 @@ func test_bonfire_areas_are_small_and_safe():
 	var n := 0
 	for id in world.ids():
 		var a := world.area(id)
-		if id == "town" or not Continent.load_map(a)[1].has("checkpoint"):
+		if a.theme == "town" or not Continent.load_map(a)[1].has("checkpoint"):
 			continue
 		n += 1
 		assert_eq(a.enemies.size(), 0, id)

@@ -5,6 +5,8 @@ extends CanvasLayer
 ## full（はじまり・終わり）は、黒い画面の真ん中に言葉を出す。開いている間は field.gd が世界を止める。
 
 signal finished
+## 選ぶ画面（open_choice）で選んだ（i は 0 から）。選んだときは finished は出さない（2026-11-27 最後の選択）
+signal chose(i: int)
 
 const PANEL_POS := Vector2(8, 116)
 const PANEL_SIZE := Vector2(304, 58)
@@ -23,6 +25,10 @@ var _center: Label
 var _open := false
 ## 開いた直後の同じ押下で、すぐ次へ進まないように
 var _guard := 0.0
+## 選ぶ画面の選びもの（空なら選ぶ画面でない）と、今の選び
+var options: Array = []
+var selected := 0
+var _option_labels: Array = []
 
 func setup() -> void:
 	layer = 12
@@ -68,6 +74,58 @@ func setup() -> void:
 func is_open() -> bool:
 	return _open
 
+func is_choosing() -> bool:
+	return _open and not options.is_empty()
+
+## 黒い画面の真ん中に問いと選びものを出す（W/S・上下で選び、F・Enter・クリックで決める。Esc では閉じない）。
+func open_choice(prompt: String, opts: Array) -> void:
+	options = opts.duplicate()
+	selected = 0
+	pages = [prompt]
+	index = 0
+	full = true
+	_open = true
+	_guard = 0.3
+	_set_visible(true)
+	_center.text = prompt
+	_center.position = Vector2(10, 40)
+	_hint.position = Vector2(196, 166)
+	_hint.text = "W/S：えらぶ　F：決める"
+	for l in _option_labels:
+		l.queue_free()
+	_option_labels.clear()
+	for k in options.size():
+		var l := UiText.label(true)
+		l.position = Vector2(10, 96 + k * 18)
+		l.size = Vector2(300, 16)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		add_child(l)
+		_option_labels.append(l)
+	_show_options()
+	Sfx.play("ui_open", null, -6.0)
+
+func _show_options() -> void:
+	for k in _option_labels.size():
+		var l: Label = _option_labels[k]
+		var on := k == selected
+		l.text = ("→ %s ←" if on else "%s") % options[k]
+		l.add_theme_color_override("font_color", Color("f0d080") if on else Color(0.7, 0.7, 0.75))
+
+## 選ぶ（テストと決めるときに使う）。
+func choose(i: int) -> void:
+	if not is_choosing():
+		return
+	var pick := clampi(i, 0, options.size() - 1)
+	options = []
+	for l in _option_labels:
+		l.queue_free()
+	_option_labels.clear()
+	_center.position = Vector2(10, 60)
+	_open = false
+	_set_visible(false)
+	Sfx.play("ui_close", null, -6.0)
+	chose.emit(pick)
+
 ## 言葉を出す。full なら黒い画面の真ん中に。
 func open(name_: String, pages_: Array, full_screen := false) -> void:
 	if pages_.is_empty():
@@ -83,7 +141,7 @@ func open(name_: String, pages_: Array, full_screen := false) -> void:
 	Sfx.play("ui_open", null, -6.0)
 
 func advance() -> void:
-	if not _open:
+	if not _open or is_choosing():
 		return
 	index += 1
 	if index >= pages.size():
@@ -93,7 +151,7 @@ func advance() -> void:
 		_show_page()
 
 func close() -> void:
-	if not _open:
+	if not _open or is_choosing():
 		return
 	_open = false
 	_set_visible(false)
@@ -128,6 +186,9 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if not _open:
 		return
+	if is_choosing():
+		_choice_input(event)
+		return
 	var next := false
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_ESCAPE:
@@ -141,3 +202,26 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		if _guard <= 0.0:
 			advance()
+
+func _choice_input(event: InputEvent) -> void:
+	var move := 0
+	var pick := false
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.physical_keycode:
+			KEY_W, KEY_UP:
+				move = -1
+			KEY_S, KEY_DOWN:
+				move = 1
+			KEY_F, KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_E:
+				pick = true
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		pick = true
+	if move != 0:
+		get_viewport().set_input_as_handled()
+		selected = posmod(selected + move, options.size())
+		_show_options()
+		Sfx.play("ui_close", null, -12.0)
+	elif pick:
+		get_viewport().set_input_as_handled()
+		if _guard <= 0.0:
+			choose(selected)

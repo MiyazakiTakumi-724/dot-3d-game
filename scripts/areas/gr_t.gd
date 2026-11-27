@@ -1,0 +1,69 @@
+extends RefCounted
+## 霧見の宿場 のデータ。tools/area_maps/gen.py が作ったもの（手で直すときは gen.py を直して作り直す）。
+
+const ID := "gr_t"
+const TITLE := "霧見の宿場"
+const REGION := "草原"
+const THEME := "town"
+const ORIGIN := Vector2i(125, 35)
+## 広場（たき火・町・ボスの間）。広い平地があってよい
+const OPEN_FLAT := true
+const HEIGHTS := [
+	"11111111111111222111111112",
+	"11111111111111111111111112",
+	"11111111111111111111111111",
+	"22211111111111111111111111",
+	"33311111111111111111111111",
+	"33311111111111111111111111",
+	"44444322111111111111111111",
+	"44444322111111111111111111",
+	"44444322111111111111111111",
+	"44444322111111111111111111",
+	"33333322111111111111111111",
+	"22211111111111111111111111",
+	"22211111111111111111111112",
+	"22211111111111111111111112",
+	"22211111111111111111111111",
+	"22211111111111111111111111",
+]
+const OBJECTS := [
+	"TTP........BPPBBTT.......P",
+	"PP..HHHHH..........HHHHH.T",
+	"TT..HHHHH..........HHHHH.T",
+	"TT..HHHHH.......B..HHHHH.P",
+	"TT.........M.....M.......T",
+	"TT.......................T",
+	"........sss.sssss.sss....B",
+	"........sss.sssss.sss....B",
+	"........sssssssssssss....T",
+	"........ssssssC.sssss....T",
+	"BB......sssssssssssss....T",
+	"TT.........ssssss........T",
+	"TT..HHHHH.......T.HHHHHH.T",
+	"TT..HHHHH.........HHHHHH.B",
+	"TTT.HHHHH.....O...HHHHHH.T",
+	"BBT........BTTTTP........T",
+]
+## [辺, from, to, 相手, 門の id, この側から門を開けられるか]
+const EXITS := [
+	[ExitDef.Edge.WEST, 6, 9, "gr_7", "", false],
+]
+## [マス, 向き, 種類, レベル（倒したボスの数は足す前）]
+const ENEMIES := [
+]
+## [マス, 品物の id（ItemCatalog、お金は money）, 数]
+const PICKUPS := [
+	[Vector2i(22, 9), "money", 30],
+	[Vector2i(12, 14), "money", 30],
+]
+## 商人 [マス, お店の id（Shop.NAMES）]。前（南）に立って F でお店が開く
+const MERCHANTS := [
+	[Vector2i(11, 4), "tool"],
+	[Vector2i(17, 4), "weapon"],
+]
+## 武器で開く仕掛け [id, 種類, ふさぐマス（的なら橋になる水のマス）, 武器を当てるマス]
+const GIMMICKS := [
+]
+## ボスの居場所 [マス, 名前, 色]
+const BOSSES := [
+]

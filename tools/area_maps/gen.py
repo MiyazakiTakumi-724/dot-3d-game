@@ -85,6 +85,8 @@ AREAS = {
     'mv_4': A('沈んだ街道', 'mist', (56, 62), (32, 14)),
     'mv_5': A('闇の砦', 'mist', (64, 76), (24, 20)),
     'mv_6': A('霧の湖', 'mist', (76, 30), (16, 16)),
+    # 霧見の宿場（2026-11-27、ユーザーの「町をもう1つ置いて、うわさ話をする村人を」）。風車の跡の東。たき火・道具屋・武器屋・家
+    'gr_t': A('霧見の宿場', 'town', (86, 16), (20, 14)),
 }
 REGION = {}
 for k in AREAS:
@@ -162,6 +164,7 @@ LINKS = [
     ('mv_3', 'mv_4', 78, 80, '', None),
     ('mv_4', 'mv_2', 62, 64, 'mv_gate', 'mv_4'),
     ('mv_4', 'mv_5', 74, 77, 'mv_boss', 'mv_4'),     # 闇の砦の門（村のお守りで開く）
+    ('gr_7', 'gr_t', 21, 23, '', None),               # 霧見の宿場（2026-11-27）
 ]
 
 def _link_exits(a, b, g0, g1, door, opener):
@@ -999,6 +1002,36 @@ def make_town():
     g.start = (12, 11)
     return g
 
+# ---------------------------------------------------------------- 霧見の宿場（2026-11-27）
+def make_gr_t():
+    g = new_area('gr_t', 881)
+    n = value_noise(887, 5)
+    for x, y in g.cells():
+        g.H[y][x] = 1 + (1 if n(x, y) > 0.78 else 0)
+    plaza(g, 10, 7, rx=4, ry=2, paving=True)
+    for (x0, y0, x1, y1) in [(3, 1, 6, 3), (14, 1, 17, 3), (3, 10, 6, 12), (13, 10, 17, 12)]:
+        flatten(g, x0 - 1, y0 - 1, x1 + 1, y1 + 1, 1)
+        for x in range(x0, x1 + 1):
+            for y in range(y0, y1 + 1):
+                g.O[y][x] = 'H'
+        protect(g, [(x, y) for x in range(x0 - 1, x1 + 2) for y in range(y0 - 1, y1 + 2)])
+        for x in range(x0 - 1, x1 + 2):
+            for y in range(y0 - 1, y1 + 2):
+                if g.inside(x, y) and g.O[y][x] != 'H':
+                    g.O[y][x] = '.'
+    flatten(g, 9, 11, 11, 12, 1)
+    g.O[12][10] = 'O'   # 井戸
+    protect(g, [(10, 12)])
+    merchant(g, 8, 4, 'tool')     # 道具屋
+    merchant(g, 12, 4, 'weapon')  # 武器屋
+    pickup(g, 16, 7, 'money', 30)
+    flatten_exits(g)
+    for x, y in g.cells():
+        if (x in (0, g.w - 1) or y in (0, g.h - 1)) and (x, y) not in g.reserved:
+            g.O[y][x] = g.rng.choice('TPTB')
+    scatter_theme(g, 889, avoid=lambda x, y: g.O[y][x] == 's')
+    return g
+
 # ---------------------------------------------------------------- はじまりの地
 def make_rocks():
     def _pre(g):
@@ -1688,6 +1721,7 @@ MAKERS = {
     'lv_6': make_lv_6, 'lv_7': make_lv_7, 'lv_8': make_lv_8,
     'tw_5': make_tw_5,
     'mv_1': make_mv_1, 'mv_2': make_mv_2, 'mv_3': make_mv_3, 'mv_4': make_mv_4, 'mv_5': make_mv_5, 'mv_6': make_mv_6,
+    'gr_t': make_gr_t,
 }
 
 # ---------------------------------------------------------------- エリアを少し広く、形を四角でなく（2026-11-26 の3回目の直し）
